@@ -47,6 +47,8 @@ Eksisterende lokale brugere sammenlægges ikke automatisk med Hub-brugere, selv 
 
 ## Telefon som fjernbetjening (lokal test)
 
+Afspilleren bruger egne kontroller med én tidslinje for hele filmen, også ved transcoding. Den har afspil/pause, 10-sekunders spring, lyd, kvalitet og fuld skærm. Kontrollerne skjules efter inaktivitet under afspilning. Mellemrum/K, piletaster, M og F kan bruges, når fokus ikke står i en knap eller et inputfelt. På browsere uden HTML-fuldskærm kan videoens systemafspiller bruges som fallback.
+
 Åbn FjordFlix på pc’en, log ind og tryk **Fjernbetjening** øverst. Scan QR-koden med telefonens kamera og tryk **Forbind til skærmen**. Telefonen skal kunne nå pc’en på det samme lokale netværk. Der installeres ingen app.
 
 - Træk én finger på touchpadden for at flytte FjordFlix-markøren. Tap eller brug **Klik / vælg** for at vælge en film.

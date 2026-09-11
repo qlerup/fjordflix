@@ -6,7 +6,7 @@ remoteCursor.innerHTML = '<svg viewBox="0 0 24 30" aria-hidden="true"><path d="M
 document.body.append(remoteCursor);
 let remoteHover;
 function remoteTarget(element) {
-  const target = element?.closest('.movie-card,[data-view],#play-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#demo-button');
+  const target = element?.closest('.movie-card,[data-view],#play-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#demo-button,#player-toggle,#player-rewind,#player-forward,#player-mute,#player-fullscreen,#timeline,#player-volume');
   if(!target || target.disabled) return null;
   if(target.id === 'hero-action' && !library.length) return null;
   if(target.id === 'demo-button' && !state?.user?.admin) return null;
@@ -71,6 +71,7 @@ function remoteSelect(select) {
 }
 function handleRemoteCommand(event) {
   if(!remoteTV.paired || !state?.user) return;
+  if($('player-dialog').open) wakePlayerControls();
   if(event.type === 'move') { remoteTV.x += event.dx; remoteTV.y += event.dy; placeRemoteCursor(); return; }
   if(event.type === 'scroll') { (document.querySelector('dialog[open]') || document.scrollingElement).scrollBy({top:event.dy,behavior:'instant'}); placeRemoteCursor(); return; }
   if(event.type === 'back') {
@@ -98,7 +99,12 @@ function handleRemoteCommand(event) {
     // Browsing/playback and the admin's demo action; no account, upload or external-link actions.
     const allowed = remoteTarget(element);
     if(allowed && !allowed.disabled) {
-      if(allowed.tagName === 'SELECT') { if(!switching) remoteSelect(allowed); }
+      if(allowed.type === 'range') {
+        const box=allowed.getBoundingClientRect(), fraction=Math.max(0,Math.min(1,(remoteTV.x-box.left)/box.width));
+        if(allowed.id === 'timeline') seekPlayer(fraction*(selected?.duration || 0));
+        else { video.volume=fraction;video.muted=fraction===0; }
+      }
+      else if(allowed.tagName === 'SELECT') { if(!switching) remoteSelect(allowed); }
       else allowed.click();
     } else if(element === video && $('player-dialog').open) handleRemoteCommand({type:'play'});
     else if(element?.closest('button,input,a,select')) toast('Brug pc’en til denne funktion. Telefonen styrer filmvalg og afspilning.');

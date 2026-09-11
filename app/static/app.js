@@ -153,11 +153,10 @@ video.onwaiting = () => { if(playback) { $('player-loading').hidden = false; $('
 video.onerror = () => { if(switching || !playback) return; if(playback.mode === 'Direct Play') { toast('Originalformatet kunne ikke afspilles. Prøver transcoding.'); startPlayback(video.currentTime || 0, true).catch(e => showPlayerError(e.message)); } else showPlayerError('Videoen kunne ikke afspilles. Prøv en anden kvalitet.'); };
 function position() { return Math.min(selected?.duration || 0, (video.currentTime || 0) + (playback?.offset || 0)); }
 async function saveProgress() { if(!selected || !playback) return; const p = position(); selected.position = p; await api(`/movies/${selected.id}/progress`, 'POST', {position:p}).catch(() => {}); }
-video.ontimeupdate = () => { const p = position(); $('timeline').value = p; $('timeline-time').textContent = `${clock(p)} / ${clock(selected?.duration)}`; if(Date.now() - lastSaved > 5000 && playback) { lastSaved = Date.now(); saveProgress(); } };
+video.ontimeupdate = () => { updatePlayerTimeline(); if(Date.now() - lastSaved > 5000 && playback) { lastSaved = Date.now(); saveProgress(); } };
 video.onended = () => { saveProgress(); $('player-loading').hidden = true; };
-$('timeline').onchange = () => { const p = Number($('timeline').value); if(playback?.mode === 'Direct Play') video.currentTime = p; else startPlayback(p).catch(e => showPlayerError(e.message)); };
 $('player-quality').onchange = () => startPlayback(position()).catch(e => showPlayerError(e.message));
-async function closePlayer() { ++playGeneration; await saveProgress(); await release(); $('player-dialog').close(); if(state?.user) await refresh(); }
+async function closePlayer() { ++playGeneration; if(document.fullscreenElement && $('player-dialog').open) await document.exitFullscreen().catch(()=>{}); await saveProgress(); await release(); $('player-dialog').close(); if(state?.user) await refresh(); }
 $('player-close').onclick = closePlayer;
 $('player-dialog').addEventListener('cancel', event => { event.preventDefault(); closePlayer(); });
 setInterval(() => { if(playback?.session) api(`/streams/${playback.session}/heartbeat`, 'POST').catch(() => {}); }, 30000);
