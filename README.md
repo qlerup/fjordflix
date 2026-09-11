@@ -24,6 +24,8 @@ docker compose up -d --build
 
 ## Installation gennem FjordHub
 
+Standardporten i FjordHub er **8097**, så FjordFlix ikke kolliderer med FjordParcel på 8096. En allerede gemt port ændres ikke automatisk; vælg 8097 ved et nyt installationsforsøg, hvis guiden stadig viser 8096. Solo-installationens standard er fortsat 8096.
+
 Opdater FjordHub til en version med FjordFlix-understøttelse, opdater app-kataloget, og vælg **FjordFlix → Installer**. Guiden spørger om port, filmmappe, lokal arbejdsplads, samtidige konverteringer og valgfri NVIDIA GPU. FjordHub skriver forbindelsesoplysninger og en særskilt app-nøgle automatisk.
 
 | Funktion | Solo-installation | Installeret gennem FjordHub |

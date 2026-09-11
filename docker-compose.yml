@@ -6,7 +6,7 @@ services:
     container_name: ${CONTAINER_NAME:-fjordflix}
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8096}:8080"
+      - "${APP_PORT:-8097}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
