@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub
+from app import hub, media
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -58,6 +58,9 @@ with db() as conn:
 
 def digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+media.init(db)
 
 
 def stop_job(key):
@@ -110,17 +113,33 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
 
 @app.middleware('http')
 async def security(request, call_next):
+    direct, web_origin = media.config()
+    is_media = request.url.path.startswith('/media/')
+    if is_media:
+        if not direct or request.headers.get('host', '').lower() != urlparse(direct).netloc.lower() or request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'):
+            return Response('Video skal hentes via den direkte videoadresse uden Cloudflare.', status_code=403)
+        if request.headers.get('origin') not in (None, web_origin):
+            return Response('Ugyldig video-oprindelse.', status_code=403)
+        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            return Response(status_code=405)
     if request.method not in ('GET', 'HEAD', 'OPTIONS'):
         origin = request.headers.get('origin')
         if (origin and urlparse(origin).netloc != request.headers.get('host')) or request.headers.get('sec-fetch-site') == 'cross-site':
             return Response('Ugyldig oprindelse', status_code=403)
-    response = await call_next(request)
+    response = Response(status_code=204) if is_media and request.method == 'OPTIONS' else await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'"
-    if request.url.path.startswith('/api'):
+    response.headers['Content-Security-Policy'] = f"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: {direct}; connect-src 'self' {direct}; worker-src 'self' blob:; frame-ancestors 'none'"
+    if request.url.path.startswith('/api') or is_media or request.url.path in ('/', '/remote'):
         response.headers['Cache-Control'] = 'no-store'
+    if is_media:
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['Access-Control-Allow-Origin'] = web_origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Range'
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Length, Content-Range, Accept-Ranges'
+        response.headers['Vary'] = 'Origin'
     return response
 
 
@@ -322,6 +341,32 @@ def dashboard(u=Depends(admin)):
     return {'users': users, 'gpu': GPU, 'streams': active, 'free_gb': round(disk.free / 1024**3, 1), 'max_streams': int(os.getenv('MAX_TRANSCODES', 3))}
 
 
+@app.get('/api/admin/media')
+def media_settings(request: Request, u=Depends(admin)):
+    direct, web = media.config()
+    hub_url = ''
+    if hub.managed():
+        try:
+            hub_url = hub.call('/api/hub/apps/config', method='GET').get('external_url', '')
+        except HTTPException:
+            pass
+    return {'media_url':direct, 'web_url':web or hub_url or str(request.base_url).rstrip('/'), 'hub_url':hub_url, 'enabled':bool(direct)}
+
+
+class MediaSettings(BaseModel):
+    web_url: str = Field(max_length=300)
+    media_url: str = Field(default='', max_length=300)
+
+
+@app.put('/api/admin/media')
+def save_media_settings(data: MediaSettings, u=Depends(admin)):
+    try:
+        media.save_config(data.media_url, data.web_url, db)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc))
+    return {'ok':True}
+
+
 def probe(path):
     result = subprocess.run(['ffprobe', '-v', 'error', '-protocol_whitelist', 'file,pipe', '-show_format', '-show_streams', '-of', 'json', str(path)], capture_output=True, timeout=60)
     if result.returncode:
@@ -414,6 +459,12 @@ def poster(mid: str, u=Depends(user)):
 
 @app.get('/api/movies/{mid}/file')
 def original(mid: str, u=Depends(user)):
+    if media.config()[0]:
+        raise HTTPException(409, 'Start afspilning for at få en direkte videobillet.')
+    return original_file(mid)
+
+
+def original_file(mid):
     row, meta = movie(mid)
     return FileResponse(row['path'], media_type='video/webm' if 'webm' in meta['format'] else 'video/mp4')
 
@@ -471,12 +522,12 @@ def plan(mid: str, data: Playback, u=Depends(user)):
 
 
 @app.post('/api/movies/{mid}/play')
-def play(mid: str, data: Playback, u=Depends(user)):
+def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     row, meta = movie(mid)
     result = decide(meta, data)
     offset = min(data.start, max(0, meta['duration'] - 1))
     if result['mode'] == 'Direct Play':
-        return {**result, 'url': f'/api/movies/{mid}/file', 'session': None, 'offset': 0, 'encoder': 'Original'}
+        return media.issue({**result, 'url': f'/api/movies/{mid}/file', 'session': None, 'offset': 0, 'encoder': 'Original'}, request, mid, db)
     with LOCK:
         if len(JOBS) >= int(os.getenv('MAX_TRANSCODES', 3)):
             raise HTTPException(503, 'Serverens stream-pladser er optaget. Prøv igen om lidt.')
@@ -503,7 +554,7 @@ def play(mid: str, data: Playback, u=Depends(user)):
     for _ in range(200):
         playlist = folder / 'index.m3u8'
         if playlist.exists():
-            return {**result, 'url': f'/api/streams/{sid}/index.m3u8', 'session': sid, 'offset': offset, 'encoder': encoder}
+            return media.issue({**result, 'url': f'/api/streams/{sid}/index.m3u8', 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db)
         if process.poll() is not None:
             break
         time.sleep(0.1)
@@ -513,6 +564,12 @@ def play(mid: str, data: Playback, u=Depends(user)):
 
 @app.get('/api/streams/{sid}/{filename}')
 def segment(sid: str, filename: str, u=Depends(user)):
+    if media.config()[0]:
+        raise HTTPException(409, 'Brug den direkte videoadresse.')
+    return stream_file(sid, filename, u)
+
+
+def stream_file(sid, filename, u):
     with LOCK:
         job = JOBS.get(sid)
         if not job or job['user'] != u['id']:
@@ -524,6 +581,34 @@ def segment(sid: str, filename: str, u=Depends(user)):
     if not path.exists():
         raise HTTPException(404)
     return FileResponse(path, media_type='application/vnd.apple.mpegurl' if filename.endswith('m3u8') else 'video/mp2t')
+
+
+@app.api_route('/media/{ticket}/movies/{mid}/file', methods=['GET', 'HEAD'])
+def direct_original(ticket: str, mid: str):
+    media.validate(ticket, db, session_user, mid=mid)
+    return original_file(mid)
+
+
+@app.api_route('/media/{ticket}/streams/{sid}/{filename}', methods=['GET', 'HEAD'])
+def direct_segment(ticket: str, sid: str, filename: str):
+    u = media.validate(ticket, db, session_user, sid=sid)
+    return stream_file(sid, filename, u)
+
+
+class MediaTicket(BaseModel):
+    ticket: str = Field(min_length=43, max_length=43)
+
+
+@app.post('/api/media/heartbeat')
+def media_heartbeat(data: MediaTicket, request: Request, u=Depends(user)):
+    media.renew(data.ticket, request, db)
+    return {'ok': True, 'expires_in': media.TTL}
+
+
+@app.post('/api/media/revoke')
+def media_revoke(data: MediaTicket, request: Request, u=Depends(user)):
+    media.renew(data.ticket, request, db, revoke=True)
+    return {'ok': True}
 
 
 @app.post('/api/streams/{sid}/heartbeat')

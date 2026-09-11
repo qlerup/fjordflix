@@ -1,0 +1,9 @@
+{$MEDIA_DOMAIN} {
+    # No access log: media URLs contain short-lived bearer tickets.
+    handle /media/* {
+        reverse_proxy {$MEDIA_UPSTREAM}
+    }
+    handle {
+        respond "Not found" 404
+    }
+}

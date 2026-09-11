@@ -124,6 +124,7 @@ async function release() {
   video.pause(); video.removeAttribute('src'); video.load();
   if (hls) { hls.destroy(); hls = null; }
   const old = playback; playback = null;
+  if (old?.media_ticket) await api('/media/revoke', 'POST', {ticket:old.media_ticket}).catch(() => {});
   if (old?.session) await api(`/streams/${old.session}`, 'DELETE').catch(() => {});
 }
 async function startPlayback(position = 0, fallback = false) {
@@ -138,7 +139,8 @@ async function startPlayback(position = 0, fallback = false) {
     const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position});
     if (generation !== playGeneration || !$('player-dialog').open) { if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
     playback = result; lastSaved = 0;
-    $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}`;
+    if(result.media_ticket) video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
+    $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}`;
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (result.session && Hls.isSupported()) {
       hls = new Hls({startPosition:0, maxBufferLength:30, backBufferLength:30});
@@ -159,7 +161,10 @@ $('player-quality').onchange = () => startPlayback(position()).catch(e => showPl
 async function closePlayer() { ++playGeneration; if(document.fullscreenElement && $('player-dialog').open) await document.exitFullscreen().catch(()=>{}); await saveProgress(); await release(); $('player-dialog').close(); if(state?.user) await refresh(); }
 $('player-close').onclick = closePlayer;
 $('player-dialog').addEventListener('cancel', event => { event.preventDefault(); closePlayer(); });
-setInterval(() => { if(playback?.session) api(`/streams/${playback.session}/heartbeat`, 'POST').catch(() => {}); }, 30000);
+setInterval(() => {
+  if(playback?.session) api(`/streams/${playback.session}/heartbeat`, 'POST').catch(() => {});
+  if(playback?.media_ticket) api('/media/heartbeat', 'POST', {ticket:playback.media_ticket}).catch(e => showPlayerError(e.message));
+}, 30000);
 window.addEventListener('pagehide', () => { if(playback && selected) { fetch(`/api/movies/${selected.id}/progress`, {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify({position:position()}),keepalive:true}); if(playback.session) fetch(`/api/streams/${playback.session}`, {method:'DELETE',keepalive:true}); } });
 
 $('upload-open').onclick = () => $('upload-dialog').showModal();
@@ -176,4 +181,21 @@ $('demo-button').onclick = async () => { $('demo-button').disabled = true; $('de
 $('admin-open').onclick = async () => { try { const data = await api('/admin'); $('server-stats').innerHTML = `<div><strong>${data.gpu ? 'NVIDIA NVENC' : 'CPU'}</strong>Transcoding-motor · ${data.gpu ? 'GPU-test bestået' : 'softwarekonvertering'}</div><div><strong>${data.free_gb} GB</strong>Ledig serverplads</div><div><strong>${data.streams} / ${data.max_streams}</strong>Aktive konverteringssessioner</div><div><strong>${data.users.length}</strong>Brugere på serveren</div>`; $('users-list').innerHTML = data.users.map(u => `<div class="user-row">${escapeHtml(u.name)}<span>${u.admin ? 'Administrator' : 'Bruger'}</span></div>`).join(''); $('admin-dialog').showModal(); } catch(e) { toast(e.message); } };
 $('create-invite').onclick = async () => { try { const result = await api('/invites','POST'); $('invite-result').hidden = false; $('invite-code').value = result.token; } catch(e) { toast(e.message); } };
 $('copy-invite').onclick = async () => { try { await navigator.clipboard.writeText($('invite-code').value); toast('Invitationskoden er kopieret.'); } catch { $('invite-code').select(); toast('Markér og kopiér invitationskoden.'); } };
+$('media-settings-open').onclick = async () => {
+  try {
+    const data=await api('/admin/media');
+    $('media-web-url').value=data.web_url;
+    $('media-direct-url').value=data.media_url;
+    $('media-hub-source').textContent=data.hub_url ? `Adresse i FjordHub: ${data.hub_url}` : '';
+    $('media-settings-error').textContent='';
+    $('admin-dialog').close(); $('media-settings-dialog').showModal();
+  } catch(e) { toast(e.message); }
+};
+$('media-settings-form').onsubmit = async event => {
+  event.preventDefault();
+  try {
+    await api('/admin/media','PUT',{web_url:$('media-web-url').value,media_url:$('media-direct-url').value});
+    location.reload();
+  } catch(e) { $('media-settings-error').textContent=e.message; }
+};
 boot().catch(error => { $('auth').hidden = false; $('auth-error').textContent = 'Serveren kunne ikke kontaktes. ' + error.message; });

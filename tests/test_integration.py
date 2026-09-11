@@ -25,7 +25,7 @@ def test_complete_streaming_flow():
         cookie = owner.cookies.get('fjordflix_session')
         with main.db() as conn:
             assert conn.execute('SELECT token FROM sessions').fetchone()[0] != cookie
-            assert conn.execute('SELECT password FROM users').fetchone()[0].startswith('$argon2')
+            assert conn.execute('SELECT password FROM users WHERE name=?', (credentials['name'],)).fetchone()[0].startswith('$argon2')
         assert anonymous.post('/api/register', json={**credentials, 'invite': 'bad'}).status_code == 400
         token = owner.post('/api/invites').json()['token']
         viewer = TestClient(main.app)

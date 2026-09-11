@@ -106,6 +106,10 @@ Integrationstesten opretter altid en separat midlertidig database og testfilm og
 
 `tests/test_remote.py` tester engangskoder, udløb, skærmrettigheder, WebSocket-oprindelse, filtrering af kommandoer og oprydning. `tests/browser_remote.py` tester to separate browserkontekster, afkoder den faktisk viste QR-kode med OpenCV og bruger touch-events fra telefonsiden til at vælge og afspille en film på pc-siden.
 
+### Web via Tunnel, video direkte
+
+Administratorer kan vælge **Server → Direkte videoforbindelse**. Webadressen foreslås fra FjordHub; videoadressen kræver en separat, fungerende HTTPS-indgang uden Cloudflare-proxy. Se [opsætning og Docker-konfiguration til Caddy](deploy/direct-media/README.md). Funktionen er slået fra som standard og ændrer ikke automatisk DNS eller routeren.
+
 ### Teknisk grundlag
 
 Python/FastAPI, SQLite med WAL, FFmpeg/FFprobe og en lokal kopi af HLS.js. Ingen eksterne webtjenester er nødvendige under brug. Afspilning bruger FFmpegs [HLS-muxer](https://ffmpeg.org/ffmpeg-formats.html#hls-2).

@@ -21,6 +21,8 @@ services:
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
       TRANSCODE_DEVICE: ${TRANSCODE_DEVICE:-auto}
       REMOTE_PUBLIC_URL: ${REMOTE_PUBLIC_URL:-}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
+      MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-}
       SECURE_COOKIES: ${SECURE_COOKIES:-0}
       TZ: ${TZ:-Europe/Copenhagen}
     logging:
