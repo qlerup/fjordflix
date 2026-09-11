@@ -5,6 +5,13 @@ remoteCursor.id = 'remote-cursor'; remoteCursor.hidden = true;
 remoteCursor.innerHTML = '<svg viewBox="0 0 24 30" aria-hidden="true"><path d="M2 2 L2 25 L8 19 L12 28 L17 26 L13 17 L22 17 Z"/></svg>';
 document.body.append(remoteCursor);
 let remoteHover;
+function remoteTarget(element) {
+  const target = element?.closest('.movie-card,[data-view],#play-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#demo-button');
+  if(!target || target.disabled) return null;
+  if(target.id === 'hero-action' && !library.length) return null;
+  if(target.id === 'demo-button' && !state?.user?.admin) return null;
+  return target;
+}
 function remoteStatus(text) { $('remote-status').textContent = text; }
 function placeRemoteCursor() {
   const host = document.querySelector('dialog[open]') || document.body;
@@ -12,7 +19,7 @@ function placeRemoteCursor() {
   remoteTV.x = Math.max(4,Math.min(innerWidth-16,remoteTV.x)); remoteTV.y = Math.max(4,Math.min(innerHeight-20,remoteTV.y));
   remoteCursor.style.left = remoteTV.x+'px'; remoteCursor.style.top = remoteTV.y+'px';
   remoteCursor.hidden = !remoteTV.paired;
-  const hit = document.elementFromPoint(remoteTV.x,remoteTV.y)?.closest('button,select');
+  const hit = remoteTarget(document.elementFromPoint(remoteTV.x,remoteTV.y));
   if(remoteHover !== hit) { remoteHover?.classList.remove('remote-hover'); hit?.classList.add('remote-hover'); remoteHover = hit; }
 }
 async function stopRemote() {
@@ -88,13 +95,13 @@ function handleRemoteCommand(event) {
   if(event.type === 'click') {
     placeRemoteCursor();
     const element = document.elementFromPoint(remoteTV.x,remoteTV.y);
-    // A paired phone may browse and play; it cannot click admin, upload, account or external links.
-    const allowed = element?.closest('.movie-card,[data-view],#play-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality');
+    // Browsing/playback and the admin's demo action; no account, upload or external-link actions.
+    const allowed = remoteTarget(element);
     if(allowed && !allowed.disabled) {
       if(allowed.tagName === 'SELECT') { if(!switching) remoteSelect(allowed); }
       else allowed.click();
-    } else if(element?.closest('#hero-action') && library.length) $('hero-action').click();
-    else if(element === video && $('player-dialog').open) handleRemoteCommand({type:'play'});
+    } else if(element === video && $('player-dialog').open) handleRemoteCommand({type:'play'});
+    else if(element?.closest('button,input,a,select')) toast('Brug pc’en til denne funktion. Telefonen styrer filmvalg og afspilning.');
     remoteCursor.classList.add('click'); setTimeout(()=>remoteCursor.classList.remove('click'),180);
   }
   requestAnimationFrame(placeRemoteCursor);

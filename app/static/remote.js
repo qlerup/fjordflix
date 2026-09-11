@@ -40,11 +40,29 @@ el('connect').onclick = async () => {
 };
 if(session) connectSocket();
 el('disconnect').onclick = () => { deliberate = true; socket?.close(); sessionStorage.removeItem('fjordflix-remote'); session = null; showError('Telefonen er afbrudt. Scan en ny QR-kode for at forbinde igen.'); el('connect').disabled = true; };
-el('click').onclick = () => send({type:'click'});
-document.querySelectorAll('[data-command]').forEach(button => button.onclick = () => {
+function remoteButton(button, action) {
+  let start, lastTouch = -Infinity;
+  button.addEventListener('pointerdown', event => {
+    if(event.pointerType !== 'mouse') start = {id:event.pointerId,x:event.clientX,y:event.clientY};
+  });
+  button.addEventListener('pointercancel', () => { start = null; });
+  button.addEventListener('pointerup', event => {
+    if(!start || start.id !== event.pointerId) return;
+    const moved = Math.hypot(event.clientX-start.x,event.clientY-start.y); start = null;
+    if(moved > 12 || button.disabled) return;
+    event.preventDefault(); lastTouch = performance.now(); action();
+  });
+  button.onclick = event => {
+    // Handle touch directly; ignore its subsequent compatibility click, but keep keyboard/mouse support.
+    if(event.detail && performance.now()-lastTouch < 750) return;
+    action();
+  };
+}
+remoteButton(el('click'), () => { flush(); send({type:'click'}); });
+document.querySelectorAll('[data-command]').forEach(button => remoteButton(button, () => {
   const kind = button.dataset.command, delta=Number(button.dataset.delta);
   send(kind === 'scroll' ? {type:kind,dy:delta} : {type:kind,delta});
-});
+}));
 el('remote-search').onsubmit = event => { event.preventDefault(); send({type:'search',text:el('search-text').value}); el('search-text').blur(); };
 const pad = el('touchpad'), points = new Map();
 let pendingX=0,pendingY=0,pendingScroll=0,startTime=0,distance=0,multi=false;

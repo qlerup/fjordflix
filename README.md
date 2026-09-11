@@ -53,7 +53,7 @@ Eksisterende lokale brugere sammenlægges ikke automatisk med Hub-brugere, selv 
 - To fingre scroller. Der er også særskilte knapper til scroll, tilbage, afspil/pause, 10 sekunders spring, kvalitet, lyd og søgning.
 - QR-koden kan bruges én gang og udløber efter tre minutter. En telefon knyttes til én browserfane, ikke alle brugerens skærme.
 - Åbn **Fjernbetjening** igen for at afbryde telefonen eller lave en ny kode. Lukning/genindlæsning af pc-fanen afslutter parringen. En forbindelse varer højst otte timer og kræver, at pc-brugerens login stadig er gyldigt.
-- Telefonen får kun adgang til navigation og afspilning i FjordFlix. Den får ikke brugerens login-cookie, adgang til administration eller kontrol over Windows.
+- Telefonen får adgang til navigation og afspilning i FjordFlix samt generering af testfilmen, når pc-brugeren er administrator. Den får ikke brugerens login-cookie, adgang til administration eller kontrol over Windows. Knapper, der kræver pc’en, fremhæves ikke som klikbare og viser en forklaring ved fjernklik.
 - Ingen Raspberry Pi-image, Wi-Fi-guide eller automatisk QR-visning efter login endnu.
 
 Kopiér `compose.override.example.yaml` til `compose.override.yaml`, og udskift eksempeladressen `192.168.1.100` med pc’ens lokale IP-adresse. Genstart med `docker compose up -d`. QR-koden bruger netværksadressen via `REMOTE_PUBLIC_URL`, mens localhost-adressen stadig virker. Den personlige override-fil ignoreres af Git. Kør `docker compose -f compose.yaml up -d` for opsætning med adgang kun via localhost.
