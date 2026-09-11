@@ -16,11 +16,14 @@ from urllib.parse import urlparse
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from app import hub
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
+MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
+MEDIA.mkdir(parents=True, exist_ok=True)
 for folder in ('media', 'posters', 'streams'):
     (DATA / folder).mkdir(parents=True, exist_ok=True)
 PASSWORDS = PasswordHasher()
@@ -46,6 +49,11 @@ with db() as conn:
     CREATE TABLE IF NOT EXISTS movies(id TEXT PRIMARY KEY, title TEXT, path TEXT, metadata TEXT, created REAL);
     CREATE TABLE IF NOT EXISTS progress(user_id TEXT, movie_id TEXT, position REAL, favorite INTEGER DEFAULT 0, PRIMARY KEY(user_id,movie_id));
     ''')
+    columns = {row['name'] for row in conn.execute('PRAGMA table_info(users)')}
+    if 'hub_id' not in columns:
+        conn.execute('ALTER TABLE users ADD COLUMN hub_id INTEGER')
+        conn.execute('ALTER TABLE users ADD COLUMN hub_username TEXT')
+    conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS users_hub_id ON users(hub_id) WHERE hub_id IS NOT NULL')
 
 
 def digest(token):
@@ -70,8 +78,14 @@ def stop_job(key):
 @asynccontextmanager
 async def lifespan(app):
     global GPU
-    check = await asyncio.to_thread(subprocess.run, ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=s=640x360:d=0.1', '-c:v', 'h264_nvenc', '-f', 'null', '-'], capture_output=True, timeout=15)
-    GPU = check.returncode == 0
+    if os.getenv('TRANSCODE_DEVICE', 'auto') != 'cpu':
+        try:
+            check = await asyncio.to_thread(subprocess.run, ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=s=640x360:d=0.1', '-c:v', 'h264_nvenc', '-f', 'null', '-'], capture_output=True, timeout=15)
+            GPU = check.returncode == 0
+        except subprocess.TimeoutExpired:
+            GPU = False
+    else:
+        GPU = False
     for old in (DATA / 'streams').iterdir():
         if old.is_dir():
             shutil.rmtree(old)
@@ -110,12 +124,43 @@ async def security(request, call_next):
     return response
 
 
-def user(request: Request):
+def session_user(token):
     with db() as conn:
-        row = conn.execute('SELECT u.id,u.name,u.admin FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?', (digest(request.cookies.get('session', '')), time.time())).fetchone()
+        row = conn.execute('SELECT u.id,u.name,u.admin,u.hub_id,u.hub_username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?', (token, time.time())).fetchone()
     if not row:
         raise HTTPException(401, 'Log ind for at fortsætte.')
-    return dict(row)
+    if hub.managed():
+        if row['hub_id'] is None:
+            raise HTTPException(401, 'Log ind med din FjordHub-bruger.')
+        try:
+            profile = hub.current(row['hub_id'])
+        except HTTPException as exc:
+            if exc.status_code in (401,403):
+                with db() as conn:
+                    conn.execute('DELETE FROM sessions WHERE user_id=?', (row['id'],))
+            raise
+        return {'id':row['id'], 'name':profile['username'], 'admin':profile.get('role') == 'admin'}
+    if row['hub_id'] is not None:
+        raise HTTPException(401, 'Denne bruger kræver en FjordHub-forbindelse.')
+    return {'id':row['id'], 'name':row['name'], 'admin':row['admin']}
+
+
+def user(request: Request):
+    return session_user(digest(request.cookies.get('fjordflix_session', '')))
+
+
+def sync_hub_user(profile):
+    hub_id, username = hub.identity(profile)
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        existing = conn.execute('SELECT id FROM users WHERE hub_id=?', (hub_id,)).fetchone()
+        uid = existing['id'] if existing else secrets.token_hex(16)
+        if existing:
+            conn.execute('UPDATE users SET hub_username=?,admin=? WHERE id=?', (username, profile.get('role') == 'admin', uid))
+        else:
+            # Never merge into a local account just because a username matches.
+            conn.execute('INSERT INTO users(id,name,password,admin,hub_id,hub_username) VALUES (?,?,?,?,?,?)', (uid, f'@hub:{hub_id}:{uid}', 'fjordhub-managed', profile.get('role') == 'admin', hub_id, username))
+    return uid
 
 
 def admin(u=Depends(user)):
@@ -130,11 +175,16 @@ class Credentials(BaseModel):
     invite: str = ''
 
 
+class LoginCredentials(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
+
+
 def session(response, uid):
     token = secrets.token_urlsafe(32)
     with db() as conn:
         conn.execute('INSERT INTO sessions VALUES (?,?,?)', (digest(token), uid, time.time() + 86400 * 7))
-    response.set_cookie('session', token, httponly=True, samesite='strict', max_age=86400 * 7, secure=os.getenv('SECURE_COOKIES') == '1')
+    response.set_cookie('fjordflix_session', token, httponly=True, samesite='lax', max_age=86400 * 7, secure=os.getenv('SECURE_COOKIES') == '1')
 
 
 def throttle(request):
@@ -155,35 +205,48 @@ def health():
 @app.get('/api/state')
 def state(request: Request):
     with db() as conn:
-        setup = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 0
+        setup = not hub.managed() and conn.execute('SELECT COUNT(*) FROM users WHERE hub_id IS NULL').fetchone()[0] == 0
     try:
         current = user(request)
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code not in (401,403):
+            raise
         current = None
-    return {'setup': setup, 'user': current, 'gpu': GPU}
+    return {'setup': setup, 'user': current, 'gpu': GPU, 'managed': hub.managed()}
 
 
 @app.post('/api/setup')
 def setup(data: Credentials, response: Response, request: Request):
+    hub.local_only()
     throttle(request)
     uid = secrets.token_hex(16)
     with db() as conn:
         conn.execute('BEGIN IMMEDIATE')
-        if conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]:
+        if conn.execute('SELECT COUNT(*) FROM users WHERE hub_id IS NULL').fetchone()[0]:
             raise HTTPException(409, 'Serveren er allerede opsat.')
         name = data.name.strip()
         if len(name) < 2:
             raise HTTPException(400, 'Navnet skal være mindst to tegn.')
-        conn.execute('INSERT INTO users VALUES (?,?,?,1)', (uid, name, PASSWORDS.hash(data.password)))
+        conn.execute('INSERT INTO users(id,name,password,admin) VALUES (?,?,?,1)', (uid, name, PASSWORDS.hash(data.password)))
     session(response, uid)
     return {'ok': True}
 
 
 @app.post('/api/login')
-def login(data: Credentials, response: Response, request: Request):
+def login(data: LoginCredentials, response: Response, request: Request):
     throttle(request)
+    if hub.managed():
+        result = hub.call('/api/hub/apps/authenticate', {'username':data.name.strip(), 'password':data.password})
+        profile = result.get('user')
+        if not isinstance(profile, dict):
+            raise HTTPException(503, 'FjordHub returnerede en ugyldig bruger.')
+        if profile.get('must_change_password'):
+            raise HTTPException(403, 'Skift først din midlertidige adgangskode i FjordHub.')
+        profile = hub.current(hub.identity(profile)[0], force=True)
+        session(response, sync_hub_user(profile))
+        return {'ok': True}
     with db() as conn:
-        row = conn.execute('SELECT * FROM users WHERE name=?', (data.name.strip(),)).fetchone()
+        row = conn.execute('SELECT * FROM users WHERE name=? AND hub_id IS NULL', (data.name.strip(),)).fetchone()
     try:
         if not row:
             PASSWORDS.hash(data.password)
@@ -195,8 +258,22 @@ def login(data: Credentials, response: Response, request: Request):
     return {'ok': True}
 
 
+@app.get('/hub-login')
+def hub_login(token: str = ''):
+    if not hub.managed():
+        raise HTTPException(404)
+    if not token or len(token)>256:
+        raise HTTPException(400, 'SSO-token mangler eller er ugyldigt.')
+    result = hub.call('/api/hub/sso-verify', {'token':token}, method='GET')
+    profile = hub.current(hub.identity(result)[0], force=True)
+    response = RedirectResponse('/', status_code=303, headers={'Cache-Control':'no-store'})
+    session(response, sync_hub_user(profile))
+    return response
+
+
 @app.post('/api/register')
 def register(data: Credentials, response: Response, request: Request):
+    hub.local_only()
     throttle(request)
     uid = secrets.token_hex(16)
     with db() as conn:
@@ -207,7 +284,7 @@ def register(data: Credentials, response: Response, request: Request):
         if len(data.name.strip()) < 2:
             raise HTTPException(400, 'Navnet skal være mindst to tegn.')
         try:
-            conn.execute('INSERT INTO users VALUES (?,?,?,0)', (uid, data.name.strip(), PASSWORDS.hash(data.password)))
+            conn.execute('INSERT INTO users(id,name,password,admin) VALUES (?,?,?,0)', (uid, data.name.strip(), PASSWORDS.hash(data.password)))
         except sqlite3.IntegrityError:
             raise HTTPException(409, 'Brugernavnet er allerede i brug.')
         conn.execute('DELETE FROM invites WHERE token=?', (digest(data.invite),))
@@ -218,13 +295,14 @@ def register(data: Credentials, response: Response, request: Request):
 @app.post('/api/logout')
 def logout(request: Request, response: Response, u=Depends(user)):
     with db() as conn:
-        conn.execute('DELETE FROM sessions WHERE token=?', (digest(request.cookies.get('session', '')),))
-    response.delete_cookie('session')
+        conn.execute('DELETE FROM sessions WHERE token=?', (digest(request.cookies.get('fjordflix_session', '')),))
+    response.delete_cookie('fjordflix_session')
     return {'ok': True}
 
 
 @app.post('/api/invites')
 def invite(u=Depends(admin)):
+    hub.local_only()
     token = secrets.token_urlsafe(24)
     with db() as conn:
         conn.execute('INSERT INTO invites VALUES (?,?)', (digest(token), time.time()))
@@ -233,8 +311,11 @@ def invite(u=Depends(admin)):
 
 @app.get('/api/admin')
 def dashboard(u=Depends(admin)):
-    with db() as conn:
-        users = [dict(x) for x in conn.execute('SELECT id,name,admin FROM users')]
+    if hub.managed():
+        users = [{'id':str(x['id']), 'name':x['username'], 'admin':x.get('role') == 'admin'} for x in hub.users()]
+    else:
+        with db() as conn:
+            users = [dict(x) for x in conn.execute('SELECT id,name,admin FROM users WHERE hub_id IS NULL')]
     disk = shutil.disk_usage(DATA)
     with LOCK:
         active = len(JOBS)
@@ -268,7 +349,7 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
     if suffix not in ('.mp4', '.mkv', '.mov', '.webm', '.m4v', '.avi', '.ts'):
         raise HTTPException(400, 'Vælg en MP4, MKV, MOV, WebM, M4V, AVI eller TS-fil.')
     mid = secrets.token_hex(16)
-    path = DATA / 'media' / f'{mid}{suffix}'
+    path = MEDIA / f'{mid}{suffix}'
     size = 0
     try:
         with path.open('wb') as output:
@@ -276,7 +357,7 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
                 size += len(chunk)
                 if size > 100 * 1024**3:
                     raise HTTPException(413, 'Betaen tillader højst 100 GB pr. film.')
-                if shutil.disk_usage(DATA).free < len(chunk) + 512 * 1024**2:
+                if shutil.disk_usage(MEDIA).free < len(chunk) + 512 * 1024**2:
                     raise HTTPException(507, 'Serveren mangler ledig diskplads.')
                 await asyncio.to_thread(output.write, chunk)
         await asyncio.to_thread(index_movie, path, Path(filename).stem.replace('_', ' ').replace('.', ' '), mid)
@@ -297,7 +378,7 @@ def demo(u=Depends(admin)):
         if existing:
             return {'id': existing['id']}
         mid = secrets.token_hex(16)
-        path = DATA / 'media' / f'{mid}.mp4'
+        path = MEDIA / f'{mid}.mp4'
         command = ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=3840x2160:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000', '-t', '12', '-c:v', 'h264_nvenc' if GPU else 'libx264', '-preset', 'fast' if GPU else 'ultrafast', '-b:v', '35M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', '-y', str(path)]
         result = subprocess.run(command, capture_output=True, timeout=180)
         if result.returncode:
@@ -467,7 +548,7 @@ def stop(sid: str, u=Depends(user)):
 
 from app.remote import attach_remote
 
-attach_remote(app, user, db, digest)
+attach_remote(app, user, db, digest, session_user)
 app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), name='static')
 
 

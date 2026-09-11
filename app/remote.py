@@ -70,12 +70,15 @@ async def revoke(sid):
                     pass
 
 
-def attach_remote(app, user, db, digest):
-    def alive(room):
+def attach_remote(app, user, db, digest, validate_session):
+    async def alive(room):
         if time.time() > room['expires']:
             return False
-        with db() as conn:
-            return bool(conn.execute('SELECT 1 FROM sessions WHERE token=? AND expires>?', (room['login'], time.time())).fetchone())
+        try:
+            await asyncio.to_thread(validate_session, room['login'])
+            return True
+        except HTTPException:
+            return False
 
     @app.get('/remote')
     def remote_page():
@@ -84,7 +87,7 @@ def attach_remote(app, user, db, digest):
     @app.post('/api/remote/screens')
     async def create(request: Request, u=Depends(user)):
         for sid, room in list(ROOMS.items()):
-            if not alive(room) or (not room['tv'] and time.time() - room['created'] > 30):
+            if not await alive(room) or (not room['tv'] and time.time() - room['created'] > 30):
                 await revoke(sid)
         if len(ROOMS) >= 64 or sum(r['user'] == u['id'] for r in ROOMS.values()) >= 4:
             raise HTTPException(429, 'Du kan højst have fire skærme tilsluttet. Afbryd en skærm først.')
@@ -93,7 +96,7 @@ def attach_remote(app, user, db, digest):
         parsed = urlparse(base)
         if parsed.scheme not in ('http', 'https') or not parsed.netloc or parsed.username or parsed.path:
             raise HTTPException(500, 'Serverens fjernbetjeningsadresse er ikke gyldig.')
-        room = {'user': u['id'], 'login': digest(request.cookies['session']), 'name': f"{u['name']} · TV", 'pair': hashed(token), 'pair_expires': time.time() + PAIR_SECONDS, 'expires': time.time() + SESSION_SECONDS, 'created': time.time(), 'remote': None, 'tv': None, 'phone': None}
+        room = {'user': u['id'], 'login': digest(request.cookies['fjordflix_session']), 'name': f"{u['name']} · TV", 'pair': hashed(token), 'pair_expires': time.time() + PAIR_SECONDS, 'expires': time.time() + SESSION_SECONDS, 'created': time.time(), 'remote': None, 'tv': None, 'phone': None}
         ROOMS[sid] = room
         link = f'{base}/remote#{sid}:{token}'
         qr = qrcode.make(link, image_factory=SvgPathImage, box_size=8, border=4)
@@ -113,8 +116,10 @@ def attach_remote(app, user, db, digest):
         room = ROOMS.get(data.screen)
         if not room or not room['pair'] or time.time() > room['pair_expires'] or not secrets.compare_digest(room['pair'], hashed(data.token)):
             raise HTTPException(410, 'QR-koden er udløbet eller allerede brugt. Vis en ny kode på skærmen.')
-        if not alive(room) or not room['tv']:
+        if not await alive(room) or not room['tv']:
             raise HTTPException(409, 'Skærmen er ikke længere tilsluttet. Åbn fjernbetjeningen på skærmen igen.')
+        if not room['pair'] or not secrets.compare_digest(room['pair'], hashed(data.token)):
+            raise HTTPException(410, 'QR-koden er allerede brugt.')
         key = secrets.token_urlsafe(32)
         # No await between validation and consumption: only one phone can claim the code.
         room['pair'] = None
@@ -129,14 +134,14 @@ def attach_remote(app, user, db, digest):
             await websocket.close(code=1008)
             return
         room = ROOMS.get(sid)
-        if not room or role not in ('tv', 'phone') or not alive(room):
+        if not room or role not in ('tv', 'phone') or not await alive(room):
             await websocket.close(code=1008)
             return
         await websocket.accept()
         connected = False
         try:
             if role == 'tv':
-                if digest(websocket.cookies.get('session', '')) != room['login'] or room['tv']:
+                if digest(websocket.cookies.get('fjordflix_session', '')) != room['login'] or room['tv']:
                     await websocket.close(code=1008)
                     return
             else:
@@ -157,7 +162,7 @@ def attach_remote(app, user, db, digest):
             while ROOMS.get(sid) is room:
                 now = time.monotonic()
                 if now - checked > 2:
-                    if not alive(room):
+                    if not await alive(room):
                         await revoke(sid)
                         return
                     checked = now

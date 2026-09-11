@@ -22,7 +22,7 @@ def test_complete_streaming_flow():
         assert owner.post('/api/setup', json=credentials, headers={'Origin': 'https://other.example'}).status_code == 403
         assert owner.post('/api/setup', json=credentials).status_code == 200
         assert owner.post('/api/setup', json=credentials).status_code == 409
-        cookie = owner.cookies.get('session')
+        cookie = owner.cookies.get('fjordflix_session')
         with main.db() as conn:
             assert conn.execute('SELECT token FROM sessions').fetchone()[0] != cookie
             assert conn.execute('SELECT password FROM users').fetchone()[0].startswith('$argon2')

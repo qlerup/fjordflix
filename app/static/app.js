@@ -13,7 +13,8 @@ async function api(path, method = 'GET', data) {
 function badge(id, mode) { $(id).textContent = mode; $(id).className = `badge ${mode === 'Transcoding' ? 'transcode' : mode === 'Direct Stream' ? 'remux' : ''}`; }
 function showAuth() {
   $('shell').hidden = true; $('auth').hidden = false;
-  if (state.setup) authMode = 'setup';
+  if (state.managed) authMode = 'login';
+  else if (state.setup) authMode = 'setup';
   const setup = authMode === 'setup', register = authMode === 'register';
   $('auth-kicker').textContent = setup ? 'FØRSTE GANG · TRIN 1 AF 1' : register ? 'GØR DIG KLAR TIL FILMAFTEN' : 'GODT AT SE DIG IGEN';
   $('auth-title').textContent = setup ? 'Velkommen hjem.' : register ? 'Opret din bruger' : 'Log ind';
@@ -22,6 +23,15 @@ function showAuth() {
   $('password').autocomplete = setup || register ? 'new-password' : 'current-password';
   $('invite-field').hidden = !register; $('invite').required = register;
   $('auth-switch').hidden = setup;
+  if(state.managed) {
+    $('auth-kicker').textContent = 'FORBUNDET TIL FJORDHUB';
+    $('auth-description').textContent = 'Log ind med din FjordHub-bruger, eller åbn appen fra FjordHub. Brugere og adgang administreres i FjordHub.';
+    $('auth-switch').hidden = true;
+  }
+  $('password').minLength = authMode === 'login' ? 1 : 10;
+  $('password').placeholder = authMode === 'login' ? 'Din adgangskode' : 'Mindst 10 tegn';
+  $('username').minLength = authMode === 'login' ? 1 : 2;
+  $('username').maxLength = authMode === 'login' ? 128 : 40;
   $('auth-switch').textContent = register ? 'Har du allerede en bruger? Log ind' : 'Har du en invitation? Opret bruger';
 }
 $('auth-switch').onclick = () => { authMode = authMode === 'register' ? 'login' : 'register'; $('auth-error').textContent = ''; showAuth(); };
@@ -37,6 +47,12 @@ async function boot() {
   $('auth').hidden = true; $('shell').hidden = false;
   $('logout').textContent = state.user.name[0].toUpperCase(); $('logout').title = `${state.user.name} · Log ud`;
   ['admin-open','upload-open','demo-button'].forEach(id => $(id).hidden = !state.user.admin);
+  $('create-invite').hidden = state.managed;
+  $('invite-result').hidden = true;
+  let userNote = $('hub-user-note');
+  if(!userNote) {userNote=document.createElement('p');userNote.id='hub-user-note';userNote.className='muted';$('users-list').before(userNote);}
+  userNote.hidden = !state.managed;
+  userNote.textContent = 'Konti, adgangskoder og roller styres i FjordHub → Brugere. Listen viser de brugere, der har adgang til FjordFlix.';
   await refresh();
 }
 async function refresh() { library = await api('/movies'); render(); }

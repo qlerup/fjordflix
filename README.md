@@ -20,6 +20,27 @@ docker compose up -d --build
 4. Brug **Upload film** til egne MP4/MKV/MOV/WebM/M4V/AVI/TS-filer. Filmen bliver tilgængelig for alle oprettede brugere.
 5. Åbn tandhjulet og opret en invitation. Log ud, vælg **Opret bruger**, og brug koden. Invitationen kan bruges én gang inden for syv dage.
 
+## Installation gennem FjordHub
+
+Opdater FjordHub til en version med FjordFlix-understøttelse, opdater app-kataloget, og vælg **FjordFlix → Installer**. Guiden spørger om port, filmmappe, lokal arbejdsplads, samtidige konverteringer og valgfri NVIDIA GPU. FjordHub skriver forbindelsesoplysninger og en særskilt app-nøgle automatisk.
+
+| Funktion | Solo-installation | Installeret gennem FjordHub |
+| --- | --- | --- |
+| Første administrator | Oprettes i FjordFlix | Styres i FjordHub |
+| Login | Lokal adgangskode | FjordHub-login eller SSO fra Åbn app |
+| Opret brugere og tildel adgang | Invitationer i FjordFlix | FjordHub → Brugere → FjordFlix-adgang |
+| Administratorrettigheder | Lokal administrator | Brugerens app-rolle i FjordHub |
+| Historik og favoritter | Lokal bruger-ID | Stabil FjordHub-ID, også efter navneændring |
+| GPU | Solo-Compose bruger NVIDIA som standard | Valgfri i installationsguiden, ellers CPU |
+
+I Hub-tilstand lagrer FjordFlix ikke Hub-adgangskoder. Lokal brugeroprettelse og invitationer er slået fra, og lokale konti kan ikke bruges som genvej. App-adgang og roller genkontrolleres med højst fem sekunders cache ved nye forespørgsler. Fjernet adgang afviser efterfølgende medieforespørgsler og ugyldiggør sessionen; allerede overførte videodata kan ikke tilbagekaldes. Ved Hub-nedbrud afvises nye beskyttede forespørgsler, når cachen udløber. Brugere med en midlertidig adgangskode skal først skifte den i FjordHub.
+
+Solo-installationen bruger `compose.yaml` og sit eksisterende Docker-volumen. Hub-installationen bruger `docker-compose.yml`, som vælges eksplicit af manifestets `compose_file`, og separate mapper til database/cache og film. En GPU-installation tilføjer `docker-compose.gpu.yml` og FjordHubs automatisk genererede device-fil. `host.docker.internal` gør Hub-API'et tilgængeligt fra app-containeren på både Linux og Docker Desktop. Brug en anden port ved sideløbende solo- og Hub-installation på samme host.
+
+FjordLens og FjordFlix kan få adgang til samme NVIDIA GPU samtidig. De deler hukommelse og kapacitet; FjordHub reserverer ikke en særskilt GPU til hver app og giver ingen automatisk prioritetsgaranti. FjordFlix bruger NVENC til indkodning, mens FjordLens typisk bruger CUDA til AI. Start med to samtidige konverteringer og tilpas efter faktisk belastning. Dekodning, skalering og HDR-tonemapping er fortsat på CPU i betaen.
+
+Eksisterende lokale brugere sammenlægges ikke automatisk med Hub-brugere, selv om navnene matcher. Filmfiler og historik slettes ikke, men migration af eksisterende solo-historik til Hub-identiteter er en separat opgave. Cloudflare-opdelingen af web- og videotrafik er endnu ikke implementeret.
+
 ## Telefon som fjernbetjening (lokal test)
 
 Åbn FjordFlix på pc’en, log ind og tryk **Fjernbetjening** øverst. Scan QR-koden med telefonens kamera og tryk **Forbind til skærmen**. Telefonen skal kunne nå pc’en på det samme lokale netværk. Der installeres ingen app.

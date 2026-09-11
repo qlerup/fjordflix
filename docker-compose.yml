@@ -1,0 +1,30 @@
+# FjordHub-managed installation; standalone installs keep using compose.yaml.
+name: fjordflix-hub
+services:
+  app:
+    build: .
+    container_name: ${CONTAINER_NAME:-fjordflix}
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8096}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - "${DATA_DIR:-./data}:/data"
+      - "${UPLOADS_HOST_DIR:-./media}:/media"
+    environment:
+      DATA_DIR: /data
+      MEDIA_DIR: /media
+      FJORDHUB_URL: ${FJORDHUB_URL:-}
+      FJORDHUB_API_KEY: ${FJORDHUB_API_KEY:-}
+      FJORDHUB_APP_ID: ${FJORDHUB_APP_ID:-fjordflix}
+      MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
+      TRANSCODE_DEVICE: ${TRANSCODE_DEVICE:-auto}
+      REMOTE_PUBLIC_URL: ${REMOTE_PUBLIC_URL:-}
+      SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      TZ: ${TZ:-Europe/Copenhagen}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
