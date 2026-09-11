@@ -1,7 +1,18 @@
 <!doctype html>
-<html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Fjernbetjening</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/remote.js"></script></head>
+<html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Fjernbetjening</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/remote.js"></script>
+<link rel="icon" href="/static/logos/web/favicon.ico?v=2" sizes="any">
+<link rel="icon" href="/static/logos/web/favicon-32x32.png?v=2" type="image/png" sizes="32x32">
+<link rel="icon" href="/static/logos/web/favicon-16x16.png?v=2" type="image/png" sizes="16x16">
+<link rel="apple-touch-icon" href="/static/logos/web/apple-touch-icon.png?v=2" sizes="180x180">
+<link rel="manifest" href="/static/logos/web/site.webmanifest">
+<meta name="apple-mobile-web-app-title" content="FjordFlix">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="application-name" content="FjordFlix">
+<meta name="msapplication-config" content="/static/logos/web/browserconfig.xml">
+</head>
 <body class="remote-body"><main class="phone-remote">
-<div class="remote-heading"><span class="brand">FJORD<span>FLIX</span></span><span class="remote-chip">FJERNBETJENING</span></div>
+<div class="remote-heading"><span class="brand"><img class="brand-logo" src="/static/logos/source/fjordflix-horizontal-dark.svg" alt="FjordFlix" width="180" height="64"></span><span class="remote-chip">FJERNBETJENING</span></div>
 <section id="connect-panel" class="connect-panel"><div class="phone-symbol">↗</div><span class="eyebrow">FRA TELEFON TIL STORSKÆRM</span><h1>Din telefon.<br>Din fjernbetjening.</h1><p class="muted">Forbind til skærmen, og vælg din næste film med touchpadden.</p><button id="connect" class="primary full">Forbind til skærmen</button><p id="connect-error" class="error" role="alert"></p><p class="fine">Åbn FjordFlix på pc’en og vælg Fjernbetjening for at vise en ny QR-kode.</p></section>
 <section id="controller" hidden><div class="connected-line"><span id="connection-dot" class="status-dot"></span><span id="screen-name">Forbinder…</span><button id="disconnect" class="text-button">Afbryd</button></div><p id="remote-connection-status" class="muted" role="status">Forbinder til din skærm…</p>
 <div id="touchpad" class="touchpad" role="application" aria-label="Touchpad til skærmens markør" tabindex="0"><div class="touchpad-center"><span>⌁</span><strong>Bevæg fingeren</strong><small>Tryk for at klikke · to fingre for at scrolle</small></div><span class="pad-corner top-left"></span><span class="pad-corner bottom-right"></span></div>

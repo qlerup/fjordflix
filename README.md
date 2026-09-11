@@ -1,5 +1,7 @@
 # FjordFlix beta 0.1
 
+Logoer og appikoner: [Se den komplette ikonpakke og anvendelse](app/static/logos/README_logo.md).
+
 Privat streamingserver med dansk brugerflade, mørkt biografdesign og reel FFmpeg-transcoding.
 
 ## Start og første test

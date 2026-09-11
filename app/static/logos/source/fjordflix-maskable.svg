@@ -4,7 +4,7 @@
 <linearGradient id="mountain" x2="1" y2="1"><stop stop-color="#2275b9"/><stop offset="1" stop-color="#05274f"/></linearGradient>
 <radialGradient id="bg" cx=".3" cy=".15" r="1"><stop stop-color="#0b315a"/><stop offset="1" stop-color="#020d24"/></radialGradient>
 <clipPath id="window"><path d="M174 149 365 256 174 363Z"/></clipPath>
-</defs><rect width="512" height="512" fill="url(#bg)"/><g transform="translate(15 15) scale(.94)"><path d="M137 88Q137 65 158 77L434 236Q468 256 434 276L158 435Q137 447 137 424Z" fill="url(#blue)"/>
+</defs><rect width="512" height="512" fill="url(#bg)"/><g transform="translate(77 77) scale(.7)"><path d="M137 88Q137 65 158 77L434 236Q468 256 434 276L158 435Q137 447 137 424Z" fill="url(#blue)"/>
 <path d="M174 149 365 256 174 363Z" fill="#041b36"/>
 <g clip-path="url(#window)">
 <path d="M157 292 225 191 282 266 316 234 388 309V378H157Z" fill="url(#mountain)"/>
