@@ -1,0 +1,14 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+test-results/
+data/
+media/
+compose.override.yaml
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm

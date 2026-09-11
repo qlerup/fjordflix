@@ -1,0 +1,8 @@
+# Copy to compose.override.yaml and replace 192.168.1.100 with your PC's LAN IP.
+# Allow TCP 8096 only on your trusted local network if a firewall rule is needed.
+services:
+  app:
+    ports:
+      - "192.168.1.100:8096:8080"
+    environment:
+      REMOTE_PUBLIC_URL: "http://192.168.1.100:8096"

@@ -1,0 +1,10 @@
+.git
+__pycache__
+.pytest_cache
+*.pyc
+test-results
+data
+media
+.env
+.env.*
+compose.override.yaml
