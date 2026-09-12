@@ -133,7 +133,7 @@ async def security(request, call_next):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
-    response.headers['Content-Security-Policy'] = f"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: {direct}; connect-src 'self' {direct}; worker-src 'self' blob:; frame-ancestors 'none'"
+    response.headers['Content-Security-Policy'] = f"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org; media-src 'self' blob: {direct}; connect-src 'self' {direct}; worker-src 'self' blob:; frame-ancestors 'none'"
     if request.url.path.startswith('/api') or is_media or request.url.path in ('/', '/remote'):
         response.headers['Cache-Control'] = 'no-store'
     if is_media:
@@ -618,18 +618,34 @@ def edit_movie_metadata(mid: str, data: library_metadata.LibraryEdit, u=Depends(
     return {'ok': True}
 
 
+class MetadataSearch(BaseModel):
+    search_title: str | None = Field(default=None, min_length=1, max_length=200)
+    tmdb_id: int | None = Field(default=None, gt=0, strict=True)
+
+
 @app.post('/api/movies/{mid}/metadata/refresh')
-def refresh_movie_metadata(mid: str, u=Depends(admin)):
+def refresh_movie_metadata(mid: str, data: MetadataSearch | None = None, u=Depends(admin)):
     if not re.fullmatch(r'[a-f0-9]{32}', mid):
         raise HTTPException(400, 'Ugyldigt film-id.')
     row, meta = movie(mid)
     if meta.get('catalog', {}).get('manual'):
         raise HTTPException(409, 'Oplysningerne er redigeret manuelt og bevares. Automatisk genhentning er slået fra for denne video.')
+    search_title = ((data.search_title if data else None) or meta.get('catalog', {}).get('lookup_title')
+                    or meta.get('original_title') or row['title']).strip()
+    if not search_title:
+        raise HTTPException(400, 'Skriv en titel at søge efter.')
+    current_info = {**catalog.identify(meta.get('original_title') or row['title']), **meta.get('catalog', {})}
+    if current_info.get('media_type') == 'tv' and catalog.identify(search_title)['media_type'] != 'tv':
+        search_title += f" S{current_info['season']:02d}E{current_info['episode']:02d}"
+    selected_id = data.tmdb_id if data else None
+    if selected_id is None and not (data and data.search_title):
+        selected_id = current_info.get('selected_tmdb_id')
     # Stage artwork so failed requests and concurrent edits cannot replace saved images.
     with tempfile.TemporaryDirectory(prefix='tmdb-', dir=DATA) as folder:
         staging = Path(folder)
         (staging / 'posters').mkdir()
-        info = catalog.enrich(meta.get('original_title') or row['title'], mid, staging)
+        info = (catalog.enrich(search_title, mid, staging, tmdb_id=selected_id)
+                if selected_id is not None else catalog.enrich(search_title, mid, staging))
         summary = catalog.message(info)
         with db() as conn:
             conn.execute('BEGIN IMMEDIATE')
@@ -647,10 +663,14 @@ def refresh_movie_metadata(mid: str, u=Depends(admin)):
                     elif old.get(kind + '_cached'):
                         info[kind + '_cached'] = True
                 meta['catalog'] = {**info, 'artwork_updated': time.time()}
+                if selected_id is not None:
+                    meta['catalog']['selected_tmdb_id'] = selected_id
                 meta.setdefault('original_title', row['title'])
                 row['title'] = info.get('title') or row['title']
             saved = meta.setdefault('catalog', {})
-            saved['last_lookup'] = {'status': info.get('status'), 'message': summary, 'at': time.time()}
+            saved['lookup_title'] = search_title
+            saved['last_lookup'] = {'status': info.get('status'), 'message': summary, 'at': time.time(),
+                                    'candidates': info.get('candidates', [])}
             conn.execute('UPDATE movies SET title=?,metadata=? WHERE id=?',
                          (row['title'][:160], json.dumps(meta), mid))
     return {'ok': info.get('status') == 'matched', 'message': summary}

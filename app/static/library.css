@@ -8,6 +8,14 @@
 .hero-content>p { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 .movie-card.series-card .movie-image { aspect-ratio: 2/3; }
 .movie-grid { align-items: start; }
+#metadata-match-list { display:grid; gap:10px; max-height:340px; overflow-y:auto; padding:3px; }
+.metadata-match { display:flex; gap:14px; width:100%; padding:10px; text-align:left; color:inherit; background:#ffffff05; border:1px solid var(--line); border-radius:9px; }
+.metadata-match:hover,.metadata-match:focus-visible { border-color:var(--red); background:#ec344e0c; }
+.metadata-match:disabled { opacity:.5; cursor:wait; }
+.metadata-match img { width:64px; height:96px; object-fit:cover; border-radius:5px; flex-shrink:0; }
+.metadata-match>span { min-width:0; }
+.metadata-match strong { display:block; font-size:14px; margin-bottom:8px; overflow-wrap:anywhere; }
+.metadata-match span>span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; color:var(--muted); font-size:12px; }
 .episode-carousel-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .episode-carousel-header label { width:180px; max-width:60%; }
 .episode-carousel-header select { margin-bottom:16px; }

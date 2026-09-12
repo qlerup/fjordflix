@@ -162,6 +162,41 @@ def test_retry_fetches_artwork_without_changing_video_or_progress(client, monkey
     assert client.get(f'/api/movies/{mid}/episode-still').content == b'new-image'
 
 
+def test_retry_search_year_preserves_episode_and_remembers_query(client, monkeypatch):
+    calls = []
+    def enrich(title, *args):
+        calls.append(title)
+        return {**catalog.identify(title), 'status': 'unmatched'}
+    monkeypatch.setattr(catalog, 'enrich', enrich)
+    endpoint = '/api/movies/'+'a'*32+'/metadata/refresh'
+    response = client.post(endpoint, json={'search_title':'Arrow 2012'})
+    assert response.status_code == 200
+    assert calls == ['Arrow 2012 S01E02']
+    client.post(endpoint)
+    assert calls == ['Arrow 2012 S01E02', 'Arrow 2012 S01E02']
+    item = client.get('/api/movies').json()[0]
+    assert item['position'] == 32 and item['favorite']
+    assert item['title'] == 'Show S01E02'
+    assert client.post(endpoint, json={'search_title':' '}).status_code == 400
+    assert client.post(endpoint, json={'search_title':'x'*201}).status_code == 422
+
+
+def test_manual_tmdb_selection_preserves_episode_and_is_reused(client, monkeypatch):
+    calls = []
+    def enrich(title, mid, destination, tmdb_id=None):
+        calls.append((title, tmdb_id))
+        return {**catalog.identify(title), 'status':'matched', 'tmdb_id':tmdb_id, 'overview':'Chosen series'}
+    monkeypatch.setattr(catalog, 'enrich', enrich)
+    endpoint = '/api/movies/'+'a'*32+'/metadata/refresh'
+    assert client.post(endpoint, json={'tmdb_id':1412}).json()['ok']
+    assert client.post(endpoint).json()['ok']
+    assert calls == [('Show S01E02',1412), ('Show S01E02',1412)]
+    item = client.get('/api/movies').json()[0]
+    assert item['position'] == 32 and item['favorite']
+    assert item['catalog']['episode'] == 2 and item['catalog']['season'] == 1
+    assert client.post(endpoint, json={'tmdb_id':-1}).status_code == 422
+
+
 def test_episode_image_falls_back_to_separate_video_frame(client, monkeypatch):
     mid = 'a' * 32
     (main.DATA / 'posters' / f'{mid}.jpg').write_bytes(b'series-poster')

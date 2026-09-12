@@ -101,7 +101,7 @@ def choose_match(results, title, year, media_type='movie'):
     return ranked[0][1]
 
 
-def lookup(title):
+def lookup(title, tmdb_id=None):
     identified = identify(title)
     kind = identified['media_type']
     token, _ = credential()
@@ -125,9 +125,20 @@ def lookup(title):
         params = {'query': query, 'include_adult': 'false'}
         if year:
             params['first_air_date_year' if kind == 'tv' else 'primary_release_year'] = year
-        match = choose_match(get(f'search/{kind}', **params).get('results', []), query, year, kind)
+        results = [] if tmdb_id is not None else get(f'search/{kind}', **params).get('results', [])
+        match = {'id': tmdb_id} if tmdb_id is not None else choose_match(results, query, year, kind)
         if not match:
-            return {**identified, 'status': 'unmatched'}
+            candidates = []
+            for item in results[:20]:
+                if item.get('adult') or not isinstance(item.get('id'), int):
+                    continue
+                poster = item.get('poster_path')
+                candidates.append({'id': item['id'], 'title': item.get('name' if kind == 'tv' else 'title') or '',
+                                   'year': str(item.get('first_air_date' if kind == 'tv' else 'release_date') or '')[:4],
+                                   'overview': str(item.get('overview') or '')[:600],
+                                   'poster_url': f'https://image.tmdb.org/t/p/w185{poster}'
+                                   if isinstance(poster, str) and re.fullmatch(r'/[A-Za-z0-9]+\.jpg', poster) else None})
+            return {**identified, 'status': 'unmatched', 'candidates': candidates}
         detail = get(f"{kind}/{match['id']}")
         if not detail.get('overview'):
             try:
@@ -186,9 +197,9 @@ def download_image(remote_path, destination, size):
     return True
 
 
-def enrich(title, mid, data_dir):
+def enrich(title, mid, data_dir, tmdb_id=None):
     try:
-        result = lookup(title)
+        result = lookup(title, tmdb_id=tmdb_id) if tmdb_id is not None else lookup(title)
     except httpx.HTTPStatusError as exc:
         code = exc.response.status_code
         reason = 'unauthorized' if code in (401, 403) else 'rate_limited' if code == 429 else 'provider_error'

@@ -17,6 +17,34 @@ def test_conservative_matching():
     assert catalog.choose_match(films, 'Home video', None) is None
 
 
+def test_ambiguous_lookup_returns_candidates_and_selection_skips_search(monkeypatch):
+    monkeypatch.setattr(catalog, 'credential', lambda: ('private-token', 'settings'))
+    requests = []
+    def handler(request):
+        requests.append(request.url.path)
+        if request.url.path.endswith('/search/tv'):
+            return httpx.Response(200, json={'results':[
+                {'id':1412, 'name':'Arrow', 'first_air_date':'2012-10-10', 'poster_path':'/valid.jpg'},
+                {'id':999, 'name':'Arrow', 'first_air_date':'2020-01-01', 'poster_path':'https://evil.example/image.jpg'}]})
+        if '/episode/' in request.url.path:
+            assert request.url.path.endswith('/tv/1412/season/3/episode/2')
+            return httpx.Response(200, json={'name':'Episode two', 'overview':'Episode summary'})
+        assert request.url.path.endswith('/tv/1412')
+        return httpx.Response(200, json={'name':'Arrow', 'overview':'Series summary', 'first_air_date':'2012-10-10'})
+    client = httpx.Client
+    monkeypatch.setattr(catalog.httpx, 'Client', lambda **kwargs: client(transport=httpx.MockTransport(handler), **kwargs))
+    result = catalog.lookup('Arrow S03E02')
+    assert result['status'] == 'unmatched'
+    assert [c['id'] for c in result['candidates']] == [1412,999]
+    assert result['candidates'][0]['year'] == '2012'
+    assert result['candidates'][1]['poster_url'] is None
+    assert 'private-token' not in str(result)
+    requests.clear()
+    selected = catalog.lookup('Arrow S03E02', tmdb_id=1412)
+    assert selected['status'] == 'matched' and selected['episode'] == 2
+    assert not any('/search/' in path for path in requests)
+
+
 def test_disabled(monkeypatch):
     monkeypatch.delenv('TMDB_READ_ACCESS_TOKEN', raising=False)
     assert catalog.lookup('Dune')['status'] == 'disabled'

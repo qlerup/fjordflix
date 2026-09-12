@@ -172,6 +172,11 @@ uden at uploade filen på ny. Det seneste resultat vises i filmdetaljerne, med
 særskilte beskeder for afvist API-nøgle, timeout, netværksfejl og manglende match.
 Et fejlet genforsøg bevarer eksisterende oplysninger og billeder. Manuelt
 redigerede oplysninger og billeder beskyttes mod automatisk genhentning.
+Ved et uklart match vises forslag fra TMDB med plakat, titel, årstal og kort
+beskrivelse. Administratoren kan vælge det rigtige match eller rette søgetitlen
+og tilføje startår. Valget huskes; sæson, afsnitsnummer og afspilningshistorik
+bevares. Forslagenes plakater vises fra TMDB's billedserver, mens billederne
+for det valgte match fortsat gemmes lokalt.
 
 ## Serier, sæsoner og afsnit
 

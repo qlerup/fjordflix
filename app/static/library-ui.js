@@ -29,6 +29,7 @@ const FjordLibrary = {
 };
 if (typeof module !== 'undefined') module.exports = FjordLibrary;
 const metadataRefreshPending = new Set();
+let selectMetadataMatch;
 
 function setupLibraryUI() {
   const seriesTab = document.createElement('button');
@@ -48,14 +49,19 @@ function setupLibraryUI() {
     <p class="fine">Kun uploadede afsnit vises. Sæson 0 indeholder specialafsnit.</p></section>`);
   $('favorite-button').insertAdjacentHTML('afterend', '<button id="episode-next" class="secondary" hidden>Næste afsnit →</button><button id="library-edit" class="secondary" hidden>Rediger oplysninger</button>');
   $('detail-description').insertAdjacentHTML('afterend', '<p id="detail-catalog-status" class="fine" role="status" hidden></p>');
+  $('detail-catalog-status').insertAdjacentHTML('afterend', '<label id="metadata-search-label" hidden>Søgetitel og startår<input id="metadata-search-title" type="search" maxlength="200" placeholder="Fx Arrow 2012"><span class="fine">Sæson og afsnitsnummer bevares. Tryk Hent oplysninger igen.</span></label>');
+  $('metadata-search-label').insertAdjacentHTML('afterend', '<section id="metadata-matches" hidden aria-label="Mulige matches fra TMDB"><p class="fine">Vælg den rigtige film eller serie:</p><div id="metadata-match-list"></div></section>');
   $('library-edit').insertAdjacentHTML('afterend', '<button id="metadata-refresh" class="secondary" hidden>Hent oplysninger igen</button>');
-  $('metadata-refresh').onclick = async () => {
+  selectMetadataMatch = async (tmdbId = null) => {
     const mid = selected.id;
     if (metadataRefreshPending.has(mid)) return;
+    const query = $('metadata-search-label').hidden ? null : $('metadata-search-title').value.trim();
+    if (query === '') { $('metadata-search-title').focus(); return; }
     metadataRefreshPending.add(mid);
     showCatalogStatus(selected);
     try {
-      const result = await api(`/movies/${mid}/metadata/refresh`, 'POST');
+      const result = await api(`/movies/${mid}/metadata/refresh`, 'POST', {
+        ...(query ? {search_title:query} : {}), ...(tmdbId !== null ? {tmdb_id:tmdbId} : {})});
       await refresh();
       if (selected?.id === mid && $('detail').open) {
         await openDetail(library.find(m => m.id === mid));
@@ -75,6 +81,7 @@ function setupLibraryUI() {
       }
     }
   };
+  $('metadata-refresh').onclick = () => selectMetadataMatch();
   $('series-season').onchange = () => {
     const episodes = FjordLibrary.episodes(library, selected.series_key).filter(m => m.catalog.season === Number($('series-season').value));
     if (episodes.length) openDetail(FjordLibrary.initial(episodes));
@@ -225,4 +232,29 @@ function showCatalogStatus(movie) {
   const status = $('detail-catalog-status');
   status.hidden = !state.user.admin || !!movie.catalog?.manual;
   status.textContent = pending ? 'Henter oplysninger, plakat og banner fra TMDB…' : (movie.catalog?.lookup_message || 'Der er endnu ikke hentet oplysninger fra TMDB.');
+  const search = $('metadata-search-title');
+  const unmatched = (movie.catalog?.last_lookup?.status || movie.catalog?.status) === 'unmatched';
+  $('metadata-search-label').hidden = !state.user.admin || !!movie.catalog?.manual || !unmatched;
+  search.disabled = pending;
+  if (!pending) search.value = movie.catalog?.lookup_title
+    || (movie.catalog?.media_type === 'tv' ? [movie.catalog.series_title, movie.catalog.series_year].filter(Boolean).join(' ')
+      : movie.original_title || movie.title);
+  const candidates = movie.catalog?.last_lookup?.candidates || movie.catalog?.candidates || [];
+  $('metadata-matches').hidden = !state.user.admin || !!movie.catalog?.manual || !unmatched || !candidates.length;
+  $('metadata-match-list').replaceChildren(...candidates.map(candidate => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'metadata-match'; button.disabled = pending;
+    if (candidate.poster_url) {
+      const image = document.createElement('img'); image.src = candidate.poster_url;
+      image.alt = ''; image.loading = 'lazy';
+      image.addEventListener('error', () => { image.hidden = true; }, {once:true});
+      button.append(image);
+    }
+    const text = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = `${candidate.title}${candidate.year ? ' (' + candidate.year + ')' : ''}`;
+    const overview = document.createElement('span'); overview.textContent = candidate.overview;
+    text.append(title, overview); button.append(text);
+    button.onclick = () => selectMetadataMatch(candidate.id);
+    return button;
+  }));
 }

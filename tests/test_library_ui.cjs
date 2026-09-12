@@ -54,8 +54,17 @@ test('episode picker uses readable episode numbers and keeps TMDB status visible
   context.showEpisodePicker(episode);
   assert.equal(nodes['metadata-refresh'].disabled, true);
   assert.match(nodes['detail-catalog-status'].textContent, /Henter/);
+  vm.runInContext("metadataRefreshPending.delete('arrow'); selectMetadataMatch = id => chosenId = id;", context);
+  episode.catalog.last_lookup = {status:'unmatched', candidates:[{id:1412,title:'Arrow',year:'2012',overview:'Series description',poster_url:'https://image.tmdb.org/t/p/w185/valid.jpg'}]};
+  context.showEpisodePicker(episode);
+  assert.equal(nodes['metadata-matches'].hidden, false);
+  const match = nodes['metadata-match-list'].children[0];
+  assert.equal(match.children[1].children[0].textContent, 'Arrow (2012)');
+  match.onclick();
+  assert.equal(context.chosenId,1412);
   context.state.user.admin = false;
   context.showEpisodePicker(episode);
   assert.equal(nodes['metadata-refresh'].hidden, true);
   assert.equal(nodes['detail-catalog-status'].hidden, true);
+  assert.equal(nodes['metadata-matches'].hidden, true);
 });
