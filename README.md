@@ -180,6 +180,11 @@ for det valgte match fortsat gemmes lokalt.
 
 ## Serier, sæsoner og afsnit
 
+Uploadvinduet understøtter valg af flere filer og drag-and-drop. En uploadkø
+viser fremdrift og resultat for hver fil, uploader én ad gangen og fortsætter
+efter fejl. Maksimum er fortsat 100 GB pr. fil. Vinduet kan lukkes under upload;
+browserfanen skal holdes åben, indtil køen er færdig.
+
 Afsnit vises i en vandret karrusel med billede, afsnitsnummer, titel, spilletid
 og set-status. Vælg sæson, og brug swipe, scroll, pileknapper eller tastaturets
 piletaster til at finde et afsnit. Kun uploadede afsnit vises.
