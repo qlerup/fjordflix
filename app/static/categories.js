@@ -32,39 +32,18 @@ if (typeof module !== 'undefined') module.exports = FjordCategories;
 
 const categorySelection = {all:'all', series:'all'};
 function setupCategories() {
-  const title = $('library-title');
-  const row = document.createElement('div'); row.className = 'library-title-row';
-  title.before(row); row.append(title);
-  row.insertAdjacentHTML('beforeend',
-    '<div id="library-categories" class="library-categories" hidden><button id="categories-open" class="secondary" aria-haspopup="dialog" aria-controls="categories-panel" aria-expanded="false"><span aria-hidden="true">☰</span> Kategorier</button></div>');
-  document.body.insertAdjacentHTML('beforeend', `<dialog id="categories-panel" aria-labelledby="categories-title">
-    <div class="categories-panel-heading"><div><span class="eyebrow">UDFORSK BIBLIOTEKET</span><h2 id="categories-title">Serier</h2></div>
-    <button id="categories-close" class="icon-button" aria-label="Luk kategorimenu">✕</button></div>
-    <p class="muted">Find noget, du har lyst til at se.</p>
-    <nav id="categories-links" aria-label="Kategorier"></nav></dialog>`);
-  const panel = $('categories-panel'), trigger = $('categories-open');
-  trigger.onclick = () => {
-    panel.showModal(); trigger.setAttribute('aria-expanded', 'true');
-    (panel.querySelector('[aria-current="page"]') || $('categories-close')).focus();
-  };
-  $('categories-close').onclick = () => panel.close();
-  panel.addEventListener('close', () => {
-    trigger.setAttribute('aria-expanded', 'false');
-    if (!$('library-categories').hidden) trigger.focus();
-  });
-  panel.addEventListener('click', event => {
-    if (event.target !== panel) return;
-    const rect = panel.getBoundingClientRect();
-    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) panel.close();
-  });
+  const section = document.querySelector('.library');
+  const content = document.createElement('div'); content.className = 'library-results';
+  content.append(...section.childNodes); section.append(content);
+  section.insertAdjacentHTML('afterbegin', `<aside id="library-categories" class="library-categories" hidden aria-labelledby="categories-title">
+    <h2 id="categories-title">Kategorier</h2><nav id="categories-links" aria-label="Kategorier"></nav></aside>`);
 }
+
 function renderCategories(items, availableItems = items) {
   const container = $('library-categories');
   container.hidden = !['all', 'series'].includes(view);
-  if (container.hidden) {
-    if ($('categories-panel').open) $('categories-panel').close();
-    return {items, label:null};
-  }
+  document.querySelector('.library').classList.toggle('with-categories', !container.hidden);
+  if (container.hidden) return {items, label:null};
   const choices = FjordCategories.definitions.filter(([key]) => key === 'all' || FjordCategories.filter(availableItems, key).length);
   if (!choices.some(([key]) => key === categorySelection[view])) categorySelection[view] = 'all';
   const selectedKey = categorySelection[view], links = $('categories-links');
@@ -75,7 +54,7 @@ function renderCategories(items, availableItems = items) {
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'category-link'; button.dataset.category = key;
       button.textContent = key === 'all' ? (view === 'series' ? 'Alle serier' : 'Alle film') : label;
-      button.onclick = () => {categorySelection[view] = key; render(); $('categories-panel').close();};
+      button.onclick = () => {categorySelection[view] = key; render();};
       return button;
     }));
     links.dataset.choices = signature;
