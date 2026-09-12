@@ -1,6 +1,24 @@
 const $ = (id) => document.getElementById(id);
 let state, library = [], selected, view = 'home', authMode = 'login', hls, playback, lastSaved = 0, switching = false, playGeneration = 0, planGeneration = 0;
 const video = $('video');
+let hlsLibraryPromise;
+function loadHlsLibrary() {
+  if (window.Hls) return Promise.resolve();
+  if (hlsLibraryPromise) return hlsLibraryPromise;
+  hlsLibraryPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = '/static/vendor/hls.min.js';
+    const timer = setTimeout(() => fail(), 15000);
+    function fail() {
+      clearTimeout(timer); script.remove(); hlsLibraryPromise = null;
+      reject(new Error('Afspilleren kunne ikke indlæses. Prøv at starte filmen igen.'));
+    }
+    script.onload = () => { clearTimeout(timer); window.Hls ? resolve() : fail(); };
+    script.onerror = fail;
+    document.head.appendChild(script);
+  });
+  return hlsLibraryPromise;
+}
 const escapeHtml = (text) => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clock = (seconds) => { const s = Math.floor(seconds || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 function toast(message) { $('toast').textContent = message; $('toast').hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => $('toast').hidden = true, 6000); }
@@ -134,6 +152,8 @@ async function startPlayback(position = 0, fallback = false) {
   badge('actual-badge', 'Forbereder'); $('playback-info').textContent = '';
   $('timeline').max = selected.duration;
   try {
+    await loadHlsLibrary();
+    if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
     if (fallback) { data.direct = false; data.h264 = false; }
     const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position});
