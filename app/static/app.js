@@ -79,7 +79,7 @@ function render() {
   const cards = FjordLibrary.cards(library);
   const matching = cards.filter(m => FjordLibrary.matches(m, query) && (view !== 'favorites' || m.favorite)
     && (view !== 'series' || m.isSeries) && (view !== 'all' || !m.isSeries));
-  const category = renderCategories(matching), visible = category.items;
+  const category = renderCategories(matching, cards.filter(m => view === 'series' ? m.isSeries : !m.isSeries)), visible = category.items;
   const heading = view === 'series' ? 'Serier' : view === 'all' ? 'Film' : view === 'favorites' ? 'Min liste' : 'Dit bibliotek';
   $('library-title').innerHTML = `${query ? 'Søgeresultater' : heading}${category.label ? ` · ${escapeHtml(category.label)}` : ''} <span>${visible.length}</span>`;
   $('empty').hidden = visible.length > 0;

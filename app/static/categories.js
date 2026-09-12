@@ -1,25 +1,16 @@
 const FjordCategories = {
   definitions: [
     ['all', 'Alle', []],
-    ['action', 'Action', ['action', 'action & adventure']],
-    ['adventure', 'Eventyr', ['eventyr', 'adventure', 'action & adventure']],
-    ['animation', 'Animation', ['animation']],
+    ['action', 'Action og eventyr', ['action', 'action & adventure', 'action og eventyr', 'eventyr', 'adventure', 'war', 'krig', 'war & politics', 'krig og politik', 'western']],
     ['comedy', 'Komedie', ['komedie', 'comedy']],
-    ['crime', 'Krimi', ['krimi', 'crime', 'kriminalitet']],
+    ['crime', 'Krimi og spænding', ['krimi', 'crime', 'kriminalitet', 'thriller', 'mystik', 'mystery', 'mysterium']],
     ['documentary', 'Dokumentar', ['dokumentar', 'documentary']],
-    ['drama', 'Drama', ['drama']],
-    ['family', 'Familie og børn', ['familie', 'family', 'kids', 'børn']],
-    ['fantasy', 'Fantasy', ['fantasy', 'fantasi', 'sci-fi & fantasy']],
-    ['history', 'Historie', ['historie', 'history', 'historisk']],
+    ['drama', 'Drama', ['drama', 'historie', 'history', 'historisk', 'soap']],
+    ['family', 'Familie og animation', ['familie', 'family', 'kids', 'børn', 'animation']],
     ['horror', 'Gyser', ['gyser', 'horror', 'gys']],
-    ['music', 'Musik', ['musik', 'music']],
-    ['mystery', 'Mystik', ['mystik', 'mystery', 'mysterium']],
     ['romance', 'Romantik', ['romantik', 'romance', 'romantisk']],
-    ['scifi', 'Sci-fi', ['science fiction', 'sci-fi', 'sci-fi & fantasy']],
-    ['thriller', 'Thriller', ['thriller']],
-    ['war', 'Krig og politik', ['krig', 'war', 'war & politics']],
-    ['western', 'Western', ['western']],
-    ['reality', 'Reality', ['reality']],
+    ['scifi', 'Sci-fi og fantasy', ['science fiction', 'sci-fi', 'sci-fi & fantasy', 'sci-fi og fantasy', 'science fiction og fantasy', 'fantasy', 'fantasi']],
+    ['reality', 'Reality og underholdning', ['reality', 'talk', 'musik', 'music', 'news', 'nyheder']],
     ['other', 'Øvrige', []],
     ['none', 'Uden kategori', []]
   ],
@@ -41,29 +32,26 @@ if (typeof module !== 'undefined') module.exports = FjordCategories;
 
 const categorySelection = {all:'all', series:'all'};
 function setupCategories() {
-  document.querySelector('.library-heading').insertAdjacentHTML('afterend',
-    '<div id="library-categories" class="library-categories" role="group" aria-label="Genrekategorier" hidden></div>');
+  const title = $('library-title');
+  const row = document.createElement('div'); row.className = 'library-title-row';
+  title.before(row); row.append(title);
+  row.insertAdjacentHTML('beforeend',
+    '<div id="library-categories" class="library-categories" hidden><select id="library-genre" aria-label="Genrer"></select></div>');
+  $('library-genre').onchange = () => {categorySelection[view] = $('library-genre').value; render();};
 }
-function renderCategories(items) {
+function renderCategories(items, availableItems = items) {
   const container = $('library-categories');
   container.hidden = !['all', 'series'].includes(view);
   if (container.hidden) return {items, label:null};
-  const selectedKey = categorySelection[view];
-  // Keep the buttons in place while searching, so keyboard focus is preserved.
-  if (!container.children.length) {
-    for (const [key, label] of FjordCategories.definitions) {
-      const button = document.createElement('button');
-      button.type = 'button'; button.className = 'category-button'; button.dataset.category = key;
-      button.onclick = () => {categorySelection[view] = key; render();};
-      container.append(button);
-    }
+  const choices = FjordCategories.definitions.filter(([key]) => key === 'all' || FjordCategories.filter(availableItems, key).length);
+  if (!choices.some(([key]) => key === categorySelection[view])) categorySelection[view] = 'all';
+  const selectedKey = categorySelection[view], select = $('library-genre');
+  const signature = choices.map(([key]) => key).join(',');
+  if (select.dataset.choices !== signature) {
+    select.replaceChildren(...choices.map(([key, label]) => new Option(key === 'all' ? 'Alle genrer' : label, key)));
+    select.dataset.choices = signature;
   }
-  for (const button of container.children) {
-    const [key, label] = FjordCategories.definitions.find(([key]) => key === button.dataset.category);
-    const count = FjordCategories.filter(items, key).length;
-    button.textContent = `${label} (${count})`;
-    button.setAttribute('aria-pressed', String(selectedKey === key));
-  }
+  select.value = selectedKey;
   const label = FjordCategories.definitions.find(([key]) => key === selectedKey)[1];
   return {items:FjordCategories.filter(items, selectedKey), label:selectedKey === 'all' ? null : label};
 }
