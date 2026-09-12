@@ -8,6 +8,23 @@
 .hero-content>p { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 .movie-card.series-card .movie-image { aspect-ratio: 2/3; }
 .movie-grid { align-items: start; }
+.episode-carousel-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.episode-carousel-header label { width:180px; max-width:60%; }
+.episode-carousel-header select { margin-bottom:16px; }
+.episode-carousel-controls { display:flex; gap:8px; }
+.episode-carousel-controls button:disabled { opacity:.35; cursor:default; }
+.episode-carousel { position:relative; display:flex; gap:14px; overflow-x:auto; max-width:100%; padding:4px 3px 14px; scroll-snap-type:x proximity; scroll-padding:3px; overscroll-behavior-x:contain; scrollbar-width:thin; scrollbar-color:#766674 transparent; }
+.episode-card { flex:0 0 210px; min-width:0; padding:0 0 12px; overflow:hidden; text-align:left; color:inherit; background:#ffffff05; border:1px solid var(--line); border-radius:9px; scroll-snap-align:start; }
+.episode-card:hover { background:#ffffff0e; border-color:#ffffff40; }
+.episode-card[aria-pressed="true"] { border-color:var(--red); background:#ec344e0c; }
+.episode-card:focus-visible { outline:2px solid #ff91a3; outline-offset:2px; }
+.episode-card img { display:block; width:100%; aspect-ratio:16/9; object-fit:cover; background:#292332; }
+.episode-card strong,.episode-card span { display:block; margin:10px 12px 0; }
+.episode-card strong { font-size:13px; }
+.episode-card .episode-name { font-size:12px; color:#c0b7c2; white-space:normal; overflow-wrap:anywhere; }
+.episode-card .episode-name:empty { display:none; }
+.episode-card .episode-duration { font-size:11px; color:var(--muted); }
+@media(max-width:600px) { .episode-card { flex-basis:180px; } }
 @media (max-width: 600px) {
   header nav { grid-template-columns: repeat(4,1fr); gap: 2px; padding-left: 8px; padding-right: 8px; }
   .nav-button { font-size: 12px; }

@@ -21,7 +21,7 @@ const server=http.createServer(async(req,res)=>{
       let raw='';for await(const chunk of req)raw+=chunk;
       const edit=JSON.parse(raw),item=items.find(m=>m.id===url.pathname.split('/')[3]);
       item.title=edit.title;item.catalog={...item.catalog,...edit,manual:true};data={ok:true};
-    } else if(url.pathname.endsWith('/poster') || url.pathname.endsWith('/backdrop')) {
+    } else if(url.pathname.endsWith('/poster') || url.pathname.endsWith('/backdrop') || url.pathname.endsWith('/episode-still')) {
       res.writeHead(200,{'Content-Type':'image/svg+xml'});
       return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="#45334f"/><circle cx="200" cy="240" r="90" fill="#94687f"/></svg>');
     }
@@ -45,8 +45,12 @@ const server=http.createServer(async(req,res)=>{
     assert.equal(await page.locator('#movie-grid .movie-card').count(),1);
     await page.locator('#movie-grid .movie-card').click();
     assert.equal(await page.locator('#series-season').inputValue(),'1');
+    assert.equal(await page.locator('#series-episodes .episode-card').count(),2);
+    await page.locator('#series-episodes .episode-card').nth(1).click();
+    assert.equal(await page.locator('#series-episodes [aria-pressed="true"]').getAttribute('data-episode-id'),'c'.repeat(32));
     await page.locator('#series-season').selectOption('2');
-    assert.equal(await page.locator('#series-episode').inputValue(),'a'.repeat(32));
+    assert.equal(await page.locator('#series-episodes .episode-card').count(),1);
+    assert.equal(await page.locator('#series-episodes [aria-pressed="true"]').getAttribute('data-episode-id'),'a'.repeat(32));
     await page.waitForFunction(()=>document.querySelector('#play-button').textContent==='▶ Afspil afsnit');
     await page.getByRole('button',{name:'Rediger oplysninger',exact:true}).click();
     await page.locator('#edit-title').fill('My corrected episode');

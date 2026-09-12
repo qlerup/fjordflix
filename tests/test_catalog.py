@@ -1,5 +1,6 @@
 from pathlib import Path
 import httpx
+import pytest
 from app import catalog
 
 
@@ -25,7 +26,28 @@ def test_network_failure_keeps_upload(monkeypatch, tmp_path):
     def fail(title):
         raise httpx.ConnectError('offline')
     monkeypatch.setattr(catalog, 'lookup', fail)
-    assert catalog.enrich('Dune', 'abc', tmp_path) == {'status': 'error', 'media_type': 'movie'}
+    assert catalog.enrich('Dune', 'abc', tmp_path) == {'status': 'error', 'media_type': 'movie', 'error_code': 'network'}
+
+
+@pytest.mark.parametrize('status,code', [(401, 'unauthorized'), (403, 'unauthorized'), (429, 'rate_limited'), (503, 'provider_error')])
+def test_lookup_errors_are_actionable_without_exposing_credentials(monkeypatch, tmp_path, status, code):
+    def fail(title):
+        response = httpx.Response(status, request=httpx.Request('GET', 'https://api.themoviedb.org/3/search/tv?api_key=secret'))
+        response.raise_for_status()
+    monkeypatch.setattr(catalog, 'lookup', fail)
+    result = catalog.enrich('Arrow S03E02', 'abc', tmp_path)
+    assert result['error_code'] == code
+    assert result['season'] == 3 and result['episode'] == 2
+    assert 'secret' not in str(result) + catalog.message(result)
+
+
+def test_lookup_timeout_is_distinct(monkeypatch, tmp_path):
+    def fail(title):
+        raise httpx.ReadTimeout('secret request URL')
+    monkeypatch.setattr(catalog, 'lookup', fail)
+    result = catalog.enrich('Arrow S03E02', 'abc', tmp_path)
+    assert result['error_code'] == 'timeout'
+    assert 'secret' not in catalog.message(result)
 
 
 def test_images_failure_keeps_metadata(monkeypatch, tmp_path):
@@ -34,6 +56,20 @@ def test_images_failure_keeps_metadata(monkeypatch, tmp_path):
     result = catalog.enrich('Dune', 'abc', tmp_path)
     assert result['title'] == 'Dune'
     assert result['poster_cached'] is False
+
+
+def test_episode_still_download_uses_its_own_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(catalog, 'lookup', lambda title: {'status':'matched', 'media_type':'tv',
+                        'poster_path':'/poster.jpg', 'backdrop_path':'/banner.jpg', 'episode_path':'/still.jpg'})
+    downloads = []
+    def download(remote, destination, size):
+        downloads.append((remote, destination.name, size))
+        return True
+    monkeypatch.setattr(catalog, 'download_image', download)
+    result = catalog.enrich('Arrow S03E02', 'abc', tmp_path)
+    assert result['episode_cached'] and result['poster_cached']
+    assert ('/still.jpg', 'abc-episode.jpg', 'w300') in downloads
+    assert ('/poster.jpg', 'abc.jpg', 'w500') in downloads
 
 
 def test_image_url_validation(tmp_path):

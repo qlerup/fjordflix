@@ -153,7 +153,8 @@ def lookup(title):
                     except httpx.HTTPError:
                         pass
                 result.update(episode_title=ep.get('name', ''), overview=ep.get('overview', ''),
-                              release_date=ep.get('air_date', ''), episode_status='matched')
+                              release_date=ep.get('air_date', ''), episode_status='matched',
+                              episode_path=ep.get('still_path'))
             except httpx.HTTPError:
                 # Keep the series grouping/artwork even when an episode is absent from TMDB.
                 result['overview'] = ''
@@ -188,14 +189,45 @@ def download_image(remote_path, destination, size):
 def enrich(title, mid, data_dir):
     try:
         result = lookup(title)
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        reason = 'unauthorized' if code in (401, 403) else 'rate_limited' if code == 429 else 'provider_error'
+        return {**identify(title), 'status': 'error', 'error_code': reason}
+    except httpx.TimeoutException:
+        return {**identify(title), 'status': 'error', 'error_code': 'timeout'}
+    except httpx.RequestError:
+        return {**identify(title), 'status': 'error', 'error_code': 'network'}
     except Exception:
         # External metadata is optional; malformed provider data must not reject video uploads.
         return {**identify(title), 'status': 'error'}
     if result['status'] == 'matched':
-        for field, suffix, size in [('poster_path', '', 'w500'), ('backdrop_path', '-backdrop', 'w1280')]:
+        images = [('poster_path', '', 'w500'), ('backdrop_path', '-backdrop', 'w1280')]
+        if result.get('media_type') == 'tv':
+            images.append(('episode_path', '-episode', 'w300'))
+        for field, suffix, size in images:
             try:
                 result[field.replace('_path', '_cached')] = download_image(
                     result.pop(field, None), data_dir / 'posters' / f'{mid}{suffix}.jpg', size)
             except (httpx.HTTPError, OSError, ValueError):
                 result[field.replace('_path', '_cached')] = False
     return result
+
+
+def message(info):
+    if info.get('error_code'):
+        return {
+            'unauthorized': 'TMDB afviste API-nøglen. Kontrollér den under Filmoplysninger · TMDB.',
+            'rate_limited': 'TMDB modtog for mange opslag. Vent lidt og prøv igen.',
+            'timeout': 'TMDB svarede ikke inden tidsfristen. Prøv igen.',
+            'network': 'Serveren kunne ikke oprette forbindelse til TMDB. Kontrollér serverens internetforbindelse.',
+            'provider_error': 'TMDB returnerede en serverfejl. Prøv igen senere.',
+        }.get(info['error_code'], 'TMDB-opslaget fejlede. Prøv igen.')
+    if info.get('status') == 'matched':
+        if not info.get('poster_cached') or not info.get('backdrop_cached'):
+            return 'Oplysninger hentet fra TMDB, men plakat eller banner mangler. Prøv igen.'
+        return 'Oplysninger, plakat og banner er hentet fra TMDB.'
+    return {
+        'disabled': 'TMDB-opslaget var slået fra. Gem API-nøglen under Filmoplysninger · TMDB, og prøv igen.',
+        'unmatched': 'Intet entydigt match i TMDB. Prøv med seriens eller filmens originale titel og årstal.',
+        'error': 'TMDB-opslaget fejlede. Prøv igen for at få en aktuel fejlstatus.',
+    }.get(info.get('status'), 'Der er endnu ikke hentet oplysninger fra TMDB.')

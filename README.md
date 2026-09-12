@@ -167,7 +167,20 @@ videostillbillede. Uden token eller ved API-fejl lykkes upload stadig, og
 brugerfladen fortæller, at metadata ikke blev hentet. Allerede uploadede film
 får ikke nye TMDB-oplysninger automatisk. Testfilm springer opslaget over.
 
+Administratorer kan åbne en film eller et afsnit og vælge **Hent oplysninger igen**
+uden at uploade filen på ny. Det seneste resultat vises i filmdetaljerne, med
+særskilte beskeder for afvist API-nøgle, timeout, netværksfejl og manglende match.
+Et fejlet genforsøg bevarer eksisterende oplysninger og billeder. Manuelt
+redigerede oplysninger og billeder beskyttes mod automatisk genhentning.
+
 ## Serier, sæsoner og afsnit
+
+Afsnit vises i en vandret karrusel med billede, afsnitsnummer, titel, spilletid
+og set-status. Vælg sæson, og brug swipe, scroll, pileknapper eller tastaturets
+piletaster til at finde et afsnit. Kun uploadede afsnit vises.
+TMDB's afsnitsbillede (`still_path`) hentes og gemmes separat fra serieplakaten.
+Hvis det mangler, bruges et stillbillede fra den enkelte videofil. Ældre afsnit
+kan hente TMDB-billedet med **Hent oplysninger igen**.
 
 Upload én videofil pr. afsnit. Navne som `The.Show.S02E10.1080p.mkv`,
 `The Show s02e10.mp4` og `The Show 2x10.mkv` genkendes automatisk.

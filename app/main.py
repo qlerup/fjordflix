@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 import subprocess
 import threading
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -409,6 +410,10 @@ def probe(path):
 def index_movie(path, title, mid, enrich=False):
     meta = probe(path)
     subprocess.run(['ffmpeg', '-v', 'error', '-protocol_whitelist', 'file,pipe', '-ss', str(min(2, meta['duration'] / 3)), '-i', str(path), '-frames:v', '1', '-vf', 'scale=960:-2', '-y', str(DATA / 'posters' / f'{mid}.jpg')], capture_output=True, timeout=60)
+    # Keep a video frame separate from the series poster that TMDB may replace.
+    frame = DATA / 'posters' / f'{mid}.jpg'
+    if frame.exists():
+        shutil.copyfile(frame, DATA / 'posters' / f'{mid}-frame.jpg')
     if enrich:
         meta['catalog'] = catalog.enrich(title, mid, DATA)
         meta['original_title'] = title
@@ -440,7 +445,8 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
     except BaseException:
         path.unlink(missing_ok=True)
         raise
-    return {'id': mid, 'metadata_status': movie(mid)[1].get('catalog', {}).get('status', 'disabled')}
+    info = movie(mid)[1].get('catalog', {})
+    return {'id': mid, 'metadata_status': info.get('status', 'disabled'), 'metadata_message': catalog.message(info)}
 
 
 DEMO_LOCK = threading.Lock()
@@ -564,6 +570,7 @@ def movies(u=Depends(user)):
         if not info.get('media_type') and not info.get('manual'):
             info = {**catalog.identify(meta.get('original_title') or r['title']), **info}
         meta['catalog'] = info
+        info['lookup_message'] = info.get('last_lookup', {}).get('message') or catalog.message(info)
         result.append(dict(id=r['id'], title=r['title'], **meta, series_key=catalog.series_key(info),
                            position=r['position'], favorite=bool(r['favorite'])))
     # Join offline/unmatched uploads to a uniquely identified series, without guessing
@@ -611,6 +618,44 @@ def edit_movie_metadata(mid: str, data: library_metadata.LibraryEdit, u=Depends(
     return {'ok': True}
 
 
+@app.post('/api/movies/{mid}/metadata/refresh')
+def refresh_movie_metadata(mid: str, u=Depends(admin)):
+    if not re.fullmatch(r'[a-f0-9]{32}', mid):
+        raise HTTPException(400, 'Ugyldigt film-id.')
+    row, meta = movie(mid)
+    if meta.get('catalog', {}).get('manual'):
+        raise HTTPException(409, 'Oplysningerne er redigeret manuelt og bevares. Automatisk genhentning er slået fra for denne video.')
+    # Stage artwork so failed requests and concurrent edits cannot replace saved images.
+    with tempfile.TemporaryDirectory(prefix='tmdb-', dir=DATA) as folder:
+        staging = Path(folder)
+        (staging / 'posters').mkdir()
+        info = catalog.enrich(meta.get('original_title') or row['title'], mid, staging)
+        summary = catalog.message(info)
+        with db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            current = conn.execute('SELECT title,metadata FROM movies WHERE id=?', (mid,)).fetchone()
+            if current is None:
+                raise HTTPException(404, 'Filmen findes ikke.')
+            if current['metadata'] != row['metadata'] or current['title'] != row['title']:
+                raise HTTPException(409, 'Oplysningerne blev ændret imens. Åbn filmen igen.')
+            if info.get('status') == 'matched':
+                old = meta.get('catalog', {})
+                for kind, suffix in [('poster', ''), ('backdrop', '-backdrop'), ('episode', '-episode')]:
+                    image = staging / 'posters' / f'{mid}{suffix}.jpg'
+                    if info.get(kind + '_cached') and image.exists():
+                        image.replace(DATA / 'posters' / image.name)
+                    elif old.get(kind + '_cached'):
+                        info[kind + '_cached'] = True
+                meta['catalog'] = {**info, 'artwork_updated': time.time()}
+                meta.setdefault('original_title', row['title'])
+                row['title'] = info.get('title') or row['title']
+            saved = meta.setdefault('catalog', {})
+            saved['last_lookup'] = {'status': info.get('status'), 'message': summary, 'at': time.time()}
+            conn.execute('UPDATE movies SET title=?,metadata=? WHERE id=?',
+                         (row['title'][:160], json.dumps(meta), mid))
+    return {'ok': info.get('status') == 'matched', 'message': summary}
+
+
 @app.put('/api/movies/{mid}/artwork/{kind}')
 async def edit_movie_artwork(mid: str, kind: str, request: Request, u=Depends(admin)):
     if kind not in ('poster', 'backdrop'):
@@ -656,6 +701,31 @@ def backdrop(mid: str, u=Depends(user)):
     movie(mid)
     path = DATA / 'posters' / f'{mid}-backdrop.jpg'
     return FileResponse(path) if path.exists() else poster(mid, u)
+
+
+@app.get('/api/movies/{mid}/episode-still')
+def episode_still(mid: str, u=Depends(user)):
+    row, meta = movie(mid)
+    if not re.fullmatch(r'[a-f0-9]{32}', mid):
+        raise HTTPException(400, 'Ugyldigt film-id.')
+    image = DATA / 'posters' / f'{mid}-episode.jpg'
+    if image.exists():
+        return FileResponse(image)
+    frame = DATA / 'posters' / f'{mid}-frame.jpg'
+    if not frame.exists():
+        # Older uploads have no separate frame yet. Generate it once on demand.
+        try:
+            with tempfile.TemporaryDirectory(prefix='frame-', dir=DATA) as folder:
+                temporary = Path(folder) / 'frame.jpg'
+                subprocess.run(['ffmpeg', '-v', 'error', '-protocol_whitelist', 'file,pipe',
+                                '-ss', str(min(2, meta.get('duration', 0) / 3)), '-i', row['path'],
+                                '-frames:v', '1', '-vf', 'scale=480:-2', '-y', str(temporary)],
+                               capture_output=True, timeout=30)
+                if temporary.exists():
+                    temporary.replace(frame)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return FileResponse(frame) if frame.exists() else poster(mid, u)
 
 
 @app.get('/api/movies/{mid}/file')

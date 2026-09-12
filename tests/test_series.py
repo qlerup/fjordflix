@@ -44,7 +44,7 @@ def test_tv_lookup(monkeypatch, episode_missing):
             assert path.endswith('/season/2/episode/10')
             if episode_missing:
                 return httpx.Response(404)
-            return httpx.Response(200, json={'name': 'Afsnit ti', 'overview': 'Episode summary' if request.url.params['language'] == 'en-US' else '', 'air_date': '2021-03-04'})
+            return httpx.Response(200, json={'name': 'Afsnit ti', 'overview': 'Episode summary' if request.url.params['language'] == 'en-US' else '', 'air_date': '2021-03-04', 'still_path': '/episode123.jpg'})
         return httpx.Response(200, json={'name': 'Serien', 'first_air_date': '2020-01-01', 'overview': 'Seriebeskrivelse', 'poster_path': '/abc.jpg', 'genres': [{'name': 'Drama'}]})
     client = httpx.Client
     monkeypatch.setattr(catalog.httpx, 'Client', lambda **kwargs: client(transport=httpx.MockTransport(handler), **kwargs))
@@ -53,6 +53,7 @@ def test_tv_lookup(monkeypatch, episode_missing):
     assert result['series_overview'] == 'Seriebeskrivelse'
     assert result['episode_status'] == ('missing' if episode_missing else 'matched')
     assert result['overview'] == ('' if episode_missing else 'Episode summary')
+    assert result.get('episode_path') == (None if episode_missing else '/episode123.jpg')
     assert '/search/movie' not in ''.join(requests)
 
 
@@ -137,3 +138,96 @@ def test_offline_episodes_join_unique_tmdb_series(client):
             'tmdb_id':42, 'season':1, 'episode':3, 'series_year':'2020'}}), 1))
     items = client.get('/api/movies').json()
     assert {m['series_key'] for m in items} == {'tmdb:42'}
+
+
+def test_retry_fetches_artwork_without_changing_video_or_progress(client, monkeypatch):
+    mid = 'a' * 32
+    def enrich(title, identifier, destination):
+        assert title == 'Show S01E02' and identifier == mid
+        for suffix in ('', '-backdrop', '-episode'):
+            (destination / 'posters' / f'{mid}{suffix}.jpg').write_bytes(b'new-image')
+        return {'status': 'matched', 'title': 'Show · S01E02 · Episode title', 'media_type': 'tv',
+                'series_title': 'Show', 'season': 1, 'episode': 2, 'overview': 'Description',
+                'poster_cached': True, 'backdrop_cached': True, 'episode_cached': True}
+    monkeypatch.setattr(catalog, 'enrich', enrich)
+    response = client.post(f'/api/movies/{mid}/metadata/refresh')
+    assert response.status_code == 200 and response.json()['ok']
+    item = client.get('/api/movies').json()[0]
+    assert item['catalog']['overview'] == 'Description'
+    assert item['catalog']['artwork_updated'] > 0
+    assert item['position'] == 32 and item['favorite']
+    assert item['video'] == 'hevc' and item['duration'] == 100
+    assert client.get(f'/api/movies/{mid}/poster').content == b'new-image'
+    assert client.get(f'/api/movies/{mid}/backdrop').content == b'new-image'
+    assert client.get(f'/api/movies/{mid}/episode-still').content == b'new-image'
+
+
+def test_episode_image_falls_back_to_separate_video_frame(client, monkeypatch):
+    mid = 'a' * 32
+    (main.DATA / 'posters' / f'{mid}.jpg').write_bytes(b'series-poster')
+    (main.DATA / 'posters' / f'{mid}-frame.jpg').write_bytes(b'episode-frame')
+    def unexpected(*args, **kwargs):
+        raise AssertionError('Cached frame must not be regenerated')
+    monkeypatch.setattr(main.subprocess, 'run', unexpected)
+    assert client.get(f'/api/movies/{mid}/episode-still').content == b'episode-frame'
+    (main.DATA / 'posters' / f'{mid}-episode.jpg').write_bytes(b'tmdb-episode')
+    assert client.get(f'/api/movies/{mid}/episode-still').content == b'tmdb-episode'
+
+
+def test_legacy_episode_generates_and_caches_frame(client, monkeypatch):
+    from pathlib import Path
+    calls = []
+    def generate(command, **kwargs):
+        calls.append(command)
+        Path(command[-1]).write_bytes(b'generated-frame')
+    monkeypatch.setattr(main.subprocess, 'run', generate)
+    for _ in range(2):
+        assert client.get('/api/movies/'+'a'*32+'/episode-still').content == b'generated-frame'
+    assert len(calls) == 1
+
+
+def test_failed_retry_preserves_saved_metadata_and_artwork(client, monkeypatch):
+    mid = 'a' * 32
+    with main.db() as conn:
+        row = conn.execute('SELECT metadata FROM movies WHERE id=?', (mid,)).fetchone()
+        meta = json.loads(row['metadata'])
+        meta['catalog'] = {'status': 'matched', 'overview': 'Keep this'}
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
+    image = main.DATA / 'posters' / f'{mid}.jpg'
+    image.write_bytes(b'keep-image')
+    monkeypatch.setattr(catalog, 'enrich', lambda *args: {'status': 'error', 'error_code': 'unauthorized'})
+    result = client.post(f'/api/movies/{mid}/metadata/refresh').json()
+    assert result['ok'] is False and 'API-nøglen' in result['message']
+    item = client.get('/api/movies').json()[0]
+    assert item['catalog']['overview'] == 'Keep this'
+    assert item['catalog']['lookup_message'] == result['message']
+    assert image.read_bytes() == b'keep-image'
+
+
+def test_retry_protects_manual_edits_and_requires_admin(client, monkeypatch):
+    mid = 'a' * 32
+    endpoint = f'/api/movies/{mid}/metadata/refresh'
+    def unexpected(*args):
+        raise AssertionError('Must not call TMDB')
+    monkeypatch.setattr(catalog, 'enrich', unexpected)
+    assert client.post(endpoint, headers={'Origin': 'https://evil.example'}).status_code == 403
+    assert client.post('/api/movies/'+'b'*32+'/metadata/refresh').status_code == 404
+    client.put(f'/api/movies/{mid}/metadata', json={'title': 'Manual title', 'media_type': 'movie'})
+    assert client.post(endpoint).status_code == 409
+    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'admin': False, 'id': 'owner'})
+    assert client.post(endpoint).status_code == 403
+
+
+def test_retry_does_not_overwrite_concurrent_edits(client, monkeypatch):
+    mid = 'a' * 32
+    image = main.DATA / 'posters' / f'{mid}.jpg'
+    image.write_bytes(b'original')
+    def enrich(title, identifier, destination):
+        with main.db() as conn:
+            conn.execute('UPDATE movies SET title=? WHERE id=?', ('Concurrent title', mid))
+        (destination / 'posters' / image.name).write_bytes(b'new')
+        return {'status': 'matched', 'title': 'TMDB title', 'poster_cached': True}
+    monkeypatch.setattr(catalog, 'enrich', enrich)
+    assert client.post(f'/api/movies/{mid}/metadata/refresh').status_code == 409
+    assert image.read_bytes() == b'original'
+    assert client.get('/api/movies').json()[0]['title'] == 'Concurrent title'

@@ -1,5 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
 const ui = require('../app/static/library-ui.js');
 const ep = (id,s,e,position=0) => ({id,title:`Show S${s}E${e}`,duration:100,position,series_key:'local:show:',catalog:{series_title:'Show',season:s,episode:e}});
 test('one card per series, natural episode ordering, sparse seasons and duplicates', () => {
@@ -16,4 +18,44 @@ test('continue selection remains per file, and favorites group without losing ep
   const card=ui.cards([c,a,b])[0];
   assert.equal(card.id,'b'); assert.equal(card.favorite,true); assert.equal(card.episodes.length,3);
   assert.equal(ui.code(b),'S01E02');
+});
+
+test('episode picker uses readable episode numbers and keeps TMDB status visible to admins', () => {
+  const nodes = {};
+  const element = () => ({textContent:'', dataset:{}, attributes:{}, children:[], scrollLeft:0, clientWidth:500, scrollWidth:500,
+    replaceChildren(...children) {this.children = children}, append(...children) {this.children.push(...children)},
+    setAttribute(k,v) {this.attributes[k]=v}, addEventListener() {}, focus() {this.focused=true},
+    querySelector() {return null}});
+  const $ = id => nodes[id] ||= element();
+  const episode = ep('arrow',3,2);
+  episode.catalog.lookup_message = 'TMDB afviste API-nøglen.';
+  const context = vm.createContext({$, state:{user:{admin:true}}, library:[episode,ep('next',3,3),ep('other-season',4,1)], clock:()=> '0:08',
+    document:{createElement:element}, requestAnimationFrame:fn=>fn(),
+    Option: function(text,value) {this.text = text; this.value = value}});
+  vm.runInContext(fs.readFileSync(require.resolve('../app/static/library-ui.js'), 'utf8'), context);
+  context.showEpisodePicker(episode);
+  const cards = nodes['series-episodes'].children;
+  assert.equal(cards.length, 2);
+  assert.equal(cards[0].children[1].textContent, 'Afsnit 2');
+  assert.equal(cards[0].children[0].src, '/api/movies/arrow/episode-still?v=0');
+  assert.equal(cards[0].dataset.episodeId, 'arrow');
+  assert.equal(cards[0].attributes['aria-pressed'], 'true');
+  assert.equal(cards[1].attributes['aria-pressed'], 'false');
+  let opened;
+  context.openDetail = movie => {opened=movie; context.showEpisodePicker(movie)};
+  cards[1].onclick();
+  assert.equal(opened.id, 'next');
+  assert.equal(nodes['series-episodes'].children[1].focused, true);
+  context.showEpisodePicker(episode);
+  assert.equal(nodes['series-season'].children[0].text, 'Sæson 3');
+  assert.equal(nodes['detail-catalog-status'].textContent, 'TMDB afviste API-nøglen.');
+  assert.equal(nodes['metadata-refresh'].hidden, false);
+  vm.runInContext("metadataRefreshPending.add('arrow')", context);
+  context.showEpisodePicker(episode);
+  assert.equal(nodes['metadata-refresh'].disabled, true);
+  assert.match(nodes['detail-catalog-status'].textContent, /Henter/);
+  context.state.user.admin = false;
+  context.showEpisodePicker(episode);
+  assert.equal(nodes['metadata-refresh'].hidden, true);
+  assert.equal(nodes['detail-catalog-status'].hidden, true);
 });
