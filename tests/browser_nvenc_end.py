@@ -9,7 +9,8 @@ with sync_playwright() as p:
     page.locator('#username').fill('Media QA')
     page.locator('#password').fill('Temporary-media-test-73!')
     page.locator('#auth-submit').click()
-    page.locator('.movie-card').first.click()
+    page.locator('.movie-card').filter(has_text='Nordlys').click()
+    page.evaluate("async () => { await api(`/movies/${selected.id}/progress`, 'POST', {position:0}); selected.position=0; }")
     page.locator('#detail-quality').select_option('720')
     page.locator('#play-button').click()
     page.wait_for_function('() => playback && !switching')
@@ -25,4 +26,5 @@ with sync_playwright() as p:
     assert state['encoder']=='NVIDIA NVENC'
     assert state['offset']==0 and state['ended'] and state['time']>=11 and not state['loading']
     assert not [e for e in state['events'] if e['event']=='waiting' and e['time'] > .1], state['events']
+    page.evaluate('release()')
     browser.close()
