@@ -48,3 +48,4 @@ html:fullscreen #player-dialog{width:100vw;height:100dvh;max-height:none;aspect-
  #player-dialog .player-bottom{font-size:9px;gap:7px;flex-wrap:wrap}
 }
 @media(prefers-reduced-motion:reduce){#player-dialog *{transition:none!important}}
+#player-dialog .video-wrap,#player-dialog video{min-width:0;min-height:0}

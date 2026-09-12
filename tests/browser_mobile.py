@@ -1,4 +1,4 @@
-"""Mobile visual and interaction checks on a fresh GPU QA container at :8097."""
+﻿"""Mobile visual and interaction checks on a fresh GPU QA container at :8097."""
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -30,8 +30,9 @@ with sync_playwright() as p:
         page.set_viewport_size({'width':width,'height':844})
         page.screenshot(path=f'test-results/mobile-library-{width}.png', full_page=True)
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        assert page.locator('#remote-open').is_hidden()
         page.locator('[data-view="all"]').click()
-        page.locator('.movie-card').first.click()
+        page.locator('#movie-grid .movie-card').first.click()
         assert page.locator('#detail').evaluate('(e) => e.scrollWidth <= e.clientWidth')
         page.screenshot(path=f'test-results/mobile-detail-{width}.png')
         page.locator('[data-close="detail"]').click()
@@ -40,7 +41,7 @@ with sync_playwright() as p:
         page.locator('[data-close="admin-dialog"]').click()
         page.locator('[data-view="home"]').click()
     page.set_viewport_size({'width':390,'height':844})
-    page.locator('.movie-card').first.click()
+    page.locator('#movie-grid .movie-card').first.click()
     page.locator('#detail-quality').select_option('1080')
     page.locator('#play-button').click()
     page.wait_for_function('() => playback && video.currentTime > 1', timeout=30000)
@@ -53,7 +54,23 @@ with sync_playwright() as p:
         for selector in ['#player-close','#player-toggle','#player-quality','#player-fullscreen']:
             box = page.locator(selector).bounding_box()
             assert box and box['x'] >= 0 and box['x']+box['width'] <= width+1 and box['y'] >= 0 and box['y']+box['height'] <= height+1, (selector,box)
+    page.set_viewport_size({'width':390,'height':844})
+    cdp = context.new_cdp_session(page)
+    cdp.send('Emulation.setPageScaleFactor', {'pageScaleFactor':1.25})
+    page.wait_for_timeout(200)
+    fit = page.evaluate('''() => {const r=playerDialog.getBoundingClientRect();return {width:r.width,height:r.height,vw:visualViewport.width,vh:visualViewport.height,objectFit:getComputedStyle(video).objectFit};}''')
+    assert abs(fit['width']-fit['vw']) < 2 and abs(fit['height']-fit['vh']) < 2, fit
+    assert fit['objectFit']=='contain'
+    cdp.send('Emulation.setPageScaleFactor', {'pageScaleFactor':1})
+    # The desktop runner cannot physically rotate. Verify the request and cleanup
+    # using a stubbed orientation API with the real fullscreen transition.
+    page.evaluate("() => {window.orientationCalls=[]; screen.orientation.lock=async value=>orientationCalls.push(value); screen.orientation.unlock=()=>orientationCalls.push('unlock'); wakePlayerControls();}")
+    page.locator('#player-fullscreen').click()
+    page.wait_for_function("() => document.fullscreenElement && orientationCalls.includes('landscape')")
+    page.locator('#player-fullscreen').click()
+    page.wait_for_function("() => !document.fullscreenElement && orientationCalls.includes('unlock')")
     page.evaluate('release()')
     assert not errors, errors
     print('PASS: 320/390/430px library, dialogs, navigation; portrait/landscape player with visible controls; no JS errors.')
     browser.close()
+

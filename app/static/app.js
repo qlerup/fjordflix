@@ -137,7 +137,7 @@ async function updatePlan() {
 }
 $('detail-quality').onchange = updatePlan;
 $('favorite-button').onclick = async () => { try { await api(`/movies/${selected.id}/favorite`, 'POST'); selected.favorite = !selected.favorite; $('favorite-button').textContent = selected.favorite ? '✓ På min liste' : '＋ Min liste'; await refresh(); } catch(e) { toast(e.message); } };
-function playFromDetail(start) { $('detail').close(); $('player-dialog').showModal(); $('player-quality').value = $('detail-quality').value; startPlayback(start).catch(e => showPlayerError(e.message)); }
+function playFromDetail(start) { document.activeElement?.blur(); $('detail').close(); $('player-dialog').showModal(); fitPlayerViewport(); $('player-quality').value = $('detail-quality').value; startPlayback(start).catch(e => showPlayerError(e.message)); }
 $('play-button').onclick = () => playFromDetail(selected.position < selected.duration - 2 ? selected.position : 0);
 $('restart-button').onclick = () => playFromDetail(0);
 function showPlayerError(message) { $('player-error').textContent = message; $('player-loading').hidden = true; }

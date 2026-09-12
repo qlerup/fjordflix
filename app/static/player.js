@@ -1,5 +1,19 @@
 // All positions use the original movie timeline, including transcoded streams with an offset.
 const playerDialog = $('player-dialog');
+function fitPlayerViewport() {
+  const mobile = matchMedia('(pointer: coarse)').matches || innerWidth <= 700;
+  const fit = mobile && !document.fullscreenElement;
+  playerDialog.classList.toggle('fit-visible-viewport', fit);
+  if (!fit) return;
+  const viewport = window.visualViewport;
+  for (const [name,value] of Object.entries({width:viewport?.width || innerWidth,height:viewport?.height || innerHeight,left:viewport?.offsetLeft || 0,top:viewport?.offsetTop || 0})) {
+    playerDialog.style.setProperty(`--visible-${name}`, `${value}px`);
+  }
+}
+window.addEventListener('resize', fitPlayerViewport);
+window.visualViewport?.addEventListener('resize', fitPlayerViewport);
+window.visualViewport?.addEventListener('scroll', fitPlayerViewport);
+function unlockPlayerOrientation() { try { screen.orientation?.unlock?.(); } catch {} }
 const playerIcons = {
   play:'<path d="m8 5 11 7-11 7Z" fill="currentColor" stroke="none"/>',
   pause:'<path d="M8 5v14M16 5v14" stroke-width="4"/>',
@@ -48,9 +62,18 @@ function seekPlayer(value) {
   wakePlayerControls();
 }
 async function togglePlayerFullscreen() {
+  const mobile = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0 || innerWidth <= 700;
   try {
     if(document.fullscreenElement) await document.exitFullscreen();
-    else if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+    else if(document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+      if (mobile) {
+        try {
+          await screen.orientation?.lock?.('landscape');
+          if (!document.fullscreenElement || !playerDialog.open) unlockPlayerOrientation();
+        } catch { /* Orientation is controlled by the browser/OS when locking is unavailable. */ }
+      }
+    }
     else if(video.webkitEnterFullscreen) video.webkitEnterFullscreen();
     else toast('Fuld skærm understøttes ikke i denne browser.');
   } catch { toast('Tryk på fuld skærm direkte på skærmen.'); }
@@ -88,9 +111,11 @@ $('timeline').oninput=()=>{
 $('timeline').onchange=()=>{playerScrubbing=false;seekPlayer(Number($('timeline').value));};
 $('timeline').addEventListener('blur',()=>{playerScrubbing=false;updatePlayerTimeline();});
 for(const name of ['pointermove','pointerdown','keydown','focusin']) playerDialog.addEventListener(name,wakePlayerControls);
-playerDialog.addEventListener('close',()=>{clearTimeout(playerIdleTimer);playerScrubbing=false;playerDialog.classList.remove('controls-hidden');});
+playerDialog.addEventListener('close',()=>{clearTimeout(playerIdleTimer);playerScrubbing=false;playerDialog.classList.remove('controls-hidden');unlockPlayerOrientation();});
 document.addEventListener('fullscreenchange',()=>{
   const full=!!document.fullscreenElement;
+  if (!full) unlockPlayerOrientation();
+  fitPlayerViewport();
   playerIcon($('player-fullscreen'),full?'exitFullscreen':'fullscreen');
   $('player-fullscreen').setAttribute('aria-label',full?'Afslut fuld skærm':'Fuld skærm');
   wakePlayerControls();
