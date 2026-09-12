@@ -76,6 +76,14 @@ def test_complete_streaming_flow():
         subprocess.run(['ffmpeg','-v','error','-i',str(main.DATA / 'streams' / sid / first_segment),'-f','null','-'],capture_output=True,check=True)
         print(f"\n4K -> 1080p first segment: {time.monotonic()-start:.2f}s; encoder: {stream['encoder']}")
         assert viewer.post(f'/api/streams/{sid}/heartbeat').status_code == 200
+        main.JOBS[sid]['process'].wait(timeout=30)
+        final_playlist = viewer.get(stream['url']).text
+        durations = [float(line.split(':',1)[1].rstrip(',')) for line in final_playlist.splitlines() if line.startswith('#EXTINF:')]
+        assert '#EXT-X-ENDLIST' in final_playlist
+        assert len(durations) >= 6 and max(durations) <= 2.1, final_playlist
+        assert abs(sum(durations)-12) < .1, final_playlist
+        last_segment = [line for line in final_playlist.splitlines() if line.endswith('.ts')][-1]
+        subprocess.run(['ffmpeg','-v','error','-xerror','-i',str(main.DATA / 'streams' / sid / last_segment),'-f','null','-'],capture_output=True,check=True)
         assert viewer.delete(f'/api/streams/{sid}').status_code == 200
         assert not (main.DATA / 'streams' / sid).exists()
 

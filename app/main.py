@@ -548,6 +548,10 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                 filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']
             filters += [f"scale=-2:{result['height']}", 'format=yuv420p']
             cmd += ['-vf', ','.join(filters), '-c:v', 'h264_nvenc' if GPU else 'libx264', '-preset', 'fast' if GPU else 'veryfast', '-b:v', f"{result['mbps']}M", '-maxrate', f"{result['mbps']}M", '-bufsize', f"{result['mbps'] * 2}M", '-force_key_frames', 'expr:gte(t,n_forced*2)']
+            if GPU:
+                # NVENC otherwise forces I-frames without IDR boundaries. HLS then
+                # waits for the default GOP (~10s at 24fps), stalling Chrome at its end.
+                cmd += ['-forced-idr', '1']
         cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file', '-hls_segment_filename', str(folder / 'segment%05d.ts'), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log)
