@@ -8,7 +8,7 @@ let remoteHover;
 function remoteTarget(element) {
   const dropdown = element?.closest('.fx-select-button,.fx-select-option');
   if (dropdown) return ['detail-quality','player-quality','series-season'].includes(dropdown.dataset.selectId) && !dropdown.disabled ? dropdown : null;
-  const target = element?.closest('.movie-card,[data-view],#play-button,#restart-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#demo-button,#player-toggle,#player-rewind,#player-forward,#player-mute,#player-fullscreen,#timeline,#player-volume');
+  const target = element?.closest('.category-button,.movie-card,[data-view],#play-button,#restart-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#demo-button,#player-toggle,#player-rewind,#player-forward,#player-mute,#player-fullscreen,#timeline,#player-volume');
   if(!target || target.disabled) return null;
   if(target.id === 'hero-action' && !library.length) return null;
   if(target.id === 'demo-button' && !state?.user?.admin) return null;

@@ -77,13 +77,19 @@ async function refresh() { library = await api('/movies'); render(); }
 function render() {
   const query = $('search').value.toLocaleLowerCase('da');
   const cards = FjordLibrary.cards(library);
-  const visible = cards.filter(m => FjordLibrary.matches(m, query) && (view !== 'favorites' || m.favorite)
+  const matching = cards.filter(m => FjordLibrary.matches(m, query) && (view !== 'favorites' || m.favorite)
     && (view !== 'series' || m.isSeries) && (view !== 'all' || !m.isSeries));
-  $('library-title').innerHTML = `${query ? 'Søgeresultater' : view === 'favorites' ? 'Min liste' : view === 'series' ? 'Dine serier' : view === 'all' ? 'Dine film' : 'Dit bibliotek'} <span>${visible.length}</span>`;
+  const category = renderCategories(matching), visible = category.items;
+  const heading = view === 'series' ? 'Serier' : view === 'all' ? 'Film' : view === 'favorites' ? 'Min liste' : 'Dit bibliotek';
+  $('library-title').innerHTML = `${query ? 'Søgeresultater' : heading}${category.label ? ` · ${escapeHtml(category.label)}` : ''} <span>${visible.length}</span>`;
   $('empty').hidden = visible.length > 0;
   $('empty').querySelector('h3').textContent = query ? 'Ingen film matcher søgningen' : view === 'favorites' ? 'Din liste venter på favoritter' : 'Her begynder samlingen';
   $('empty').querySelector('p').textContent = query ? 'Prøv en anden filmtitel.' : view === 'favorites' ? 'Åbn en film, og tryk på Min liste for at gemme den her.' : state.user.admin ? 'Upload din første film, eller prøv afspilleren med den genererede 4K-testfilm.' : 'Din administrator kan tilføje film til det fælles bibliotek.';
   fillGrid('movie-grid', visible);
+  if (!visible.length && category.label) {
+    $('empty').querySelector('h3').textContent = `Ingen titler i ${category.label}`;
+    $('empty').querySelector('p').textContent = query ? 'Prøv en anden søgning eller kategori.' : 'Vælg en anden kategori eller Alle for at se resten af biblioteket.';
+  }
   const continuing = library.filter(m => m.position > 1 && m.position < m.duration - 2);
   $('continue-section').hidden = view !== 'home' || !!query || !continuing.length;
   fillGrid('continue-grid', continuing);
@@ -105,6 +111,7 @@ function fillGrid(id, movies) {
   $(id).querySelectorAll('[data-id]').forEach(button => button.onclick = () => openDetail(movies.find(m => m.id === button.dataset.id)));
 }
 setupLibraryUI();
+setupCategories();
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { view = button.dataset.view; document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === button)); render(); });
 $('search').oninput = render;
 $('logout').onclick = async () => { try { await api('/logout', 'POST'); authMode = 'login'; await boot(); } catch(e) { toast(e.message); } };
