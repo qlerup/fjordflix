@@ -128,6 +128,7 @@ async function openDetail(movie) {
   $('detail-description').textContent = `${(movie.size / 1024**3).toFixed(2)} GB · ${(movie.bitrate/1e6).toFixed(1)} Mbit/s · ${movie.audio?.toUpperCase() || 'Uden lyd'}. ${movie.title.includes('testfilm') ? 'Genereret testmønster med lyd til at teste 4K og transcoding.' : 'En film fra dit fælles bibliotek.'}`;
   $('detail-quality').value = 'auto'; $('favorite-button').textContent = movie.favorite ? '✓ På min liste' : '＋ Min liste';
   $('play-button').textContent = movie.position > 1 && movie.position < movie.duration - 2 ? `▶ Fortsæt fra ${clock(movie.position)}` : '▶ Afspil film';
+  $('restart-button').hidden = !(movie.position > 1 && movie.position < movie.duration - 2);
   $('detail').showModal(); await updatePlan();
 }
 async function updatePlan() {
@@ -136,7 +137,9 @@ async function updatePlan() {
 }
 $('detail-quality').onchange = updatePlan;
 $('favorite-button').onclick = async () => { try { await api(`/movies/${selected.id}/favorite`, 'POST'); selected.favorite = !selected.favorite; $('favorite-button').textContent = selected.favorite ? '✓ På min liste' : '＋ Min liste'; await refresh(); } catch(e) { toast(e.message); } };
-$('play-button').onclick = () => { $('detail').close(); $('player-dialog').showModal(); $('player-quality').value = $('detail-quality').value; startPlayback(selected.position < selected.duration - 2 ? selected.position : 0).catch(e => showPlayerError(e.message)); };
+function playFromDetail(start) { $('detail').close(); $('player-dialog').showModal(); $('player-quality').value = $('detail-quality').value; startPlayback(start).catch(e => showPlayerError(e.message)); }
+$('play-button').onclick = () => playFromDetail(selected.position < selected.duration - 2 ? selected.position : 0);
+$('restart-button').onclick = () => playFromDetail(0);
 function showPlayerError(message) { $('player-error').textContent = message; $('player-loading').hidden = true; }
 async function release() {
   video.pause(); video.removeAttribute('src'); video.load();
