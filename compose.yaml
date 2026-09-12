@@ -10,6 +10,7 @@ services:
       - fjordflix-data:/data
     environment:
       MAX_TRANSCODES: "3"
+      TMDB_READ_ACCESS_TOKEN: ${TMDB_READ_ACCESS_TOKEN:-}
       WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
       MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-}
     logging:

@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos
+from app import hub, media, demos, catalog
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -61,6 +61,7 @@ def digest(token):
 
 
 media.init(db)
+catalog.init(db)
 
 
 def stop_job(key):
@@ -354,6 +355,30 @@ def media_settings(request: Request, u=Depends(admin)):
     return {'media_url':direct, 'web_url':web or hub_url or str(request.base_url).rstrip('/'), 'hub_url':hub_url, 'enabled':bool(direct)}
 
 
+@app.get('/api/admin/metadata')
+def metadata_settings(u=Depends(admin)):
+    return catalog.status()
+
+
+@app.put('/api/admin/metadata')
+async def save_metadata_settings(request: Request, u=Depends(admin)):
+    try:
+        data = await request.json()
+        value = data.get('token') if isinstance(data, dict) else None
+        if not isinstance(value, str):
+            raise ValueError('Indsæt en TMDB API-nøgle eller API Read Access Token.')
+        catalog.save(value)
+    except ValueError:
+        raise HTTPException(400, 'Indsæt en gyldig TMDB API-nøgle eller API Read Access Token.')
+    return catalog.status()
+
+
+@app.delete('/api/admin/metadata')
+def disable_metadata(u=Depends(admin)):
+    catalog.disable()
+    return catalog.status()
+
+
 class MediaSettings(BaseModel):
     web_url: str = Field(max_length=300)
     media_url: str = Field(default='', max_length=300)
@@ -381,9 +406,14 @@ def probe(path):
     return {'width': video['width'], 'height': video['height'], 'video': video['codec_name'], 'audio': audio.get('codec_name'), 'duration': duration, 'bitrate': int(info['format'].get('bit_rate', 0)), 'hdr': video.get('color_transfer') in ('smpte2084', 'arib-std-b67'), 'pix_fmt': video.get('pix_fmt', ''), 'format': info['format'].get('format_name', ''), 'size': path.stat().st_size}
 
 
-def index_movie(path, title, mid):
+def index_movie(path, title, mid, enrich=False):
     meta = probe(path)
     subprocess.run(['ffmpeg', '-v', 'error', '-protocol_whitelist', 'file,pipe', '-ss', str(min(2, meta['duration'] / 3)), '-i', str(path), '-frames:v', '1', '-vf', 'scale=960:-2', '-y', str(DATA / 'posters' / f'{mid}.jpg')], capture_output=True, timeout=60)
+    if enrich:
+        meta['catalog'] = catalog.enrich(title, mid, DATA)
+        meta['original_title'] = title
+        if meta['catalog']['status'] == 'matched':
+            title = meta['catalog']['title']
     with db() as conn:
         conn.execute('INSERT INTO movies VALUES (?,?,?,?,?)', (mid, title[:160], str(path), json.dumps(meta), time.time()))
     return mid
@@ -406,11 +436,11 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
                 if shutil.disk_usage(MEDIA).free < len(chunk) + 512 * 1024**2:
                     raise HTTPException(507, 'Serveren mangler ledig diskplads.')
                 await asyncio.to_thread(output.write, chunk)
-        await asyncio.to_thread(index_movie, path, Path(filename).stem.replace('_', ' ').replace('.', ' '), mid)
+        await asyncio.to_thread(index_movie, path, Path(filename).stem.replace('_', ' ').replace('.', ' '), mid, True)
     except BaseException:
         path.unlink(missing_ok=True)
         raise
-    return {'id': mid}
+    return {'id': mid, 'metadata_status': movie(mid)[1].get('catalog', {}).get('status', 'disabled')}
 
 
 DEMO_LOCK = threading.Lock()
@@ -544,6 +574,13 @@ def poster(mid: str, u=Depends(user)):
     if not path.exists():
         raise HTTPException(404)
     return FileResponse(path)
+
+
+@app.get('/api/movies/{mid}/backdrop')
+def backdrop(mid: str, u=Depends(user)):
+    movie(mid)
+    path = DATA / 'posters' / f'{mid}-backdrop.jpg'
+    return FileResponse(path) if path.exists() else poster(mid, u)
 
 
 @app.get('/api/movies/{mid}/file')

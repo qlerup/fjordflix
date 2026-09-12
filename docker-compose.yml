@@ -14,6 +14,7 @@ services:
       - "${UPLOADS_HOST_DIR:-./media}:/media"
     environment:
       DATA_DIR: /data
+      TMDB_READ_ACCESS_TOKEN: ${TMDB_READ_ACCESS_TOKEN:-}
       MEDIA_DIR: /media
       FJORDHUB_URL: ${FJORDHUB_URL:-}
       FJORDHUB_API_KEY: ${FJORDHUB_API_KEY:-}

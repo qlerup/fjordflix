@@ -89,7 +89,8 @@ function render() {
   const featured = library[0];
   $('hero').querySelector('h1').textContent = featured ? featured.title : 'Din næste filmaften starter her.';
   $('hero').querySelector('.hero-content>p').textContent = featured ? `${featured.height >= 2160 ? '4K Ultra HD' : featured.height + 'p'} · ${featured.video.toUpperCase()} · ${clock(featured.duration)} — Fra dit eget bibliotek. Tryk afspil, og find dig til rette.` : 'Gør plads til de store fortællinger. Tilføj din første film, og gør biblioteket til dit eget.';
-  $('hero').querySelector('.hero-art').style.backgroundImage = featured ? `url('/api/movies/${featured.id}/poster')` : '';
+  if (featured?.catalog?.overview) $('hero').querySelector('.hero-content>p').textContent = featured.catalog.overview;
+  $('hero').querySelector('.hero-art').style.backgroundImage = featured ? `url('/api/movies/${featured.id}/backdrop')` : '';
   $('hero').querySelector('.orb').hidden = !!featured;
   $('hero-action').textContent = featured ? '▶ Se filmen' : '＋ Tilføj din første film';
   $('hero-action').hidden = !featured && !state.user.admin;
@@ -123,10 +124,17 @@ async function capabilities(movie, quality) {
 }
 async function openDetail(movie) {
   selected = movie; $('detail-title').textContent = movie.title;
-  $('detail-art').style.backgroundImage = `url('/api/movies/${movie.id}/poster')`;
+  $('detail-art').style.backgroundImage = `url('/api/movies/${movie.id}/backdrop')`;
   $('detail-meta').innerHTML = [`${movie.width} × ${movie.height}`,movie.video.toUpperCase(),movie.hdr ? 'HDR' : 'SDR',clock(movie.duration)].map(t => `<span>${escapeHtml(t)}</span>`).join('');
   $('detail-description').textContent = `${(movie.size / 1024**3).toFixed(2)} GB · ${(movie.bitrate/1e6).toFixed(1)} Mbit/s · ${movie.audio?.toUpperCase() || 'Uden lyd'}. ${movie.title.includes('testfilm') ? 'Genereret testmønster med lyd til at teste 4K og transcoding.' : 'En film fra dit fælles bibliotek.'}`;
   $('detail-quality').value = 'auto'; $('favorite-button').textContent = movie.favorite ? '✓ På min liste' : '＋ Min liste';
+  const info = movie.catalog;
+  if (info?.status === 'matched') {
+    if (info.overview) $('detail-description').textContent = info.overview;
+    const labels = [info.release_date?.slice(0,4), ...(info.genres || [])];
+    if (info.votes > 0) labels.push(`TMDB ${Number(info.rating).toFixed(1)}/10 · ${info.votes} stemmer`);
+    $('detail-meta').insertAdjacentHTML('afterbegin', labels.filter(Boolean).map(t => `<span>${escapeHtml(t)}</span>`).join(''));
+  }
   $('play-button').textContent = movie.position > 1 && movie.position < movie.duration - 2 ? `▶ Fortsæt fra ${clock(movie.position)}` : '▶ Afspil film';
   $('restart-button').hidden = !(movie.position > 1 && movie.position < movie.duration - 2);
   $('detail').showModal(); await updatePlan();
@@ -196,7 +204,7 @@ $('upload-form').onsubmit = event => {
   $('upload-submit').disabled = true; $('upload-progress').hidden = false; $('upload-progress').value = 0;
   const xhr = new XMLHttpRequest(); xhr.open('PUT', `/api/upload?filename=${encodeURIComponent(file.name)}`);
   xhr.upload.onprogress = e => { if(e.lengthComputable) { const p = Math.round(e.loaded/e.total*100); $('upload-progress').value = p; $('upload-status').textContent = p === 100 ? 'Upload færdig. Læser filmoplysninger og laver billede…' : `Uploader ${p}% · ${(e.loaded/1024**2).toFixed(0)} / ${(e.total/1024**2).toFixed(0)} MB`; } };
-  xhr.onload = async () => { $('upload-submit').disabled = false; if(xhr.status >= 200 && xhr.status < 300) { $('upload-status').textContent = 'Filmen er klar.'; $('upload-dialog').close(); $('upload-form').reset(); await refresh(); toast('Filmen er føjet til biblioteket.'); } else { let message = 'Upload mislykkedes.'; try { message = JSON.parse(xhr.responseText).detail || message; } catch {} $('upload-status').textContent = message; } };
+  xhr.onload = async () => { $('upload-submit').disabled = false; if(xhr.status >= 200 && xhr.status < 300) { $('upload-status').textContent = 'Filmen er klar.'; $('upload-dialog').close(); $('upload-form').reset(); await refresh(); const status = JSON.parse(xhr.responseText).metadata_status; toast(status === 'matched' ? 'Film tilføjet med oplysninger fra TMDB.' : status === 'disabled' ? 'Film tilføjet. Automatisk filmdata kræver et TMDB-token på serveren.' : status === 'unmatched' ? 'Film tilføjet. Intet sikkert match fundet i TMDB.' : 'Film tilføjet. TMDB kunne ikke kontaktes.'); } else { let message = 'Upload mislykkedes.'; try { message = JSON.parse(xhr.responseText).detail || message; } catch {} $('upload-status').textContent = message; } };
   xhr.onerror = () => { $('upload-submit').disabled = false; $('upload-status').textContent = 'Forbindelsen blev afbrudt. Prøv upload igen.'; };
   xhr.send(file);
 };
@@ -247,6 +255,39 @@ $('media-settings-open').onclick = async () => {
     $('media-settings-error').textContent='';
     $('admin-dialog').close(); $('media-settings-dialog').showModal();
   } catch(e) { toast(e.message); }
+};
+const metadataButton = document.createElement('button');
+metadataButton.className = 'secondary';
+metadataButton.textContent = 'Filmoplysninger · TMDB';
+$('media-settings-open').after(metadataButton);
+function showMetadataStatus(data) {
+  $('metadata-status').textContent = data.configured
+    ? (data.source === 'environment' ? 'API-nøgle er sat via serverens miljøvariabel.' : 'API-nøgle er gemt på serveren.')
+    : 'Automatiske filmopslag er slået fra.';
+  $('metadata-disable').disabled = !data.configured;
+}
+metadataButton.onclick = async () => {
+  try {
+    showMetadataStatus(await api('/admin/metadata'));
+    $('metadata-token').value = ''; $('metadata-error').textContent = '';
+    $('admin-dialog').close(); $('metadata-settings-dialog').showModal();
+  } catch(e) { toast(e.message); }
+};
+$('metadata-settings-dialog').addEventListener('close', () => { $('metadata-token').value = ''; });
+$('metadata-settings-form').onsubmit = async event => {
+  event.preventDefault(); $('metadata-save').disabled = true; $('metadata-error').textContent = '';
+  try {
+    showMetadataStatus(await api('/admin/metadata', 'PUT', {token: $('metadata-token').value.trim()}));
+    $('metadata-token').value = ''; toast('TMDB-nøglen er gemt. Bruges ved næste upload.');
+  } catch(e) { $('metadata-error').textContent = e.message; }
+  finally { $('metadata-save').disabled = false; }
+};
+$('metadata-disable').onclick = async () => {
+  if (!confirm('Fjern den gemte nøgle og slå nye filmopslag fra? Eksisterende filmdata bevares.')) return;
+  try {
+    showMetadataStatus(await api('/admin/metadata', 'DELETE'));
+    $('metadata-token').value = ''; $('metadata-error').textContent = '';
+  } catch(e) { $('metadata-error').textContent = e.message; }
 };
 $('media-settings-form').onsubmit = async event => {
   event.preventDefault();

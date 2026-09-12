@@ -130,3 +130,40 @@ en UHD-remux, der eksempelvis kan bruge HEVC, HDR og andre lydformater.
 ### Teknisk grundlag
 
 Python/FastAPI, SQLite med WAL, FFmpeg/FFprobe og en lokal kopi af HLS.js. Ingen eksterne webtjenester er nødvendige under brug. Afspilning bruger FFmpegs [HLS-muxer](https://ffmpeg.org/ffmpeg-formats.html#hls-2).
+# Automatiske filmoplysninger (TMDB)
+
+Efter upload søger FjordFlix efter filmen og tilføjer titel, beskrivelse, år,
+genrer, TMDB-rating, cover og baggrundsbillede. Dansk foretrækkes; mangler
+beskrivelsen på dansk, bruges engelsk. Oplysninger og billeder gemmes lokalt.
+Filens tekniske data, afspilning og selve videofilen ændres ikke.
+
+Opret en TMDB-konto og hent **API Read Access Token** eller API-nøglen under
+https://www.themoviedb.org/settings/api. Åbn tandhjulet i FjordFlix →
+**Filmoplysninger · TMDB**, indsæt nøglen, og tryk **Gem API-nøgle**.
+Ændringen gælder straks for nye uploads, uden genstart. Kun administratorer
+kan læse opsætningsstatus, gemme eller fjerne nøglen. Den gemte nøgle sendes
+aldrig tilbage til browseren. Nøglen gemmes i appens lokale database (ikke
+krypteret); beskyt derfor datamappen og backups mod uvedkommende.
+En gemt nøgle har forrang over miljøvariablen. Fjernelse slår opslag fra,
+også hvis en ældre miljøvariabel stadig er sat. Eksisterende filmdata bevares.
+
+Alternativt kan tokenet stadig sættes i installationens lokale `.env`:
+
+```dotenv
+TMDB_READ_ACCESS_TOKEN=dit_read_access_token
+```
+
+Genopret app-containeren efter ændringen. Begge Compose-filer understøtter
+variablen. Tokenet bruges kun på serveren og må ikke committes til GitHub.
+TMDB kræver accept af sine vilkår; udvikler-API'et er gratis til ikke-kommerciel
+brug med kildeangivelse (https://developer.themoviedb.org/docs/faq).
+Før aktivering skal et godkendt TMDB-logo også tilføjes i appens sektion
+"Om filmdata", jf. https://www.themoviedb.org/about/logos-attribution.
+Kildeangivelsen og den krævede erklæring er allerede indsat.
+
+Brug helst filnavne som `The.Matrix.1999.1080p.mkv`. Årstal hjælper med at
+skelne genindspilninger. Uklare eller manglende matches beholder filnavn og
+videostillbillede. Uden token eller ved API-fejl lykkes upload stadig, og
+brugerfladen fortæller, at metadata ikke blev hentet. Allerede uploadede film
+ændres ikke automatisk. Denne version matcher film; serieepisoder matches
+ikke som film. Testfilm springer opslaget over.
