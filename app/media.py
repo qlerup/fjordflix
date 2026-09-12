@@ -46,6 +46,20 @@ def validate_config(direct, web):
 def key(ticket):
     return hashlib.sha256(ticket.encode()).hexdigest()
 
+
+def prepare_probe(host, nonce, db):
+    with db() as conn:
+        conn.executemany('INSERT OR REPLACE INTO media_settings VALUES (?,?)',
+                         [('probe_host', host), ('probe_nonce', nonce), ('probe_expires', str(time.time()+600))])
+
+
+def connection_probe(host, db):
+    with db() as conn:
+        values = {r['name']:r['value'] for r in conn.execute('SELECT * FROM media_settings')}
+    if host != values.get('probe_host') or float(values.get('probe_expires', '0')) < time.time():
+        raise HTTPException(404, 'Ingen aktiv forbindelsestest.')
+    return {'nonce': values['probe_nonce']}
+
 def init(db):
     global _db
     with db() as conn:

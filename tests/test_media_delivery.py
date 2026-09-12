@@ -51,3 +51,16 @@ def test_direct_media_scoping_renewal_revocation_and_proxy_block(tmp_path):
     finally:
         main.media.save_config('','',main.db)
         web.close();direct.close()
+
+
+def test_gateway_probe_without_enabling_media():
+    main.media.save_config('', '', main.db)
+    main.media.prepare_probe('media.test', 'test-proof', main.db)
+    with TestClient(main.app, base_url='https://media.test') as client:
+        assert client.get('/media/connection-check').json() == {'nonce':'test-proof'}
+        assert client.get('/media/connection-check',headers={'CF-Ray':'proxied'}).status_code == 403
+        assert client.get('/media/connection-check',headers={'Host':'other.test'}).status_code == 404
+        assert main.media.config() == ('','')
+        with main.db() as conn:
+            conn.execute("UPDATE media_settings SET value='0' WHERE name='probe_expires'")
+        assert client.get('/media/connection-check').status_code == 404

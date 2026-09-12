@@ -115,10 +115,11 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
 async def security(request, call_next):
     direct, web_origin = media.config()
     is_media = request.url.path.startswith('/media/')
+    is_probe = request.url.path == '/media/connection-check'
     if is_media:
-        if not direct or request.headers.get('host', '').lower() != urlparse(direct).netloc.lower() or request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'):
+        if (not is_probe and (not direct or request.headers.get('host', '').lower() != urlparse(direct).netloc.lower())) or request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'):
             return Response('Video skal hentes via den direkte videoadresse uden Cloudflare.', status_code=403)
-        if request.headers.get('origin') not in (None, web_origin):
+        if not is_probe and request.headers.get('origin') not in (None, web_origin):
             return Response('Ugyldig video-oprindelse.', status_code=403)
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
             return Response(status_code=405)
@@ -587,6 +588,11 @@ def stream_file(sid, filename, u):
 def direct_original(ticket: str, mid: str):
     media.validate(ticket, db, session_user, mid=mid)
     return original_file(mid)
+
+
+@app.get('/media/connection-check')
+def media_connection_probe(request: Request):
+    return media.connection_probe(request.headers.get('host', '').lower(), db)
 
 
 @app.api_route('/media/{ticket}/streams/{sid}/{filename}', methods=['GET', 'HEAD'])
