@@ -51,7 +51,16 @@ test('persistent sidebar filters without closing and remembers film and series s
   w.view = 'series'; w.render();
   assert.equal(result.label,'Drama');
   w.view = 'home'; w.render();
-  assert.equal(sidebar.hidden,true);
-  assert.equal(w.document.querySelector('.library').classList.contains('with-categories'),false);
+  assert.equal(sidebar.hidden,false);
+  assert.equal(w.$('sidebar-genres').hidden,true);
+  assert.equal(w.document.querySelector('[data-side-view="home"]').getAttribute('aria-current'),'page');
+  const header = w.document.createElement('header');
+  header.innerHTML = '<button data-view="all">Film</button>';
+  w.document.body.append(header);
+  header.firstChild.onclick = () => {w.view = 'all'; w.render();};
+  w.document.querySelector('[data-side-view="all"]').click();
+  assert.equal(w.view,'all');
+  assert.equal(w.$('sidebar-genres').hidden,false);
+  assert.equal(result.label,'Komedie');
   dom.window.close();
 });
