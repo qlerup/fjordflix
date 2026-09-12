@@ -25,7 +25,7 @@ def test_network_failure_keeps_upload(monkeypatch, tmp_path):
     def fail(title):
         raise httpx.ConnectError('offline')
     monkeypatch.setattr(catalog, 'lookup', fail)
-    assert catalog.enrich('Dune', 'abc', tmp_path) == {'status': 'error'}
+    assert catalog.enrich('Dune', 'abc', tmp_path) == {'status': 'error', 'media_type': 'movie'}
 
 
 def test_images_failure_keeps_metadata(monkeypatch, tmp_path):

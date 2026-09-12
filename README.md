@@ -165,5 +165,41 @@ Brug helst filnavne som `The.Matrix.1999.1080p.mkv`. Årstal hjælper med at
 skelne genindspilninger. Uklare eller manglende matches beholder filnavn og
 videostillbillede. Uden token eller ved API-fejl lykkes upload stadig, og
 brugerfladen fortæller, at metadata ikke blev hentet. Allerede uploadede film
-ændres ikke automatisk. Denne version matcher film; serieepisoder matches
-ikke som film. Testfilm springer opslaget over.
+får ikke nye TMDB-oplysninger automatisk. Testfilm springer opslaget over.
+
+## Serier, sæsoner og afsnit
+
+Upload én videofil pr. afsnit. Navne som `The.Show.S02E10.1080p.mkv`,
+`The Show s02e10.mp4` og `The Show 2x10.mkv` genkendes automatisk.
+`S00E01` bruges til specialafsnit. Et startår før afsnitskoden hjælper
+med genindspilninger: `The Show (2020) S02E10.mkv`.
+
+Serieopslag bruger TMDB's TV-katalog, ikke filmsøgning. Der hentes seriecover,
+banner, seriebeskrivelse, genrer og rating samt titel, beskrivelse og dato for
+det konkrete afsnit. Dansk foretrækkes med engelsk beskrivelsesfallback.
+Mangler TMDB eller netværk, bevares lokal genkendelse af serien og afsnittet.
+
+**Hjem** viser én flise pr. serie og de enkelte film. **Film** og **Serier**
+filtrerer biblioteket. Åbn serien for at vælge sæson og afsnit; vælgerne viser
+kun uploadede filer i numerisk rækkefølge. Næste afsnit går videre til den
+næste uploadede fil, også på tværs af sæsoner. Afspilning og **Se videre**
+gemmes pr. fil; en favoritsat episode viser serien under **Min liste**.
+Ældre filer med en genkendelig afsnitskode grupperes lokalt uden at omskrive
+databasen. Kombinerede filer med flere afsnit understøttes ikke som flere
+selvstændige afsnit; del dem eller ret den registrerede episode manuelt.
+
+## Manuel rettelse
+
+Administratorer kan åbne **Rediger oplysninger** på en film eller et afsnit
+og ændre visningstitel, type, beskrivelser, genrer, dato og rating. For serier
+kan serienavn, startår, sæson og afsnit også rettes. Rettelser gælder den
+valgte fil, ikke automatisk resten af serien. Lokale afsnit grupperes efter
+serienavn/startår; sikre TMDB-matches grupperes efter serie-ID. Manuel
+klassifikation respekteres, selv hvis filnavnet peger på noget andet.
+
+Cover og banner kan erstattes med JPEG, PNG eller WebP (maks. 8 MB / 16 MP).
+Billeder valideres og konverteres til JPEG på serveren. Tomme billedfelter
+beholder eksisterende billeder. Tekst gemmes før billeder; ved billedfejl
+vises det tydeligt, at teksten allerede er gemt. Videofil, tekniske data,
+favoritter og afspilningshistorik ændres ikke af redigeringen. Der er ingen
+automatisk baggrundsopdatering, der overskriver manuelle oplysninger.

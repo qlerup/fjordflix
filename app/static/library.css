@@ -1,0 +1,16 @@
+.meta { flex-wrap: wrap; }
+.episode-selectors { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr); gap: 12px; }
+.episode-selectors label, .episode-selectors select { min-width: 0; }
+#episode-picker { border-top: 1px solid var(--line); padding: 20px 0 8px; }
+#episode-picker .fine { margin-top: 8px; }
+#library-editor textarea { display: block; resize: vertical; width: 100%; margin: 10px 0 20px; padding: 12px; background: #ffffff05; color: #eee; border: 1px solid #ffffff1f; border-radius: 7px; font: inherit; }
+#library-editor { overscroll-behavior: contain; }
+.hero-content>p { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.movie-card.series-card .movie-image { aspect-ratio: 2/3; }
+.movie-grid { align-items: start; }
+@media (max-width: 600px) {
+  header nav { grid-template-columns: repeat(4,1fr); gap: 2px; padding-left: 8px; padding-right: 8px; }
+  .nav-button { font-size: 12px; }
+  .episode-selectors { grid-template-columns: 1fr; gap: 0; }
+  #library-editor textarea { font-size: 16px; }
+}

@@ -59,15 +59,39 @@ def normalized(value):
     return ''.join(c for c in unicodedata.normalize('NFKD', value.casefold()) if c.isalnum())
 
 
-def choose_match(results, title, year):
+def identify(title):
+    """Local recognition works without TMDB, including specials (season zero)."""
+    match = re.search(r'(?<![a-z0-9])s(\d{1,3})[ ._-]*e(\d{1,4})(?!\d)', title, re.I)
+    if not match:
+        match = re.search(r'(?<![a-z0-9])(\d{1,3})x(\d{1,4})(?!\d)', title, re.I)
+    if not match:
+        return {'media_type': 'movie'}
+    name, year = clean_title(title[:match.start()])
+    if not name or int(match[2]) < 1:
+        return {'media_type': 'movie'}
+    season, episode = int(match[1]), int(match[2])
+    return {'media_type': 'tv', 'series_title': name, 'series_year': year or '',
+            'season': season, 'episode': episode, 'episode_title': '',
+            'title': f'{name} · S{season:02d}E{episode:02d}'}
+
+
+def series_key(info):
+    if info.get('media_type') != 'tv':
+        return None
+    if info.get('tmdb_id'):
+        return f"tmdb:{info['tmdb_id']}"
+    return 'local:' + normalized(info.get('series_title', '')) + ':' + str(info.get('series_year', ''))
+
+
+def choose_match(results, title, year, media_type='movie'):
     ranked = []
     for item in results:
         if item.get('adult') or not isinstance(item.get('id'), int):
             continue
-        if year and str(item.get('release_date', ''))[:4] != year:
+        if year and str(item.get('first_air_date' if media_type == 'tv' else 'release_date', ''))[:4] != year:
             continue
         score = max(SequenceMatcher(None, normalized(title), normalized(item.get(k) or '')).ratio()
-                    for k in ('title', 'original_title'))
+                    for k in (('name', 'original_name') if media_type == 'tv' else ('title', 'original_title')))
         ranked.append((score, item))
     ranked.sort(key=lambda x: x[0], reverse=True)
     if not ranked or ranked[0][0] < .92:
@@ -78,13 +102,14 @@ def choose_match(results, title, year):
 
 
 def lookup(title):
+    identified = identify(title)
+    kind = identified['media_type']
     token, _ = credential()
     if not token:
-        return {'status': 'disabled'}
-    query, year = clean_title(title)
-    # Episode filenames should not be matched against unrelated films.
-    if not query or re.search(r'\bS\d{1,2}E\d{1,3}\b', title, re.I):
-        return {'status': 'unmatched'}
+        return {**identified, 'status': 'disabled'}
+    query, year = (identified['series_title'], identified['series_year']) if kind == 'tv' else clean_title(title)
+    if not query:
+        return {**identified, 'status': 'unmatched'}
     with httpx.Client(timeout=8, follow_redirects=False) as client:
         def get(path, **params):
             headers = {}
@@ -99,19 +124,42 @@ def lookup(title):
             return response.json()
         params = {'query': query, 'include_adult': 'false'}
         if year:
-            params['primary_release_year'] = year
-        match = choose_match(get('search/movie', **params).get('results', []), query, year)
+            params['first_air_date_year' if kind == 'tv' else 'primary_release_year'] = year
+        match = choose_match(get(f'search/{kind}', **params).get('results', []), query, year, kind)
         if not match:
-            return {'status': 'unmatched'}
-        detail = get(f"movie/{match['id']}")
+            return {**identified, 'status': 'unmatched'}
+        detail = get(f"{kind}/{match['id']}")
         if not detail.get('overview'):
-            english = get(f"movie/{match['id']}", language='en-US')
-            detail['overview'] = english.get('overview', '')
-        return {'status': 'matched', 'tmdb_id': match['id'], 'title': detail.get('title') or query,
+            try:
+                english = get(f"{kind}/{match['id']}", language='en-US')
+                detail['overview'] = english.get('overview', '')
+            except httpx.HTTPError:
+                pass
+        result = {**identified, 'status': 'matched', 'tmdb_id': match['id'], 'title': detail.get('title') or query,
                 'overview': detail.get('overview', ''), 'release_date': detail.get('release_date', ''),
                 'genres': [g['name'] for g in detail.get('genres', [])],
                 'rating': detail.get('vote_average'), 'votes': detail.get('vote_count', 0),
                 'poster_path': detail.get('poster_path'), 'backdrop_path': detail.get('backdrop_path')}
+        if kind == 'tv':
+            result.update(series_title=detail.get('name') or query,
+                          series_year=str(detail.get('first_air_date', ''))[:4],
+                          series_overview=detail.get('overview', ''), episode_status='missing')
+            path = f"tv/{match['id']}/season/{identified['season']}/episode/{identified['episode']}"
+            try:
+                ep = get(path)
+                if not ep.get('overview'):
+                    try:
+                        ep['overview'] = get(path, language='en-US').get('overview', '')
+                    except httpx.HTTPError:
+                        pass
+                result.update(episode_title=ep.get('name', ''), overview=ep.get('overview', ''),
+                              release_date=ep.get('air_date', ''), episode_status='matched')
+            except httpx.HTTPError:
+                # Keep the series grouping/artwork even when an episode is absent from TMDB.
+                result['overview'] = ''
+            code = f"S{identified['season']:02d}E{identified['episode']:02d}"
+            result['title'] = f"{result['series_title']} · {code}" + (f" · {result['episode_title']}" if result['episode_title'] else '')
+        return result
 
 
 def download_image(remote_path, destination, size):
@@ -142,7 +190,7 @@ def enrich(title, mid, data_dir):
         result = lookup(title)
     except Exception:
         # External metadata is optional; malformed provider data must not reject video uploads.
-        return {'status': 'error'}
+        return {**identify(title), 'status': 'error'}
     if result['status'] == 'matched':
         for field, suffix, size in [('poster_path', '', 'w500'), ('backdrop_path', '-backdrop', 'w1280')]:
             try:

@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog
+from app import hub, media, demos, catalog, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -412,7 +412,7 @@ def index_movie(path, title, mid, enrich=False):
     if enrich:
         meta['catalog'] = catalog.enrich(title, mid, DATA)
         meta['original_title'] = title
-        if meta['catalog']['status'] == 'matched':
+        if meta['catalog'].get('title'):
             title = meta['catalog']['title']
     with db() as conn:
         conn.execute('INSERT INTO movies VALUES (?,?,?,?,?)', (mid, title[:160], str(path), json.dumps(meta), time.time()))
@@ -556,7 +556,35 @@ def demo(u=Depends(admin)):
 def movies(u=Depends(user)):
     with db() as conn:
         rows = conn.execute('SELECT m.*,COALESCE(p.position,0) position,COALESCE(p.favorite,0) favorite FROM movies m LEFT JOIN progress p ON p.movie_id=m.id AND p.user_id=? ORDER BY m.created DESC', (u['id'],)).fetchall()
-    return [dict(id=r['id'], title=r['title'], **json.loads(r['metadata']), position=r['position'], favorite=bool(r['favorite'])) for r in rows]
+    result = []
+    for r in rows:
+        meta = json.loads(r['metadata'])
+        info = meta.get('catalog', {})
+        # Legacy uploads are recognized locally; never override an explicit manual classification.
+        if not info.get('media_type') and not info.get('manual'):
+            info = {**catalog.identify(meta.get('original_title') or r['title']), **info}
+        meta['catalog'] = info
+        result.append(dict(id=r['id'], title=r['title'], **meta, series_key=catalog.series_key(info),
+                           position=r['position'], favorite=bool(r['favorite'])))
+    # Join offline/unmatched uploads to a uniquely identified series, without guessing
+    # between remakes. Original filename aliases also handle translated series titles.
+    aliases = {}
+    for item in result:
+        info = item['catalog']
+        if info.get('media_type') != 'tv' or not info.get('tmdb_id'):
+            continue
+        names = [info]
+        if not info.get('manual'):
+            names.append(catalog.identify(item.get('original_title') or item['title']))
+        for name in names:
+            if name.get('media_type') == 'tv':
+                alias = catalog.series_key({**name, 'tmdb_id': None})
+                aliases.setdefault(alias, set()).add(item['series_key'])
+    for item in result:
+        choices = aliases.get(item['series_key'], set())
+        if len(choices) == 1:
+            item['series_key'] = next(iter(choices))
+    return result
 
 
 def movie(mid):
@@ -565,6 +593,53 @@ def movie(mid):
     if not row:
         raise HTTPException(404, 'Filmen findes ikke.')
     return dict(row), json.loads(row['metadata'])
+
+
+@app.put('/api/movies/{mid}/metadata')
+def edit_movie_metadata(mid: str, data: library_metadata.LibraryEdit, u=Depends(admin)):
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('SELECT metadata FROM movies WHERE id=?', (mid,)).fetchone()
+        if row is None:
+            raise HTTPException(404, 'Filmen eller afsnittet findes ikke.')
+        try:
+            meta = library_metadata.edited_metadata(json.loads(row['metadata']), data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        conn.execute('UPDATE movies SET title=?,metadata=? WHERE id=?',
+                     (data.title.strip(), json.dumps(meta), mid))
+    return {'ok': True}
+
+
+@app.put('/api/movies/{mid}/artwork/{kind}')
+async def edit_movie_artwork(mid: str, kind: str, request: Request, u=Depends(admin)):
+    if kind not in ('poster', 'backdrop'):
+        raise HTTPException(404)
+    movie(mid)
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > 8 * 1024**2:
+            raise HTTPException(413, 'Billedet må højst fylde 8 MB.')
+    suffix = '-backdrop' if kind == 'backdrop' else ''
+    # DB identifiers are random hex; never allow a path supplied in a URL to become a filename.
+    if not re.fullmatch(r'[a-f0-9]{32}', mid):
+        raise HTTPException(400, 'Ugyldigt film-id.')
+    try:
+        await asyncio.to_thread(library_metadata.save_artwork, content, DATA / 'posters' / f'{mid}{suffix}.jpg')
+    except (ValueError, subprocess.TimeoutExpired):
+        raise HTTPException(400, 'Vælg et gyldigt JPEG-, PNG- eller WebP-billede på højst 16 megapixel.')
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('SELECT title,metadata FROM movies WHERE id=?', (mid,)).fetchone()
+        meta = json.loads(row['metadata'])
+        info = meta.setdefault('catalog', {})
+        if not info.get('media_type'):
+            info.update(catalog.identify(meta.get('original_title') or row['title']))
+        info.update(manual=True, artwork_updated=time.time())
+        info[kind + '_cached'] = True
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
+    return {'ok': True}
 
 
 @app.get('/api/movies/{mid}/poster')

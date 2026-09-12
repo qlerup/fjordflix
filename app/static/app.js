@@ -76,8 +76,10 @@ async function boot() {
 async function refresh() { library = await api('/movies'); render(); }
 function render() {
   const query = $('search').value.toLocaleLowerCase('da');
-  const visible = library.filter(m => m.title.toLocaleLowerCase('da').includes(query) && (view !== 'favorites' || m.favorite));
-  $('library-title').innerHTML = `${view === 'favorites' ? 'Min liste' : query ? 'Søgeresultater' : 'Dit filmbibliotek'} <span>${visible.length}</span>`;
+  const cards = FjordLibrary.cards(library);
+  const visible = cards.filter(m => FjordLibrary.matches(m, query) && (view !== 'favorites' || m.favorite)
+    && (view !== 'series' || m.isSeries) && (view !== 'all' || !m.isSeries));
+  $('library-title').innerHTML = `${query ? 'Søgeresultater' : view === 'favorites' ? 'Min liste' : view === 'series' ? 'Dine serier' : view === 'all' ? 'Dine film' : 'Dit bibliotek'} <span>${visible.length}</span>`;
   $('empty').hidden = visible.length > 0;
   $('empty').querySelector('h3').textContent = query ? 'Ingen film matcher søgningen' : view === 'favorites' ? 'Din liste venter på favoritter' : 'Her begynder samlingen';
   $('empty').querySelector('p').textContent = query ? 'Prøv en anden filmtitel.' : view === 'favorites' ? 'Åbn en film, og tryk på Min liste for at gemme den her.' : state.user.admin ? 'Upload din første film, eller prøv afspilleren med den genererede 4K-testfilm.' : 'Din administrator kan tilføje film til det fælles bibliotek.';
@@ -86,21 +88,23 @@ function render() {
   $('continue-section').hidden = view !== 'home' || !!query || !continuing.length;
   fillGrid('continue-grid', continuing);
   $('hero').hidden = view !== 'home' || !!query;
-  const featured = library[0];
+  const featured = cards[0];
   $('hero').querySelector('h1').textContent = featured ? featured.title : 'Din næste filmaften starter her.';
   $('hero').querySelector('.hero-content>p').textContent = featured ? `${featured.height >= 2160 ? '4K Ultra HD' : featured.height + 'p'} · ${featured.video.toUpperCase()} · ${clock(featured.duration)} — Fra dit eget bibliotek. Tryk afspil, og find dig til rette.` : 'Gør plads til de store fortællinger. Tilføj din første film, og gør biblioteket til dit eget.';
-  if (featured?.catalog?.overview) $('hero').querySelector('.hero-content>p').textContent = featured.catalog.overview;
-  $('hero').querySelector('.hero-art').style.backgroundImage = featured ? `url('/api/movies/${featured.id}/backdrop')` : '';
+  const summary = featured?.isSeries ? featured.catalog.series_overview : featured?.catalog?.overview;
+  if (summary) $('hero').querySelector('.hero-content>p').textContent = summary;
+  $('hero').querySelector('.hero-art').style.backgroundImage = featured ? `url('${FjordLibrary.artwork(featured, 'backdrop')}')` : '';
   $('hero').querySelector('.orb').hidden = !!featured;
-  $('hero-action').textContent = featured ? '▶ Se filmen' : '＋ Tilføj din første film';
+  $('hero-action').textContent = featured ? featured.isSeries ? '☷ Se afsnit' : '▶ Se filmen' : '＋ Tilføj din første film';
   $('hero-action').hidden = !featured && !state.user.admin;
   $('hero-action').onclick = () => featured ? openDetail(featured) : $('upload-dialog').showModal();
   $('demo-button').hidden = !state.user.admin || !!featured;
 }
 function fillGrid(id, movies) {
-  $(id).innerHTML = movies.map(m => `<button class="movie-card" data-id="${m.id}"><div class="movie-image"><img src="/api/movies/${m.id}/poster" alt="" loading="lazy"><span class="resolution">${m.height >= 2160 ? '4K' : m.height+'p'}${m.hdr ? ' · HDR' : ''}</span><span class="card-play">▶</span></div>${m.position ? `<div class="progress-bar"><div style="width:${Math.min(100,m.position/m.duration*100)}%"></div></div>` : ''}<h3>${escapeHtml(m.title)}</h3><p>${clock(m.duration)} &nbsp;·&nbsp; ${escapeHtml(m.video.toUpperCase())} ${m.favorite ? '&nbsp;·&nbsp; ♥' : ''}</p></button>`).join('');
-  $(id).querySelectorAll('[data-id]').forEach(button => button.onclick = () => openDetail(library.find(m => m.id === button.dataset.id)));
+  $(id).innerHTML = movies.map(m => `<button class="movie-card${m.isSeries ? ' series-card' : ''}" data-id="${m.id}"><div class="movie-image"><img src="${FjordLibrary.artwork(m, 'poster')}" alt="" loading="lazy"><span class="resolution">${m.isSeries ? 'SERIE' : m.height >= 2160 ? '4K' : m.height+'p'}${m.hdr ? ' · HDR' : ''}</span><span class="card-play">${m.isSeries ? '☷' : '▶'}</span></div>${m.position && !m.isSeries ? `<div class="progress-bar"><div style="width:${Math.min(100,m.position/m.duration*100)}%"></div></div>` : ''}<h3>${escapeHtml(m.title)}</h3><p>${m.isSeries ? `${m.seasonCount} sæsoner · ${m.episodes.length} afsnit` : `${clock(m.duration)} · ${escapeHtml(m.video.toUpperCase())}`} ${m.favorite ? '&nbsp;·&nbsp; ♥' : ''}</p></button>`).join('');
+  $(id).querySelectorAll('[data-id]').forEach(button => button.onclick = () => openDetail(movies.find(m => m.id === button.dataset.id)));
 }
+setupLibraryUI();
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { view = button.dataset.view; document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === button)); render(); });
 $('search').oninput = render;
 $('logout').onclick = async () => { try { await api('/logout', 'POST'); authMode = 'login'; await boot(); } catch(e) { toast(e.message); } };
@@ -123,21 +127,24 @@ async function capabilities(movie, quality) {
   return {quality, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:navigator.connection?.downlink || 0};
 }
 async function openDetail(movie) {
+  if (movie?.isSeries) movie = FjordLibrary.initial(movie.episodes);
+  if (!movie) return;
   selected = movie; $('detail-title').textContent = movie.title;
-  $('detail-art').style.backgroundImage = `url('/api/movies/${movie.id}/backdrop')`;
+  $('detail-art').style.backgroundImage = `url('${FjordLibrary.artwork(movie, 'backdrop')}')`;
   $('detail-meta').innerHTML = [`${movie.width} × ${movie.height}`,movie.video.toUpperCase(),movie.hdr ? 'HDR' : 'SDR',clock(movie.duration)].map(t => `<span>${escapeHtml(t)}</span>`).join('');
   $('detail-description').textContent = `${(movie.size / 1024**3).toFixed(2)} GB · ${(movie.bitrate/1e6).toFixed(1)} Mbit/s · ${movie.audio?.toUpperCase() || 'Uden lyd'}. ${movie.title.includes('testfilm') ? 'Genereret testmønster med lyd til at teste 4K og transcoding.' : 'En film fra dit fælles bibliotek.'}`;
   $('detail-quality').value = 'auto'; $('favorite-button').textContent = movie.favorite ? '✓ På min liste' : '＋ Min liste';
   const info = movie.catalog;
-  if (info?.status === 'matched') {
-    if (info.overview) $('detail-description').textContent = info.overview;
+  if (info?.status === 'matched' || info?.manual) {
+    if (info.overview || info.manual) $('detail-description').textContent = info.overview || '';
     const labels = [info.release_date?.slice(0,4), ...(info.genres || [])];
-    if (info.votes > 0) labels.push(`TMDB ${Number(info.rating).toFixed(1)}/10 · ${info.votes} stemmer`);
+    if (info.rating != null && (info.votes > 0 || info.manual)) labels.push(`${info.manual ? 'Rating' : 'TMDB'} ${Number(info.rating).toFixed(1)}/10`);
     $('detail-meta').insertAdjacentHTML('afterbegin', labels.filter(Boolean).map(t => `<span>${escapeHtml(t)}</span>`).join(''));
   }
-  $('play-button').textContent = movie.position > 1 && movie.position < movie.duration - 2 ? `▶ Fortsæt fra ${clock(movie.position)}` : '▶ Afspil film';
+  showEpisodePicker(movie);
+  $('play-button').textContent = movie.position > 1 && movie.position < movie.duration - 2 ? `▶ Fortsæt fra ${clock(movie.position)}` : movie.series_key ? '▶ Afspil afsnit' : '▶ Afspil film';
   $('restart-button').hidden = !(movie.position > 1 && movie.position < movie.duration - 2);
-  $('detail').showModal(); await updatePlan();
+  if (!$('detail').open) $('detail').showModal(); await updatePlan();
 }
 async function updatePlan() {
   const generation = ++planGeneration;
