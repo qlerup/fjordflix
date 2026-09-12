@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media
+from app import hub, media, demos
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -414,6 +414,49 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
 
 
 DEMO_LOCK = threading.Lock()
+DEMO_PACK_LOCK = threading.Lock()
+DEMO_PACK = {'running': False, 'completed': 0, 'error': ''}
+
+
+def generate_demo_pack():
+    try:
+        for number, spec in enumerate(demos.CATALOG):
+            with db() as conn:
+                exists = conn.execute('SELECT id FROM movies WHERE title=?', (spec[1],)).fetchone()
+            if not exists:
+                mid = secrets.token_hex(16)
+                path = MEDIA / f'{mid}.mp4'
+                try:
+                    if shutil.disk_usage(MEDIA).free < 1024**3:
+                        raise RuntimeError('Der skal være mindst 1 GB ledig plads til testfilmene.')
+                    demos.generate(spec, path, GPU)
+                    index_movie(path, spec[1], mid)
+                except Exception:
+                    path.unlink(missing_ok=True)
+                    raise
+            with DEMO_PACK_LOCK:
+                DEMO_PACK['completed'] = number + 1
+    except Exception:
+        with DEMO_PACK_LOCK:
+            DEMO_PACK['error'] = 'Testfilmene kunne ikke færdiggøres. Tjek ledig plads og prøv igen.'
+    finally:
+        with DEMO_PACK_LOCK:
+            DEMO_PACK['running'] = False
+
+
+@app.get('/api/demo-pack')
+def demo_pack_status(u=Depends(admin)):
+    with DEMO_PACK_LOCK:
+        return dict(DEMO_PACK)
+
+
+@app.post('/api/demo-pack')
+def demo_pack_start(u=Depends(admin)):
+    with DEMO_PACK_LOCK:
+        if not DEMO_PACK['running']:
+            DEMO_PACK.update(running=True, completed=0, error='')
+            threading.Thread(target=generate_demo_pack, daemon=True).start()
+        return dict(DEMO_PACK)
 
 
 @app.post('/api/demo')
@@ -558,7 +601,10 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'touch': time.time()}
     for _ in range(200):
         playlist = folder / 'index.m3u8'
-        if playlist.exists():
+        # Prepare several segments before playback, so Chrome does not exhaust
+        # the first two seconds while the next playlist update is pending.
+        contents = playlist.read_text() if playlist.exists() else ''
+        if contents.count('#EXTINF:') >= 3 or '#EXT-X-ENDLIST' in contents:
             return media.issue({**result, 'url': f'/api/streams/{sid}/index.m3u8', 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db)
         if process.poll() is not None:
             break

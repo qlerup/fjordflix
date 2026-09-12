@@ -177,6 +177,23 @@ $('upload-form').onsubmit = event => {
   xhr.onerror = () => { $('upload-submit').disabled = false; $('upload-status').textContent = 'Forbindelsen blev afbrudt. Prøv upload igen.'; };
   xhr.send(file);
 };
+let demoPackTimer;
+async function updateDemoPack() {
+  clearTimeout(demoPackTimer);
+  try {
+    const status = await api('/demo-pack');
+    $('demo-pack-button').disabled = status.running;
+    $('demo-pack-status').textContent = status.error || (status.running ? `Opretter testfilm · ${status.completed} af 3 klar. Du kan lukke dette vindue imens.` : status.completed === 3 ? 'Alle tre testfilm er klar i biblioteket.' : 'Oprettes på serveren. Det kan tage nogle minutter. Eksisterende testfilm genbruges.');
+    if(status.running) demoPackTimer = setTimeout(updateDemoPack, 2000);
+    else if(status.completed) await refresh();
+  } catch(e) { $('demo-pack-button').disabled = false; $('demo-pack-status').textContent = e.message; }
+}
+$('demo-pack-button').onclick = async () => {
+  $('demo-pack-button').disabled = true;
+  try { await api('/demo-pack', 'POST'); await updateDemoPack(); }
+  catch(e) { $('demo-pack-button').disabled = false; $('demo-pack-status').textContent = e.message; }
+};
+$('admin-open').addEventListener('click', updateDemoPack);
 $('demo-button').onclick = async () => { $('demo-button').disabled = true; $('demo-button').textContent = 'Genererer 4K-testfilm…'; try { await api('/demo', 'POST'); await refresh(); toast('4K-testfilmen er klar. Åbn den og prøv 1080p.'); } catch(e) { toast(e.message); } finally { $('demo-button').disabled = false; $('demo-button').textContent = 'Prøv med en 4K-testfilm'; } };
 $('admin-open').onclick = async () => { try { const data = await api('/admin'); $('server-stats').innerHTML = `<div><strong>${data.gpu ? 'NVIDIA NVENC' : 'CPU'}</strong>Transcoding-motor · ${data.gpu ? 'GPU-test bestået' : 'softwarekonvertering'}</div><div><strong>${data.free_gb} GB</strong>Ledig serverplads</div><div><strong>${data.streams} / ${data.max_streams}</strong>Aktive konverteringssessioner</div><div><strong>${data.users.length}</strong>Brugere på serveren</div>`; $('users-list').innerHTML = data.users.map(u => `<div class="user-row">${escapeHtml(u.name)}<span>${u.admin ? 'Administrator' : 'Bruger'}</span></div>`).join(''); $('admin-dialog').showModal(); } catch(e) { toast(e.message); } };
 $('create-invite').onclick = async () => { try { const result = await api('/invites','POST'); $('invite-result').hidden = false; $('invite-code').value = result.token; } catch(e) { toast(e.message); } };

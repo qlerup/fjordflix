@@ -110,6 +110,15 @@ Integrationstesten opretter altid en separat midlertidig database og testfilm og
 
 Administratorer kan vælge **Server → Direkte videoforbindelse**. Webadressen foreslås fra FjordHub; videoadressen kræver en separat, fungerende HTTPS-indgang uden Cloudflare-proxy. Se [opsætning og Docker-konfiguration til Caddy](deploy/direct-media/README.md). Funktionen er slået fra som standard og ændrer ikke automatisk DNS eller routeren.
 
+### Flere testfilm
+
+Åbn tandhjulet i FjordFlix og vælg **Tilføj 3 testfilm** under Testbibliotek.
+Serveren opretter Fjordens ro (30 sekunder, 1080p), Det sidste sollys (1 minut,
+1080p) og Langt fra jorden (2 minutter, 4K). Filmene har originale illustrationer
+med langsom bevægelse og et lydløst lydspor. De tester bibliotek, afspilning og
+seek, men er ikke en belastningstest svarende til en film med høj bitrate.
+Oprettelsen fortsætter, når dialogen lukkes; eksisterende testfilm genbruges.
+
 ### Teknisk grundlag
 
 Python/FastAPI, SQLite med WAL, FFmpeg/FFprobe og en lokal kopi af HLS.js. Ingen eksterne webtjenester er nødvendige under brug. Afspilning bruger FFmpegs [HLS-muxer](https://ffmpeg.org/ffmpeg-formats.html#hls-2).

@@ -24,4 +24,5 @@ with sync_playwright() as p:
     print(json.dumps(state))
     assert state['encoder']=='NVIDIA NVENC'
     assert state['offset']==0 and state['ended'] and state['time']>=11 and not state['loading']
+    assert not [e for e in state['events'] if e['event']=='waiting' and e['time'] > .1], state['events']
     browser.close()
