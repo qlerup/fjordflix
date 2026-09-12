@@ -20,9 +20,11 @@ test('series combine genres across episodes and count only once', () => {
   assert.equal(categories.filter(cards,'none').length,0);
 });
 
-test('compact menu hides empty genres, keeps search stable and separates film and series selections', () => {
+test('navigation panel selects genres, closes with restored focus and remembers each library view', () => {
   const dom = new JSDOM('<div class="library-heading"><h2 id="library-title">Serier</h2></div>', {runScripts:'outside-only'});
   const w = dom.window;
+  w.HTMLDialogElement.prototype.showModal = function() {this.open = true;};
+  w.HTMLDialogElement.prototype.close = function() {this.open = false; this.dispatchEvent(new w.Event('close'));};
   w.$ = id => w.document.getElementById(id);
   w.view = 'series';
   const items = [{catalog:{genres:['Drama']}}, {catalog:{genres:['Komedie']}}];
@@ -31,22 +33,33 @@ test('compact menu hides empty genres, keeps search stable and separates film an
   w.render = () => {result = w.renderCategories(matching, items)};
   w.eval(fs.readFileSync('app/static/categories.js','utf8'));
   w.setupCategories(); w.render();
-  const select = w.$('library-genre');
-  assert.equal(select.options.length, 3);
-  assert.equal(w.document.querySelectorAll('.category-button').length, 0);
-  select.value = 'drama'; select.onchange();
+  const links = w.$('categories-links'), panel = w.$('categories-panel');
+  const choose = key => links.querySelector(`[data-category="${key}"]`).click();
+  assert.equal(links.children.length, 3);
+  assert.equal(w.document.querySelectorAll('select').length, 0);
+  w.$('categories-open').click();
+  assert.equal(panel.open, true);
+  assert.equal(w.document.activeElement.dataset.category, 'all');
+  choose('drama');
+  assert.equal(panel.open, false);
+  assert.equal(w.document.activeElement.id, 'categories-open');
+  assert.equal(w.$('categories-open').getAttribute('aria-expanded'), 'false');
   assert.equal(result.label,'Drama');
   matching = []; w.render();
   assert.equal(result.items.length, 0);
-  assert.equal(select.options.length, 3);
-  assert.equal(select.value, 'drama');
+  assert.equal(links.children.length, 3);
+  assert.equal(links.querySelector('[aria-current="page"]').dataset.category, 'drama');
   matching = items;
   w.view = 'all'; w.render();
   assert.equal(result.label,null);
-  select.value = 'comedy'; select.onchange();
+  choose('comedy');
   assert.equal(result.items.length,1);
   w.view = 'series'; w.render();
   assert.equal(result.label,'Drama');
+  w.$('categories-open').click();
+  assert.equal(w.document.activeElement.dataset.category, 'drama');
+  w.$('categories-close').click();
+  assert.equal(panel.open, false);
   w.view = 'home'; w.render();
   assert.equal(w.$('library-categories').hidden,true);
   dom.window.close();
