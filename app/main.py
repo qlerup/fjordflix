@@ -602,6 +602,71 @@ def movie(mid):
     return dict(row), json.loads(row['metadata'])
 
 
+class LibraryDelete(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=10000)
+
+
+@app.delete('/api/movies/{mid}')
+def delete_movie(mid: str, data: LibraryDelete, u=Depends(admin)):
+    ids = set(data.ids)
+    if mid not in ids or any(not re.fullmatch(r'[a-f0-9]{32}', key) for key in ids):
+        raise HTTPException(400, 'Ugyldigt valg.')
+    staged = []
+    try:
+        with db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            items = movies(u)
+            selected_item = next((item for item in items if item['id'] == mid), None)
+            if selected_item is None:
+                raise HTTPException(404, 'Filmen eller afsnittet findes ikke.')
+            if len(ids) > 1:
+                key = selected_item['series_key']
+                series_ids = {item['id'] for item in items if key and item['series_key'] == key}
+                if ids != series_ids:
+                    raise HTTPException(409, 'Serien er ændret. Genindlæs biblioteket og prøv igen.')
+            rows = [conn.execute('SELECT path FROM movies WHERE id=?', (key,)).fetchone() for key in sorted(ids)]
+            paths = set()
+            for key, row in zip(sorted(ids), rows):
+                if row is None:
+                    raise HTTPException(409, 'Biblioteket er ændret. Genindlæs og prøv igen.')
+                path = Path(row['path']).resolve()
+                if not path.is_relative_to(MEDIA.resolve()) or path == MEDIA.resolve():
+                    raise HTTPException(409, 'Videofilen ligger uden for bibliotekets mediemappe og kan ikke slettes her.')
+                paths.add(path)
+                for suffix in ('', '-backdrop', '-episode', '-frame'):
+                    artwork = DATA / 'posters' / f'{key}{suffix}.jpg'
+                    if not artwork.resolve().is_relative_to((DATA / 'posters').resolve()):
+                        raise HTTPException(409, 'Billedets placering er ugyldig.')
+                    paths.add(artwork)
+            for other in conn.execute('SELECT id,path FROM movies'):
+                if other['id'] not in ids and Path(other['path']).resolve() in paths:
+                    raise HTTPException(409, 'Videofilen bruges også af en anden titel og kan ikke slettes her.')
+            with LOCK:
+                if any(job.get('movie_id') in ids for job in JOBS.values()):
+                    raise HTTPException(409, 'Et af afsnittene eller filmen streames lige nu. Stop afspilningen og prøv igen.')
+            # Move first so a locked file cannot leave a half-deleted library.
+            for path in paths:
+                if path.exists():
+                    target = path.with_name(f'.deleted-{secrets.token_hex(16)}')
+                    path.rename(target)
+                    staged.append((path, target))
+            conn.executemany('DELETE FROM progress WHERE movie_id=?', [(key,) for key in ids])
+            conn.executemany('DELETE FROM movies WHERE id=?', [(key,) for key in ids])
+    except Exception as exc:
+        for original, temporary in reversed(staged):
+            temporary.rename(original)
+        if isinstance(exc, OSError):
+            raise HTTPException(409, 'Filerne kunne ikke slettes. Stop eventuel afspilning og prøv igen.') from exc
+        raise
+    cleanup_pending = False
+    for _, temporary in staged:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            cleanup_pending = True
+    return {'ok': True, 'deleted': sorted(ids), 'cleanup_pending': cleanup_pending}
+
+
 @app.put('/api/movies/{mid}/metadata')
 def edit_movie_metadata(mid: str, data: library_metadata.LibraryEdit, u=Depends(admin)):
     with db() as conn:
@@ -845,7 +910,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file', '-hls_segment_filename', str(folder / 'segment%05d.ts'), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log)
-        JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'touch': time.time()}
+        JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time()}
     for _ in range(200):
         playlist = folder / 'index.m3u8'
         # Prepare several segments before playback, so Chrome does not exhaust

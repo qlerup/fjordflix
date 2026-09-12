@@ -82,6 +82,7 @@ function setupLibraryUI() {
     }
   };
   $('metadata-refresh').onclick = () => selectMetadataMatch();
+  setupLibraryDeletion();
   $('series-season').onchange = () => {
     const episodes = FjordLibrary.episodes(library, selected.series_key).filter(m => m.catalog.season === Number($('series-season').value));
     if (episodes.length) openDetail(FjordLibrary.initial(episodes));
@@ -174,6 +175,9 @@ function setupLibraryUI() {
 
 function showEpisodePicker(movie) {
   showCatalogStatus(movie);
+  $('library-delete').hidden = !state.user.admin;
+  $('library-delete').textContent = movie.series_key ? 'Slet afsnit' : 'Slet film';
+  $('library-delete-series').hidden = !state.user.admin || !movie.series_key;
   const episodes = movie.series_key ? FjordLibrary.episodes(library, movie.series_key) : [];
   $('episode-picker').hidden = !episodes.length;
   $('library-edit').hidden = !state.user.admin;

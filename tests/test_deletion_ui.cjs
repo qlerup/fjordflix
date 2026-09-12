@@ -1,0 +1,37 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {JSDOM} = require('../test-results/dropdown-deps/node_modules/jsdom');
+
+test('confirmation snapshots the whole series, cancel is harmless, errors allow retry', async () => {
+  const dom = new JSDOM('<dialog id="detail" open><button id="metadata-refresh"></button></dialog>', {runScripts:'outside-only'});
+  const w = dom.window;
+  w.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
+  w.HTMLDialogElement.prototype.close = function() { this.open = false; };
+  w.$ = id => w.document.getElementById(id);
+  w.state = {user:{admin:true}};
+  w.library = [{id:'a', series_key:'flash', catalog:{series_title:'Flash',season:1,episode:1}}, {id:'b',series_key:'flash'}, {id:'c'}];
+  w.selected = w.library[0];
+  w.FjordLibrary = {episodes:(items,key) => items.filter(item => item.series_key === key)};
+  w.render = w.toast = () => {};
+  w.refresh = async () => {};
+  const requests = [];
+  w.api = async (...args) => {requests.push(args); throw Error('Låst fil');};
+  w.eval(fs.readFileSync('app/static/deletion.js','utf8'));
+  w.setupLibraryDeletion();
+  w.$('library-delete-series').click();
+  assert.match(w.$('delete-description').textContent, /2 afsnit/);
+  w.$('delete-cancel').click();
+  assert.equal(requests.length, 0);
+  w.$('library-delete-series').click();
+  await w.$('delete-submit').onclick();
+  assert.equal(w.$('delete-error').textContent, 'Låst fil');
+  assert.equal(w.$('delete-submit').disabled, false);
+  assert.equal(JSON.stringify(requests[0][2]), JSON.stringify({ids:['a','b']}));
+  w.api = async () => ({deleted:['a','b']});
+  await w.$('delete-submit').onclick();
+  assert.equal(w.$('library-delete-confirm').open, false);
+  assert.equal(w.library.length, 1);
+  assert.equal(w.library[0].id, 'c');
+  dom.window.close();
+});
