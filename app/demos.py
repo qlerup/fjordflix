@@ -1,6 +1,21 @@
 """Original, illustrated demo movies. Generated locally without external downloads."""
 import subprocess
 
+STRESS_TITLE = 'Bitstorm · 4K · 120 Mbit/s'
+
+
+def generate_stress(path, gpu):
+    command = ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+               'testsrc2=size=3840x2160:rate=24,noise=alls=12:allf=t:all_seed=42',
+               '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', '60',
+               '-c:v', 'h264_nvenc' if gpu else 'libx264',
+               '-preset', 'fast' if gpu else 'ultrafast',
+               '-b:v', '120M', '-minrate', '120M', '-maxrate', '120M', '-bufsize', '240M',
+               '-g', '48', '-pix_fmt', 'yuv420p']
+    command += ['-rc', 'cbr'] if gpu else ['-x264-params', 'nal-hrd=cbr:filler=1']
+    command += ['-c:a', 'aac', '-movflags', '+faststart', '-y', str(path)]
+    subprocess.run(command, capture_output=True, check=True, timeout=1800)
+
 CATALOG = [
     ('fjord', 'Fjordens ro', 30, 1920, 1080, '#071b38', '#32c7c2'),
     ('desert', 'Det sidste sollys', 60, 1920, 1080, '#431836', '#ffb65b'),

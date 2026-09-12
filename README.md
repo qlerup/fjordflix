@@ -119,6 +119,14 @@ med langsom bevægelse og et lydløst lydspor. De tester bibliotek, afspilning o
 seek, men er ikke en belastningstest svarende til en film med høj bitrate.
 Oprettelsen fortsætter, når dialogen lukkes; eksisterende testfilm genbruges.
 
+**Tilføj 120 Mbit/s-testfilm** opretter også Bitstorm: 60 sekunders syntetisk
+4K/24-video med bevægelse og støj, H.264 og cirka 120 Mbit/s (omkring 900 MB).
+Oprettelsen kræver 2 GB ledig plads og kontrollerer den faktiske bitrate før
+filmen føjes til biblioteket. Vælg **Original** for at teste den fulde bitrate
+eller **1080p** for at teste transcoding. Automatisk kvalitet kan nedskalere
+ud fra browserens netværksestimat. Testen svarer ikke til alle egenskaber ved
+en UHD-remux, der eksempelvis kan bruge HEVC, HDR og andre lydformater.
+
 ### Teknisk grundlag
 
 Python/FastAPI, SQLite med WAL, FFmpeg/FFprobe og en lokal kopi af HLS.js. Ingen eksterne webtjenester er nødvendige under brug. Afspilning bruger FFmpegs [HLS-muxer](https://ffmpeg.org/ffmpeg-formats.html#hls-2).

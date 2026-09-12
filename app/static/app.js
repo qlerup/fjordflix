@@ -178,6 +178,23 @@ $('upload-form').onsubmit = event => {
   xhr.send(file);
 };
 let demoPackTimer;
+let stressDemoTimer;
+async function updateStressDemo() {
+  clearTimeout(stressDemoTimer);
+  try {
+    const status = await api('/demo-stress');
+    $('demo-stress-button').disabled = status.running;
+    $('demo-stress-status').textContent = status.error || (status.running ? 'Opretter 4K ved 120 Mbit/s. Det kan tage flere minutter; du kan lukke vinduet imens.' : status.id ? 'Bitstorm er klar. Vælg Original for at teste den fulde bitrate, eller 1080p for at teste transcoding.' : 'Syntetisk testfilm med bevægelse og støj. Eksisterende testfilm genbruges.');
+    if(status.running) stressDemoTimer = setTimeout(updateStressDemo, 2000);
+    else if(status.id) await refresh();
+  } catch(e) { $('demo-stress-button').disabled = false; $('demo-stress-status').textContent = e.message; }
+}
+$('demo-stress-button').onclick = async () => {
+  $('demo-stress-button').disabled = true;
+  try { await api('/demo-stress', 'POST'); await updateStressDemo(); }
+  catch(e) { $('demo-stress-button').disabled = false; $('demo-stress-status').textContent = e.message; }
+};
+$('admin-open').addEventListener('click', updateStressDemo);
 async function updateDemoPack() {
   clearTimeout(demoPackTimer);
   try {

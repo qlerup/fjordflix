@@ -416,6 +416,51 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
 DEMO_LOCK = threading.Lock()
 DEMO_PACK_LOCK = threading.Lock()
 DEMO_PACK = {'running': False, 'completed': 0, 'error': ''}
+STRESS_DEMO = {'running': False, 'id': None, 'error': ''}
+
+
+def generate_stress_demo():
+    path = None
+    try:
+        with db() as conn:
+            existing = conn.execute('SELECT id FROM movies WHERE title=?', (demos.STRESS_TITLE,)).fetchone()
+        if existing:
+            mid = existing['id']
+        else:
+            if shutil.disk_usage(MEDIA).free < 2 * 1024**3:
+                raise RuntimeError('Der skal være mindst 2 GB ledig plads.')
+            mid = secrets.token_hex(16)
+            path = MEDIA / f'{mid}.mp4'
+            demos.generate_stress(path, GPU)
+            meta = probe(path)
+            if not 110_000_000 <= meta['bitrate'] <= 130_000_000:
+                raise RuntimeError('Testfilmen ramte ikke den ønskede bitrate. Prøv igen.')
+            index_movie(path, demos.STRESS_TITLE, mid)
+        with DEMO_PACK_LOCK:
+            STRESS_DEMO['id'] = mid
+    except Exception as exc:
+        if path:
+            path.unlink(missing_ok=True)
+        with DEMO_PACK_LOCK:
+            STRESS_DEMO['error'] = str(exc) if isinstance(exc, RuntimeError) else 'Testfilmen kunne ikke genereres. Tjek serverens plads og GPU, og prøv igen.'
+    finally:
+        with DEMO_PACK_LOCK:
+            STRESS_DEMO['running'] = False
+
+
+@app.get('/api/demo-stress')
+def stress_demo_status(u=Depends(admin)):
+    with DEMO_PACK_LOCK:
+        return dict(STRESS_DEMO)
+
+
+@app.post('/api/demo-stress')
+def stress_demo_start(u=Depends(admin)):
+    with DEMO_PACK_LOCK:
+        if not STRESS_DEMO['running']:
+            STRESS_DEMO.update(running=True, id=None, error='')
+            threading.Thread(target=generate_stress_demo, daemon=True).start()
+        return dict(STRESS_DEMO)
 
 
 def generate_demo_pack():
