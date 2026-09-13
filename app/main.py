@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog, uploads, quality, library as library_metadata
+from app import hub, media, demos, catalog, uploads, quality, tracks, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -409,7 +409,7 @@ def probe(path):
     if not video or not video.get('width'):
         raise HTTPException(400, 'Filen indeholder ikke et videospor.')
     duration = float(info['format'].get('duration', 0))
-    return {'width': video['width'], 'height': video['height'], 'video': video['codec_name'], 'audio': audio.get('codec_name'), 'duration': duration, 'bitrate': int(info['format'].get('bit_rate', 0)), 'hdr': video.get('color_transfer') in ('smpte2084', 'arib-std-b67'), 'pix_fmt': video.get('pix_fmt', ''), 'format': info['format'].get('format_name', ''), 'size': path.stat().st_size, 'quality': quality.inspect(video, audio, path)}
+    return {'width': video['width'], 'height': video['height'], 'video': video['codec_name'], 'audio': audio.get('codec_name'), 'duration': duration, 'bitrate': int(info['format'].get('bit_rate', 0)), 'hdr': video.get('color_transfer') in ('smpte2084', 'arib-std-b67'), 'pix_fmt': video.get('pix_fmt', ''), 'format': info['format'].get('format_name', ''), 'size': path.stat().st_size, 'quality': quality.inspect(video, audio, path), 'tracks': tracks.describe(info['streams'])}
 
 
 async def refresh_source_quality():
@@ -417,7 +417,7 @@ async def refresh_source_quality():
         rows = conn.execute('SELECT id,path,metadata FROM movies').fetchall()
     for row in rows:
         saved = json.loads(row['metadata']).get('quality', {})
-        if saved.get('version') == 1 and (saved.get('mediainfo') or not shutil.which('mediainfo')):
+        if saved.get('version') == 1 and (saved.get('mediainfo') or not shutil.which('mediainfo')) and json.loads(row['metadata']).get('tracks', {}).get('version') == 1:
             continue
         try:
             details = await asyncio.to_thread(probe, Path(row['path']))
@@ -430,6 +430,8 @@ async def refresh_source_quality():
             if current:
                 meta = json.loads(current['metadata'])
                 meta['quality'] = details['quality']
+                if 'tracks' in details:
+                    meta['tracks'] = details['tracks']
                 conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), row['id']))
 
 
@@ -880,15 +882,58 @@ def favorite(mid: str, u=Depends(user)):
     return {'ok': True}
 
 
+@app.get('/api/movies/{mid}/tracks')
+def movie_tracks(mid: str, u=Depends(user)):
+    row, meta = movie(mid)
+    if meta.get('tracks', {}).get('version') == 1:
+        return meta['tracks']
+    try:
+        available = tracks.scan(row['path'])
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        raise HTTPException(503, 'Lydspor og undertekster kunne ikke læses. Prøv igen.')
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        current = conn.execute('SELECT metadata FROM movies WHERE id=? AND path=?', (mid, row['path'])).fetchone()
+        if not current:
+            raise HTTPException(404)
+        updated = json.loads(current['metadata'])
+        updated['tracks'] = available
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(updated), mid))
+    return available
+
+
+@app.get('/api/movies/{mid}/subtitles/{index}.vtt')
+def movie_subtitles(mid: str, index: int, u=Depends(user)):
+    row, meta = movie(mid)
+    try:
+        _, subtitle = tracks.select(meta, subtitle_index=index)
+        if subtitle['delivery'] != 'text':
+            raise ValueError('Dette spor vises ved at brænde underteksterne ind i videoen.')
+        path = tracks.webvtt(row['path'], index, DATA / 'subtitles')
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        raise HTTPException(503, 'Underteksterne kunne ikke klargøres. Prøv igen.')
+    return FileResponse(path, media_type='text/vtt', headers={'Cache-Control': 'private, no-cache'})
+
+
 class Playback(BaseModel):
     quality: str = 'auto'
     direct: bool = False
     h264: bool = False
     bandwidth: float = Field(default=0, ge=0, le=100000)
     start: float = Field(default=0, ge=0, le=1e8)
+    audio_track: int | None = Field(default=None, ge=0, strict=True)
+    subtitle_track: int | None = Field(default=None, ge=0, strict=True)
 
 
 def decide(meta, data):
+    try:
+        audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    burn = subtitle and subtitle['delivery'] == 'burn'
+    remap_audio = len(meta.get('tracks', {}).get('audio', [])) > 1
     if data.quality not in ('auto', 'original', '1080', '720', '480'):
         raise HTTPException(400, 'Ukendt kvalitet.')
     limit = {'1080': 8, '720': 4, '480': 2}
@@ -898,9 +943,9 @@ def decide(meta, data):
             quality = '1080' if data.bandwidth >= 12 else ('720' if data.bandwidth >= 6 else '480')
         else:
             quality = 'original'
-    if quality == 'original' and data.direct:
+    if quality == 'original' and data.direct and not burn and not remap_audio:
         return {'mode': 'Direct Play', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Browseren understøtter originalfilen.'}
-    if quality == 'original' and data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr']:
+    if quality == 'original' and data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'] and not burn:
         return {'mode': 'Direct Stream', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Videoen bevares. Indpakning og lyd tilpasses afspilleren.'}
     target = min(meta['height'], int(quality) if quality.isdigit() else 1080)
     return {'mode': 'Transcoding', 'height': target, 'mbps': limit.get(quality, 8), 'reason': 'Valgt kvalitet eller format kræver videokonvertering.'}
@@ -916,6 +961,11 @@ def plan(mid: str, data: Playback, u=Depends(user)):
 def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     row, meta = movie(mid)
     result = decide(meta, data)
+    audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
+    burn = subtitle and subtitle['delivery'] == 'burn'
+    result.update(audio_track=audio['index'] if audio else None,
+                  subtitle_track=subtitle['index'] if subtitle else None,
+                  subtitle_delivery=subtitle['delivery'] if subtitle else None)
     offset = min(data.start, max(0, meta['duration'] - 1))
     if result['mode'] == 'Direct Play':
         return media.issue({**result, 'url': f'/api/movies/{mid}/file', 'session': None, 'offset': 0, 'encoder': 'Original'}, request, mid, db)
@@ -927,7 +977,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         sid = secrets.token_hex(16)
         folder = DATA / 'streams' / sid
         folder.mkdir()
-        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', row['path'], '-map', '0:v:0', '-map', '0:a:0?', '-sn']
+        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', row['path']]
+        cmd += ['-map', '[vout]' if burn else '0:v:0', '-map', f"0:{audio['index']}" if audio else '0:a:0?', '-sn']
         encoder = 'Remux + AAC'
         if result['mode'] == 'Direct Stream':
             cmd += ['-c:v', 'copy']
@@ -937,7 +988,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             if meta['hdr']:
                 filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']
             filters += [f"scale=-2:{result['height']}", 'format=yuv420p']
-            cmd += ['-vf', ','.join(filters), '-c:v', 'h264_nvenc' if GPU else 'libx264', '-preset', 'fast' if GPU else 'veryfast', '-b:v', f"{result['mbps']}M", '-maxrate', f"{result['mbps']}M", '-bufsize', f"{result['mbps'] * 2}M", '-force_key_frames', 'expr:gte(t,n_forced*2)']
+            if burn:
+                cmd += ['-filter_complex', f"[0:{subtitle['index']}]scale={int(meta['width'])}:{int(meta['height'])}[sub];[0:v:0][sub]overlay=eof_action=pass:shortest=0," + ','.join(filters) + '[vout]']
+            else:
+                cmd += ['-vf', ','.join(filters)]
+            cmd += ['-c:v', 'h264_nvenc' if GPU else 'libx264', '-preset', 'fast' if GPU else 'veryfast', '-b:v', f"{result['mbps']}M", '-maxrate', f"{result['mbps']}M", '-bufsize', f"{result['mbps'] * 2}M", '-force_key_frames', 'expr:gte(t,n_forced*2)']
             if GPU:
                 # NVENC otherwise forces I-frames without IDR boundaries. HLS then
                 # waits for the default GOP (~10s at 24fps), stalling Chrome at its end.

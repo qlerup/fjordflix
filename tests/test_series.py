@@ -86,7 +86,7 @@ def test_quality_backfill_preserves_concurrent_edits_and_progress(client, monkey
             meta = json.loads(row['metadata'])
             meta['catalog'] = {'manual': True, 'overview': 'New description'}
             conn.execute('UPDATE movies SET metadata=?', (json.dumps(meta),))
-        return {'quality': details}
+        return {'quality': details, 'tracks': {'version': 1, 'audio': [], 'subtitles': []}}
     monkeypatch.setattr(main, 'probe', probe)
     asyncio.run(main.refresh_source_quality())
     item = client.get('/api/movies').json()[0]

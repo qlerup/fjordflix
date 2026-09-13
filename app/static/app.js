@@ -123,6 +123,7 @@ function fillGrid(id, movies) {
 }
 setupLibraryUI();
 setupCategories();
+FjordTracks.setup();
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { view = button.dataset.view; document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === button)); render(); });
 $('search').oninput = render;
 $('logout').onclick = async () => { try { await api('/logout', 'POST'); authMode = 'login'; await boot(); } catch(e) { toast(e.message); } };
@@ -142,7 +143,7 @@ async function capabilities(movie, quality) {
   if (movie.video === 'h264' && movie.pix_fmt !== 'yuv420p') supported = false;
   // HDR passthrough is deliberately conservative until the full output chain is known.
   if (movie.hdr) supported = false;
-  return {quality, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:navigator.connection?.downlink || 0};
+  return {quality, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:navigator.connection?.downlink || 0, ...FjordTracks.request()};
 }
 async function openDetail(movie) {
   if (movie?.isSeries) movie = FjordLibrary.initial(movie.episodes);
@@ -162,7 +163,9 @@ async function openDetail(movie) {
   showEpisodePicker(movie);
   $('play-button').textContent = movie.position > 1 && movie.position < movie.duration - 2 ? `▶ Fortsæt fra ${clock(movie.position)}` : movie.series_key ? '▶ Afspil afsnit' : '▶ Afspil film';
   $('restart-button').hidden = !(movie.position > 1 && movie.position < movie.duration - 2);
-  if (!$('detail').open) $('detail').showModal(); await updatePlan();
+  if (!$('detail').open) $('detail').showModal();
+  await FjordTracks.prepare(movie);
+  if (selected === movie) await updatePlan();
 }
 async function updatePlan() {
   const generation = ++planGeneration;
@@ -175,6 +178,7 @@ $('play-button').onclick = () => playFromDetail(selected.position < selected.dur
 $('restart-button').onclick = () => playFromDetail(0);
 function showPlayerError(message) { $('player-error').textContent = message; $('player-loading').hidden = true; }
 async function release() {
+  FjordTracks.clear();
   video.pause(); video.removeAttribute('src'); video.load();
   if (hls) { hls.destroy(); hls = null; }
   const old = playback; playback = null;
@@ -204,6 +208,7 @@ async function startPlayback(position = 0, fallback = false) {
       hls.on(Hls.Events.ERROR, (_, info) => { if (info.fatal) showPlayerError('Streamen blev afbrudt. Vælg kvalitet igen for at genstarte.'); });
     } else if (!result.session || video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else { showPlayerError('Denne browser understøtter ikke HLS. Prøv en nyere browser.'); }
+    FjordTracks.attach(result).catch(e => { if (e.name !== 'AbortError' && generation === playGeneration) toast(e.message); });
   } finally { switching = false; }
 }
 video.onplaying = () => { $('player-loading').hidden = true; if(playback) badge('actual-badge', playback.mode); };

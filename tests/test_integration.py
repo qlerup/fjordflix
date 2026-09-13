@@ -35,7 +35,8 @@ def test_complete_streaming_flow():
         assert viewer.post('/api/invites').status_code == 403
         assert viewer.put('/api/upload?filename=test.mp4', content=b'bad').status_code == 403
         assert owner.put('/api/upload?filename=test.mp4', content=b'not a video').status_code == 400
-        assert not list((main.DATA / 'media').iterdir())
+        # Chunked upload support keeps an empty .uploads directory in the media folder.
+        assert not any(p.is_file() for p in (main.DATA / 'media').rglob('*'))
 
         began = time.monotonic()
         generated = owner.post('/api/demo')
