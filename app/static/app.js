@@ -79,7 +79,7 @@ function render() {
   const cards = FjordLibrary.cards(library);
   const matching = cards.filter(m => FjordLibrary.matches(m, query) && (view !== 'favorites' || m.favorite)
     && (view !== 'series' || m.isSeries) && (view !== 'all' || !m.isSeries));
-  const category = renderCategories(matching, cards.filter(m => view === 'series' ? m.isSeries : !m.isSeries)), visible = category.items;
+  const category = renderCategories(matching, cards.filter(m => view === 'favorites' ? m.favorite : view === 'series' ? m.isSeries : !m.isSeries)), visible = category.items;
   const heading = view === 'series' ? 'Serier' : view === 'all' ? 'Film' : view === 'favorites' ? 'Min liste' : 'Dit bibliotek';
   $('library-title').innerHTML = `${query ? 'Søgeresultater' : heading}${category.label ? ` · ${escapeHtml(category.label)}` : ''} <span>${visible.length}</span>`;
   $('empty').hidden = visible.length > 0;
@@ -108,7 +108,13 @@ function render() {
 }
 function fillGrid(id, movies) {
   $(id).innerHTML = movies.map(m => `<button class="movie-card${m.isSeries ? ' series-card' : ''}" data-id="${m.id}"><div class="movie-image"><img src="${FjordLibrary.artwork(m, 'poster')}" alt="" loading="lazy"><span class="resolution">${m.isSeries ? 'SERIE' : m.height >= 2160 ? '4K' : m.height+'p'}${m.hdr ? ' · HDR' : ''}</span><span class="card-play">${m.isSeries ? '☷' : '▶'}</span></div>${m.position && !m.isSeries ? `<div class="progress-bar"><div style="width:${Math.min(100,m.position/m.duration*100)}%"></div></div>` : ''}<h3>${escapeHtml(m.title)}</h3><p>${m.isSeries ? `${m.seasonCount} sæsoner · ${m.episodes.length} afsnit` : `${clock(m.duration)} · ${escapeHtml(m.video.toUpperCase())}`} ${m.favorite ? '&nbsp;·&nbsp; ♥' : ''}</p></button>`).join('');
-  $(id).querySelectorAll('[data-id]').forEach(button => button.onclick = () => openDetail(movies.find(m => m.id === button.dataset.id)));
+  $(id).querySelectorAll('[data-id]').forEach(button => {
+    button.onclick = () => openDetail(movies.find(m => m.id === button.dataset.id));
+    const image = button.querySelector('.movie-image img');
+    const updatePosterFormat = () => button.classList.toggle('poster-card', image.naturalHeight > image.naturalWidth);
+    image.addEventListener('load', updatePosterFormat);
+    if (image.complete) updatePosterFormat();
+  });
 }
 setupLibraryUI();
 setupCategories();

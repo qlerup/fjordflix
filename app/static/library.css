@@ -6,7 +6,7 @@
 #library-editor textarea { display: block; resize: vertical; width: 100%; margin: 10px 0 20px; padding: 12px; background: #ffffff05; color: #eee; border: 1px solid #ffffff1f; border-radius: 7px; font: inherit; }
 #library-editor { overscroll-behavior: contain; }
 .hero-content>p { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-.movie-card.series-card .movie-image { aspect-ratio: 2/3; }
+.movie-card.series-card .movie-image, .movie-card.poster-card .movie-image { aspect-ratio: 2/3; }
 .movie-grid { align-items: start; }
 .dropzone.drag-over { background:#ec344e18; border-color:var(--red); }
 .upload-queue { list-style:none; margin:16px 0; padding:0; max-height:280px; overflow-y:auto; }
