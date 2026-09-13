@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sqlite3
 
@@ -75,6 +76,26 @@ def client(monkeypatch, tmp_path):
         conn.execute('INSERT INTO movies VALUES (?,?,?,?,?)', ('a'*32, 'Show S01E02', '/video.mkv', json.dumps({'duration': 100, 'video': 'hevc', 'height': 2160}), 0))
         conn.execute('INSERT INTO progress VALUES (?,?,?,?)', ('owner', 'a'*32, 32, 1))
     return TestClient(main.app)
+
+
+def test_quality_backfill_preserves_concurrent_edits_and_progress(client, monkeypatch):
+    details = {'version': 1, 'dynamic_range': 'Dolby Vision', 'dolby_atmos': True, 'mediainfo': True}
+    def probe(path):
+        with main.db() as conn:
+            row = conn.execute('SELECT metadata FROM movies').fetchone()
+            meta = json.loads(row['metadata'])
+            meta['catalog'] = {'manual': True, 'overview': 'New description'}
+            conn.execute('UPDATE movies SET metadata=?', (json.dumps(meta),))
+        return {'quality': details}
+    monkeypatch.setattr(main, 'probe', probe)
+    asyncio.run(main.refresh_source_quality())
+    item = client.get('/api/movies').json()[0]
+    assert item['quality'] == details
+    assert item['catalog']['overview'] == 'New description'
+    assert item['position'] == 32 and item['favorite']
+    assert item['height'] == 2160 and item['video'] == 'hevc'
+    monkeypatch.setattr(main, 'probe', lambda path: pytest.fail('Already scanned'))
+    asyncio.run(main.refresh_source_quality())
 
 
 def test_legacy_and_manual_edit(client, monkeypatch):

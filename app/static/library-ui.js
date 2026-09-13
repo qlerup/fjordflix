@@ -24,6 +24,28 @@ const FjordLibrary = {
     return [item.title, item.catalog?.series_title, item.catalog?.episode_title,
       ...(item.episodes || []).map(m => m.title)].filter(Boolean).join(' ').toLocaleLowerCase('da').includes(query);
   },
+  qualityLabels(item) {
+    const q = item.quality || {};
+    const height = Number(item.height), width = Number(item.width);
+    const resolution = height >= 4320 || width >= 7680 ? '8K' : height >= 2160 || width >= 3840 ? '4K'
+      : height >= 1080 || width >= 1920 ? '1080p' : height >= 720 || width >= 1280 ? '720p' : height > 0 ? `${height}p` : null;
+    const codec = q.audio_codec || item.audio;
+    const names = {ac3:'Dolby Digital', eac3:'Dolby Digital Plus', truehd:'Dolby TrueHD', dts:'DTS', aac:'AAC', flac:'FLAC', opus:'Opus', mp3:'MP3'};
+    let sound = q.dolby_atmos ? 'Dolby Atmos' : names[codec] || (codec ? codec.toUpperCase() : 'Uden lyd');
+    if (codec === 'dts' && /^DTS(?:-HD|:X)/.test(q.audio_profile || '')) sound = q.audio_profile;
+    const channels = q.audio_channels;
+    const layout = q.audio_layout || '';
+    const channelLabel = channels === 1 ? 'Mono' : channels === 2 ? 'Stereo'
+      : layout.startsWith('5.1') ? '5.1' : layout.startsWith('7.1') ? '7.1' : channels > 2 ? `${channels} kanaler` : '';
+    if (channelLabel && !q.dolby_atmos) sound += ` ${channelLabel}`;
+    return [resolution, q.dynamic_range || (item.hdr ? 'HDR' : null), sound].filter(Boolean);
+  },
+  qualityBadges(item) {
+    const labels = this.qualityLabels(item);
+    const varies = item.episodes?.some(episode => this.qualityLabels(episode).join('|') !== labels.join('|'));
+    return {labels: varies ? [...labels, 'Varierer'] : labels,
+      description: `${item.isSeries ? 'Kildekvalitet for det valgte afsnit' : 'Filens kildekvalitet'}: ${labels.join(' · ')}.${varies ? ' Kvaliteten varierer mellem afsnit.' : ''}`};
+  },
   code(item) { return `S${String(item.catalog.season).padStart(2,'0')}E${String(item.catalog.episode).padStart(2,'0')}`; },
   artwork(item, kind) { return `/api/movies/${item.id}/${kind}?v=${encodeURIComponent(item.catalog?.artwork_updated || 0)}`; }
 };

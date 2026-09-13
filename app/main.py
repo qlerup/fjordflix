@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog, uploads, library as library_metadata
+from app import hub, media, demos, catalog, uploads, quality, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -107,8 +107,10 @@ async def lifespan(app):
             with db() as conn:
                 conn.execute('DELETE FROM sessions WHERE expires < ?', (time.time(),))
     task = asyncio.create_task(cleanup())
+    quality_task = asyncio.create_task(refresh_source_quality())
     yield
     task.cancel()
+    quality_task.cancel()
     for key in list(JOBS):
         stop_job(key)
 
@@ -407,7 +409,28 @@ def probe(path):
     if not video or not video.get('width'):
         raise HTTPException(400, 'Filen indeholder ikke et videospor.')
     duration = float(info['format'].get('duration', 0))
-    return {'width': video['width'], 'height': video['height'], 'video': video['codec_name'], 'audio': audio.get('codec_name'), 'duration': duration, 'bitrate': int(info['format'].get('bit_rate', 0)), 'hdr': video.get('color_transfer') in ('smpte2084', 'arib-std-b67'), 'pix_fmt': video.get('pix_fmt', ''), 'format': info['format'].get('format_name', ''), 'size': path.stat().st_size}
+    return {'width': video['width'], 'height': video['height'], 'video': video['codec_name'], 'audio': audio.get('codec_name'), 'duration': duration, 'bitrate': int(info['format'].get('bit_rate', 0)), 'hdr': video.get('color_transfer') in ('smpte2084', 'arib-std-b67'), 'pix_fmt': video.get('pix_fmt', ''), 'format': info['format'].get('format_name', ''), 'size': path.stat().st_size, 'quality': quality.inspect(video, audio, path)}
+
+
+async def refresh_source_quality():
+    with db() as conn:
+        rows = conn.execute('SELECT id,path,metadata FROM movies').fetchall()
+    for row in rows:
+        saved = json.loads(row['metadata']).get('quality', {})
+        if saved.get('version') == 1 and (saved.get('mediainfo') or not shutil.which('mediainfo')):
+            continue
+        try:
+            details = await asyncio.to_thread(probe, Path(row['path']))
+        except (OSError, ValueError, subprocess.TimeoutExpired, HTTPException):
+            continue
+        with db() as conn:
+            # Read again under a write lock to preserve edits made during probing.
+            conn.execute('BEGIN IMMEDIATE')
+            current = conn.execute('SELECT metadata FROM movies WHERE id=? AND path=?', (row['id'], row['path'])).fetchone()
+            if current:
+                meta = json.loads(current['metadata'])
+                meta['quality'] = details['quality']
+                conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), row['id']))
 
 
 def index_movie(path, title, mid, enrich=False):

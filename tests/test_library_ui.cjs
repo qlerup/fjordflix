@@ -4,6 +4,15 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ui = require('../app/static/library-ui.js');
 const ep = (id,s,e,position=0) => ({id,title:`Show S${s}E${e}`,duration:100,position,series_key:'local:show:',catalog:{series_title:'Show',season:s,episode:e}});
+test('source quality badges distinguish cropped 4K, Atmos, channels and mixed series', () => {
+  const movie = {width:3840,height:1600,audio:'eac3',quality:{dynamic_range:'Dolby Vision',dolby_atmos:true}};
+  assert.deepEqual(ui.qualityBadges(movie).labels, ['4K','Dolby Vision','Dolby Atmos']);
+  const episode = {width:1920,height:1080,audio:'aac',quality:{dynamic_range:'SDR',audio_channels:2}};
+  assert.deepEqual(ui.qualityLabels(episode), ['1080p','SDR','AAC Stereo']);
+  assert.deepEqual(ui.qualityLabels({...episode,audio:'eac3',quality:{audio_channels:6,audio_layout:'5.1(side)'}}), ['1080p','Dolby Digital Plus 5.1']);
+  assert.equal(ui.qualityBadges({...episode,isSeries:true,episodes:[episode,movie]}).labels.at(-1), 'Varierer');
+  assert.equal(ui.qualityBadges({...episode,isSeries:true,episodes:[episode,episode]}).labels.includes('Varierer'), false);
+});
 test('one card per series, natural episode ordering, sparse seasons and duplicates', () => {
   const items = [ep('a',2,10),ep('b',1,2),ep('c',1,10),ep('d',0,1),ep('e',1,2),{id:'film',title:'Film'}];
   const cards = ui.cards(items);

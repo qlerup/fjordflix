@@ -8,6 +8,8 @@
 .hero-content>p { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 .movie-card.series-card .movie-image, .movie-card.poster-card .movie-image { aspect-ratio: 2/3; }
 .movie-grid { align-items: start; }
+.quality-badges { position:absolute; top:10px; left:10px; right:10px; display:flex; flex-wrap:wrap; align-items:flex-start; gap:4px; }
+.quality-badge { padding:4px 6px; border:1px solid #ffffff30; border-radius:4px; background:#101014e8; color:#fff; font-size:10px; font-weight:700; line-height:1.3; max-width:100%; overflow-wrap:anywhere; }
 .dropzone.drag-over { background:#ec344e18; border-color:var(--red); }
 .upload-queue { list-style:none; margin:16px 0; padding:0; max-height:280px; overflow-y:auto; }
 .upload-queue:empty { display:none; }
