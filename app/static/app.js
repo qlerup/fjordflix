@@ -107,7 +107,12 @@ function render() {
   $('demo-button').hidden = !state.user.admin || !!featured;
 }
 function fillGrid(id, movies) {
-  $(id).innerHTML = movies.map(m => `<button class="movie-card${m.isSeries ? ' series-card' : ''}" data-id="${m.id}"><div class="movie-image"><img src="${FjordLibrary.artwork(m, 'poster')}" alt="" loading="lazy"><span class="quality-badges" title="${escapeHtml(FjordLibrary.qualityBadges(m).description)}" aria-label="${escapeHtml(FjordLibrary.qualityBadges(m).description)}">${FjordLibrary.qualityBadges(m).labels.map(label => `<span class="quality-badge">${escapeHtml(label)}</span>`).join('')}</span><span class="card-play">${m.isSeries ? '☷' : '▶'}</span></div>${m.position && !m.isSeries ? `<div class="progress-bar"><div style="width:${Math.min(100,m.position/m.duration*100)}%"></div></div>` : ''}<h3>${escapeHtml(m.title)}</h3><p>${m.isSeries ? `${m.seasonCount} sæsoner · ${m.episodes.length} afsnit` : `${clock(m.duration)} · ${escapeHtml(m.video.toUpperCase())}`} ${m.favorite ? '&nbsp;·&nbsp; ♥' : ''}</p></button>`).join('');
+  $(id).innerHTML = movies.map(m => {
+    const quality = FjordLibrary.qualityBadges(m);
+    const resolution = quality.labels.find(label => /^(?:\d+p|[48]K)$/.test(label));
+    const details = quality.labels.filter(label => label !== resolution);
+    return `<button class="movie-card${m.isSeries ? ' series-card' : ''}" data-id="${m.id}"><div class="movie-image"><img src="${FjordLibrary.artwork(m, 'poster')}" alt="" loading="lazy">${resolution ? `<span class="quality-badges"><span class="quality-badge">${escapeHtml(resolution)}</span></span>` : ''}<span class="card-play">${m.isSeries ? '☷' : '▶'}</span></div>${m.position && !m.isSeries ? `<div class="progress-bar"><div style="width:${Math.min(100,m.position/m.duration*100)}%"></div></div>` : ''}<h3>${escapeHtml(m.title)}</h3>${details.length ? `<p class="card-quality" title="${escapeHtml(quality.description)}">${details.map(escapeHtml).join(' &middot; ')}</p>` : ''}<p>${m.isSeries ? `${m.seasonCount} sæsoner · ${m.episodes.length} afsnit` : `${clock(m.duration)} · ${escapeHtml(m.video.toUpperCase())}`} ${m.favorite ? '&nbsp;·&nbsp; ♥' : ''}</p></button>`;
+  }).join('');
   $(id).querySelectorAll('[data-id]').forEach(button => {
     button.onclick = () => openDetail(movies.find(m => m.id === button.dataset.id));
     const image = button.querySelector('.movie-image img');
