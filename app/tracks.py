@@ -11,6 +11,16 @@ BITMAP = {'hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle'}
 EXTRACTIONS = threading.BoundedSemaphore(2)
 
 
+def displayed(meta):
+    """Apply per-file labels without changing the original stream metadata."""
+    available = meta.get('tracks', {})
+    overrides = meta.get('audio_language_overrides', {})
+    return {**available, 'audio': [
+        {**track, 'source_language': track.get('language', 'und'),
+         'language': overrides.get(str(track['index']), track.get('language', 'und'))}
+        for track in available.get('audio', [])]}
+
+
 def describe(streams):
     result = {'version': 1, 'audio': [], 'subtitles': []}
     for stream in streams:

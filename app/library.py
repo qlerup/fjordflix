@@ -23,10 +23,18 @@ class LibraryEdit(BaseModel):
     episode_title: str = Field(default='', max_length=160)
     season: int | None = Field(default=None, ge=0, le=999, strict=True)
     episode: int | None = Field(default=None, ge=1, le=9999, strict=True)
+    audio_language_overrides: dict[str, str] | None = None
 
 
 def edited_metadata(meta, edit):
     data = edit.model_dump()
+    overrides = data.pop('audio_language_overrides')
+    if overrides is not None:
+        valid = {str(t['index']) for t in meta.get('tracks', {}).get('audio', [])}
+        overrides = {key: value.strip() for key, value in overrides.items() if value.strip()}
+        if any(key not in valid or len(value) > 80 for key, value in overrides.items()):
+            raise ValueError('Vælg et gyldigt lydspor. Visningsteksten må højst være 80 tegn.')
+        meta = {**meta, 'audio_language_overrides': overrides}
     data['title'] = data['title'].strip()
     data['series_title'] = data['series_title'].strip()
     if not data['title']:

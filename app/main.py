@@ -598,6 +598,8 @@ def movies(u=Depends(user)):
         if not info.get('media_type') and not info.get('manual'):
             info = {**catalog.identify(meta.get('original_title') or r['title']), **info}
         meta['catalog'] = info
+        if 'tracks' in meta:
+            meta['tracks'] = tracks.displayed(meta)
         info['lookup_message'] = info.get('last_lookup', {}).get('message') or catalog.message(info)
         result.append(dict(id=r['id'], title=r['title'], **meta, series_key=catalog.series_key(info),
                            position=r['position'], favorite=bool(r['favorite'])))
@@ -757,6 +759,8 @@ def refresh_movie_metadata(mid: str, data: MetadataSearch | None = None, u=Depen
             if current['metadata'] != row['metadata'] or current['title'] != row['title']:
                 raise HTTPException(409, 'Oplysningerne blev ændret imens. Åbn filmen igen.')
             if info.get('status') == 'matched':
+                if draft is not None:
+                    meta = library_metadata.edited_metadata(meta, draft)
                 old = meta.get('catalog', {})
                 for kind, suffix in [('poster', ''), ('backdrop', '-backdrop'), ('episode', '-episode')]:
                     image = staging / 'posters' / f'{mid}{suffix}.jpg'
@@ -886,7 +890,7 @@ def favorite(mid: str, u=Depends(user)):
 def movie_tracks(mid: str, u=Depends(user)):
     row, meta = movie(mid)
     if meta.get('tracks', {}).get('version') == 1:
-        return meta['tracks']
+        return tracks.displayed(meta)
     try:
         available = tracks.scan(row['path'])
     except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -899,7 +903,7 @@ def movie_tracks(mid: str, u=Depends(user)):
         updated = json.loads(current['metadata'])
         updated['tracks'] = available
         conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(updated), mid))
-    return available
+    return tracks.displayed(updated)
 
 
 @app.get('/api/movies/{mid}/subtitles/{index}.vtt')

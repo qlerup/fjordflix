@@ -143,6 +143,7 @@ function setupLibraryUI() {
     <label>Genrer (kommasepareret)<input id="edit-genres" maxlength="1600"></label>
     <label>Udgivelsesdato<input id="edit-date" type="date"></label>
     <label>Rating (0–10)<input id="edit-rating" type="number" min="0" max="10" step="0.1"></label>
+    <section id="edit-audio-languages" aria-label="Sprog på lydspor"></section>
     <label>Erstat cover<input id="edit-poster" type="file" accept="image/jpeg,image/png,image/webp"></label>
     <label>Erstat banner<input id="edit-backdrop" type="file" accept="image/jpeg,image/png,image/webp"></label>
     <p class="fine">Billeder: højst 8 MB / 16 megapixel. Tomme billedfelter beholder eksisterende billeder. Serieændringer gælder dette afsnit; samme serienavn og startår samler lokale afsnit.</p>
@@ -163,8 +164,32 @@ function setupLibraryUI() {
     }
     $('edit-rating').value = info.rating == null ? '' : Number(info.rating).toFixed(1);
     $('edit-genres').value = (info.genres || []).join(', '); toggle();
+    const audioFields = $('edit-audio-languages');
+    audioFields.replaceChildren();
+    for (const [number, track] of (selected.tracks?.audio || []).entries()) {
+      const label = document.createElement('label');
+      label.textContent = `Sprog på lydspor ${number + 1} · ${track.codec.toUpperCase()}`;
+      const input = document.createElement('input'); input.dataset.audioIndex = track.index; input.maxLength = 80;
+      const source = track.source_language || track.language || 'und';
+      input.placeholder = FjordTracks.language(source);
+      const override = selected.audio_language_overrides?.[track.index] || '';
+      input.value = override ? FjordTracks.language(override) : '';
+      const original = document.createElement('span'); original.className = 'fine';
+      original.textContent = `Filens mærkning: ${FjordTracks.language(source)}. Tomt felt bruger filens mærkning.`;
+      label.append(input, original); audioFields.append(label);
+    }
+    if (audioFields.children.length) {
+      const hint = document.createElement('p'); hint.className = 'fine';
+      hint.textContent = 'Ret sproget, hvis filens mærkning er forkert. Det ændrer kun visningen i FjordFlix; lyd og videofil bevares.';
+      audioFields.append(hint);
+    }
   }
-  $('library-edit').onclick = () => {
+  $('library-edit').onclick = async () => {
+    const movie = selected;
+    try {
+      if (movie.tracks?.version !== 1) movie.tracks = await api(`/movies/${movie.id}/tracks`);
+    } catch (error) { toast(error.message); return; }
+    if (selected !== movie) return;
     $('library-edit-form').reset(); $('library-edit-error').textContent = '';
     $('library-edit-lookup-status').textContent = ''; $('library-edit-matches').replaceChildren();
     fillEditor();
@@ -173,6 +198,7 @@ function setupLibraryUI() {
   const editorDraft = () => {
     const tv = $('edit-kind').value === 'tv';
     return {
+      audio_language_overrides: Object.fromEntries([...$('edit-audio-languages').querySelectorAll('input')].filter(input => input.value.trim()).map(input => [input.dataset.audioIndex, input.value.trim()])),
       title: $('edit-title').value, media_type: tv ? 'tv' : 'movie', overview: $('edit-overview').value,
       genres: $('edit-genres').value.split(',').map(x => x.trim()).filter(Boolean), release_date: $('edit-date').value,
       rating: $('edit-rating').value === '' ? null : Number($('edit-rating').value),
@@ -217,7 +243,7 @@ function setupLibraryUI() {
   $('library-editor').addEventListener('cancel', event => { if (editorLookupBusy) event.preventDefault(); });
   $('library-edit-close').onclick = () => { $('library-editor').close(); openDetail(selected); };
   $('library-edit-form').onsubmit = async event => {
-    event.preventDefault(); const mid = selected.id, tv = $('edit-kind').value === 'tv';
+    event.preventDefault(); const mid = selected.id;
     if (editorLookupBusy) return;
     $('library-edit-save').disabled = true; $('library-edit-error').textContent = '';
     $('library-edit-refresh').disabled = true;
@@ -227,14 +253,7 @@ function setupLibraryUI() {
         const file = $(`edit-${kind}`).files[0];
         if (file && file.size > 8 * 1024**2) throw new Error('Billedet må højst fylde 8 MB.');
       }
-      await api(`/movies/${mid}/metadata`, 'PUT', {
-        title: $('edit-title').value, media_type: tv ? 'tv' : 'movie', overview: $('edit-overview').value,
-        genres: $('edit-genres').value.split(',').map(x => x.trim()).filter(Boolean), release_date: $('edit-date').value,
-        rating: $('edit-rating').value === '' ? null : Number($('edit-rating').value),
-        series_title: tv ? $('edit-series-title').value : '', series_year: tv ? $('edit-series-year').value : '',
-        series_overview: tv ? $('edit-series-overview').value : '', episode_title: tv ? $('edit-episode-title').value : '',
-        season: tv ? Number($('edit-season').value) : null, episode: tv ? Number($('edit-episode').value) : null
-      });
+      await api(`/movies/${mid}/metadata`, 'PUT', editorDraft());
       metadataSaved = true;
       for (const kind of ['poster','backdrop']) {
         const file = $(`edit-${kind}`).files[0]; if (!file) continue;

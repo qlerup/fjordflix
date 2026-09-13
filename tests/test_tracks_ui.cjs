@@ -4,6 +4,35 @@ const fs = require('node:fs');
 const {JSDOM} = require('../test-results/dropdown-deps/node_modules/jsdom');
 const tracks = require('../app/static/tracks.js');
 
+test('audio language editor shows original label and saves or resets each track', async () => {
+  const dom = new JSDOM(fs.readFileSync('app/static/index.html','utf8'), {runScripts:'outside-only'});
+  const w = dom.window;
+  w.$ = id => w.document.getElementById(id);
+  w.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
+  w.HTMLDialogElement.prototype.close = function() { this.open = false; };
+  w.setupLibraryDeletion = () => {};
+  w.selected = {id:'champ', title:'CHAMP', catalog:{media_type:'movie'}, tracks:{version:1,
+    audio:[{index:0,codec:'aac',language:'dan',source_language:'eng'}]}, audio_language_overrides:{'0':'dan'}};
+  w.library = [w.selected];
+  w.refresh = async () => {};
+  w.openDetail = async () => {};
+  w.toast = () => {};
+  const calls = [];
+  w.api = async (...args) => {calls.push(args); return {ok:true}};
+  w.FjordTracks = tracks;
+  w.eval(fs.readFileSync('app/static/library-ui.js','utf8') + '; setupLibraryUI();');
+  await w.$('library-edit').onclick();
+  const select = w.$('edit-audio-languages').querySelector('input');
+  assert.equal(select.value, 'Dansk');
+  assert.match(w.$('edit-audio-languages').textContent, /Filens mærkning: Engelsk/);
+  await w.$('library-edit-form').onsubmit({preventDefault(){}});
+  assert.equal(calls[0][2].audio_language_overrides['0'], 'Dansk');
+  select.value = '';
+  await w.$('library-edit-form').onsubmit({preventDefault(){}});
+  assert.equal(Object.keys(calls[1][2].audio_language_overrides).length, 0);
+  dom.window.close();
+});
+
 test('subtitle timestamps follow source time after seeking or transcoding', () => {
   const cues = [{startTime:1,endTime:2}, {startTime:2,endTime:5}, {startTime:6,endTime:8}];
   const track = {cues, removeCue(cue) {this.cues.splice(this.cues.indexOf(cue),1)}};
