@@ -68,7 +68,7 @@ Parring og touchpad-trafik går via lokal HTTP/WebSocket i denne test. Brug et b
 
 - Login, Argon2-adgangskoder, HttpOnly-sessioncookies og administratoradgang.
 - Administratoroprettelse én gang, invitationer og brugeroversigt.
-- Upload med fremdrift, filkontrol, diskpladskontrol og grænse på 100 GB pr. film.
+- Upload med fremdrift, filkontrol, diskpladskontrol uden fast filstørrelsesgrænse.
 - Automatisk aflæsning af videoformat, opløsning, bitrate, HDR og lydformat samt genererede filmminiaturer.
 - Bibliotek, søgning, Min liste og Se videre pr. bruger.
 - Enhedsvurdering via browserens codec- og Media Capabilities-understøttelse.
@@ -182,7 +182,7 @@ for det valgte match fortsat gemmes lokalt.
 
 Uploadvinduet understøtter valg af flere filer og drag-and-drop. En uploadkø
 viser fremdrift og resultat for hver fil, uploader én ad gangen og fortsætter
-efter fejl. Maksimum er fortsat 100 GB pr. fil. Vinduet kan lukkes under upload;
+efter fejl. Ingen fast grænse for filstørrelse. Vinduet kan lukkes under upload;
 browserfanen skal holdes åben, indtil køen er færdig.
 
 Filer sendes som separate HTTP-requests på højst 2 MiB (2.097.152 bytes),
@@ -227,6 +227,13 @@ kan serienavn, startår, sæson og afsnit også rettes. Rettelser gælder den
 valgte fil, ikke automatisk resten af serien. Lokale afsnit grupperes efter
 serienavn/startår; sikre TMDB-matches grupperes efter serie-ID. Manuel
 klassifikation respekteres, selv hvis filnavnet peger på noget andet.
+
+**Hent oplysninger igen** i redigeringsvinduet søger med de indtastede felter,
+også før de er gemt. Film bruger titel og eventuelt udgivelsesår; serier bruger
+serienavn, startår, sæson og afsnit. Ved tvivl vises mulige matches i vinduet.
+Et match gemmer TMDB-oplysninger og billeder; uden match bevares de indtastede
+felter, så søgningen kan justeres. Dette er en eksplicit genhentning, som også
+kan erstatte tidligere manuelt gemte oplysninger.
 
 Cover og banner kan erstattes med JPEG, PNG eller WebP (maks. 8 MB / 16 MP).
 Billeder valideres og konverteres til JPEG på serveren. Tomme billedfelter

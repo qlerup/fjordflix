@@ -439,8 +439,6 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
         with path.open('wb') as output:
             async for chunk in request.stream():
                 size += len(chunk)
-                if size > 100 * 1024**3:
-                    raise HTTPException(413, 'Betaen tillader højst 100 GB pr. film.')
                 if shutil.disk_usage(MEDIA).free < len(chunk) + 512 * 1024**2:
                     raise HTTPException(507, 'Serveren mangler ledig diskplads.')
                 await asyncio.to_thread(output.write, chunk)
@@ -691,6 +689,7 @@ def edit_movie_metadata(mid: str, data: library_metadata.LibraryEdit, u=Depends(
 class MetadataSearch(BaseModel):
     search_title: str | None = Field(default=None, min_length=1, max_length=200)
     tmdb_id: int | None = Field(default=None, gt=0, strict=True)
+    draft: library_metadata.LibraryEdit | None = None
 
 
 @app.post('/api/movies/{mid}/metadata/refresh')
@@ -698,17 +697,25 @@ def refresh_movie_metadata(mid: str, data: MetadataSearch | None = None, u=Depen
     if not re.fullmatch(r'[a-f0-9]{32}', mid):
         raise HTTPException(400, 'Ugyldigt film-id.')
     row, meta = movie(mid)
-    if meta.get('catalog', {}).get('manual'):
+    draft = data.draft if data else None
+    if meta.get('catalog', {}).get('manual') and draft is None:
         raise HTTPException(409, 'Oplysningerne er redigeret manuelt og bevares. Automatisk genhentning er slået fra for denne video.')
     search_title = ((data.search_title if data else None) or meta.get('catalog', {}).get('lookup_title')
                     or meta.get('original_title') or row['title']).strip()
     if not search_title:
         raise HTTPException(400, 'Skriv en titel at søge efter.')
     current_info = {**catalog.identify(meta.get('original_title') or row['title']), **meta.get('catalog', {})}
+    if draft is not None:
+        try:
+            current_info = library_metadata.edited_metadata(meta, draft)['catalog']
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        search_title = (f'{draft.series_title.strip()} {draft.series_year}'.strip() if draft.media_type == 'tv'
+                        else f'{draft.title.strip()} {draft.release_date[:4]}'.strip())
     if current_info.get('media_type') == 'tv' and catalog.identify(search_title)['media_type'] != 'tv':
         search_title += f" S{current_info['season']:02d}E{current_info['episode']:02d}"
     selected_id = data.tmdb_id if data else None
-    if selected_id is None and not (data and data.search_title):
+    if selected_id is None and not (data and (data.search_title or draft)):
         selected_id = current_info.get('selected_tmdb_id')
     # Stage artwork so failed requests and concurrent edits cannot replace saved images.
     with tempfile.TemporaryDirectory(prefix='tmdb-', dir=DATA) as folder:
@@ -743,7 +750,7 @@ def refresh_movie_metadata(mid: str, data: MetadataSearch | None = None, u=Depen
                                     'candidates': info.get('candidates', [])}
             conn.execute('UPDATE movies SET title=?,metadata=? WHERE id=?',
                          (row['title'][:160], json.dumps(meta), mid))
-    return {'ok': info.get('status') == 'matched', 'message': summary}
+    return {'ok': info.get('status') == 'matched', 'message': summary, 'candidates': info.get('candidates', [])}
 
 
 @app.put('/api/movies/{mid}/artwork/{kind}')

@@ -15,7 +15,7 @@ CHUNK_SIZE = 2 * 1024 * 1024
 
 class StartUpload(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
-    size: int = Field(gt=0, le=100 * 1024**3)
+    size: int = Field(gt=0)
 
 
 class Uploads:

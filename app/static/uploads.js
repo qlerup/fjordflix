@@ -6,7 +6,7 @@ function createUploadQueue(send, changed = () => {}) {
     for (const file of files) {
       if (queue.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified)) continue;
       const error = !/\.(mp4|mkv|mov|webm|m4v|avi|ts)$/i.test(file.name) ? 'Filtypen understøttes ikke.'
-        : file.size > 100 * 1024 ** 3 ? 'Filen er større end 100 GB.' : !file.size ? 'Filen er tom.' : '';
+        : !file.size ? 'Filen er tom.' : '';
       queue.items.push({file, status: error ? 'invalid' : 'queued', message: error || 'Venter', progress: 0});
     }
     changed();
@@ -110,7 +110,7 @@ if (typeof module !== 'undefined') module.exports = {createUploadQueue, createCh
 function setupUploads() {
   const input = $('upload-file'), zone = input.closest('.dropzone');
   zone.querySelector('strong').textContent = 'Vælg videoer eller træk dem hertil';
-  zone.querySelector('span').textContent = 'MP4, MKV, MOV, WebM, M4V, AVI og TS · maks. 100 GB pr. fil';
+  zone.querySelector('span').textContent = 'MP4, MKV, MOV, WebM, M4V, AVI og TS';
   const list = document.createElement('ul'); list.className = 'upload-queue';
   $('upload-progress').before(list);
   const send = createChunkUploader();

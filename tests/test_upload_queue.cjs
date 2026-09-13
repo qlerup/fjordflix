@@ -22,7 +22,7 @@ test('invalid files and duplicates are filtered before upload', async () => {
   const queue = createUploadQueue(async file => {sent.push(file.name);return {}});
   queue.add([file('one.mp4'),file('one.mp4'),file('bad.txt'),{...file('huge.mp4'),size:101*1024**3},{...file('empty.mp4'),size:0}]);
   await queue.run();
-  assert.deepEqual(sent,['one.mp4']);
+  assert.deepEqual(sent,['one.mp4', 'huge.mp4']);
   assert.equal(queue.items.length,4);
 });
 test('double submission and changing files while uploading cannot start extra requests', async () => {

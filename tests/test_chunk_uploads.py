@@ -60,7 +60,10 @@ def test_upload_authorization_validation_and_disk_space(client, monkeypatch):
     url = '/api/uploads/' + uid
     assert client.post('/api/uploads', json={'filename': 'bad.txt', 'size': 2}).status_code == 400
     assert client.post('/api/uploads', json={'filename': 'empty.mp4', 'size': 0}).status_code == 422
-    assert client.post('/api/uploads', json={'filename': 'huge.mp4', 'size': 101 * 1024**3}).status_code == 422
+    from types import SimpleNamespace
+    with monkeypatch.context() as space:
+        space.setattr(main.shutil, 'disk_usage', lambda _: SimpleNamespace(free=1024**5))
+        assert client.post('/api/uploads', json={'filename': 'huge.mp4', 'size': 101 * 1024**3}).status_code == 200
     monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'id': 'other', 'admin': True})
     assert client.get(url).status_code == 404
     assert client.put(url + '?offset=0', content=b'x').status_code == 404

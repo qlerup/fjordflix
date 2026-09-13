@@ -124,27 +124,81 @@ function setupLibraryUI() {
     <label>Erstat cover<input id="edit-poster" type="file" accept="image/jpeg,image/png,image/webp"></label>
     <label>Erstat banner<input id="edit-backdrop" type="file" accept="image/jpeg,image/png,image/webp"></label>
     <p class="fine">Billeder: højst 8 MB / 16 megapixel. Tomme billedfelter beholder eksisterende billeder. Serieændringer gælder dette afsnit; samme serienavn og startår samler lokale afsnit.</p>
+    <button id="library-edit-refresh" type="button" class="secondary full">Hent oplysninger igen</button>
+    <p class="fine">Søg med titlen og året ovenfor. Et match henter og gemmer oplysninger, cover og banner fra TMDB. Intet match? Ret felterne og prøv igen.</p>
+    <p id="library-edit-lookup-status" class="fine" role="status"></p><div id="library-edit-matches"></div>
     <p id="library-edit-error" class="error" role="alert"></p><button id="library-edit-save" class="primary full">Gem ændringer</button></form></dialog>`);
   const toggle = () => {
     const tv = $('edit-kind').value === 'tv'; $('edit-series-fields').hidden = !tv;
     ['edit-series-title','edit-season','edit-episode'].forEach(id => $(id).required = tv);
   };
   $('edit-kind').onchange = toggle;
-  $('library-edit').onclick = () => {
+  function fillEditor() {
     const info = selected.catalog || {};
-    $('library-edit-form').reset(); $('library-edit-error').textContent = '';
     $('edit-title').value = selected.title; $('edit-kind').value = info.media_type || 'movie';
     for (const [id,key] of [['series-title','series_title'],['series-year','series_year'],['season','season'],['episode','episode'],['episode-title','episode_title'],['series-overview','series_overview'],['overview','overview'],['date','release_date']]) {
       $(`edit-${id}`).value = info[key] ?? '';
     }
     $('edit-rating').value = info.rating == null ? '' : Number(info.rating).toFixed(1);
     $('edit-genres').value = (info.genres || []).join(', '); toggle();
+  }
+  $('library-edit').onclick = () => {
+    $('library-edit-form').reset(); $('library-edit-error').textContent = '';
+    $('library-edit-lookup-status').textContent = ''; $('library-edit-matches').replaceChildren();
+    fillEditor();
     $('detail').close(); $('library-editor').showModal();
   };
+  const editorDraft = () => {
+    const tv = $('edit-kind').value === 'tv';
+    return {
+      title: $('edit-title').value, media_type: tv ? 'tv' : 'movie', overview: $('edit-overview').value,
+      genres: $('edit-genres').value.split(',').map(x => x.trim()).filter(Boolean), release_date: $('edit-date').value,
+      rating: $('edit-rating').value === '' ? null : Number($('edit-rating').value),
+      series_title: tv ? $('edit-series-title').value : '', series_year: tv ? $('edit-series-year').value : '',
+      series_overview: tv ? $('edit-series-overview').value : '', episode_title: tv ? $('edit-episode-title').value : '',
+      season: tv ? Number($('edit-season').value) : null, episode: tv ? Number($('edit-episode').value) : null
+    };
+  };
+  let editorLookupBusy = false;
+  const lookupEditor = async (tmdbId = null) => {
+    if (editorLookupBusy || !$('library-edit-form').reportValidity()) return;
+    const mid = selected.id, draft = editorDraft();
+    editorLookupBusy = true;
+    const controls = [...$('library-editor').querySelectorAll('input,select,textarea,button')];
+    const disabled = controls.map(control => control.disabled);
+    controls.forEach(control => control.disabled = true);
+    $('library-edit-refresh').textContent = 'Henter oplysninger…';
+    $('library-edit-refresh').setAttribute('aria-busy', 'true');
+    $('library-edit-error').textContent = ''; $('library-edit-matches').replaceChildren();
+    $('library-edit-lookup-status').textContent = 'Søger i TMDB…';
+    try {
+      const result = await api(`/movies/${mid}/metadata/refresh`, 'POST', {draft, ...(tmdbId ? {tmdb_id:tmdbId} : {})});
+      $('library-edit-lookup-status').textContent = result.message;
+      if (result.ok) {
+        await refresh(); selected = library.find(movie => movie.id === mid); fillEditor();
+      } else {
+        $('library-edit-matches').replaceChildren(...(result.candidates || []).map(candidate => {
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'metadata-match';
+          button.textContent = `${candidate.title}${candidate.year ? ' (' + candidate.year + ')' : ''}`;
+          button.onclick = () => lookupEditor(candidate.id);
+          return button;
+        }));
+      }
+    } catch (error) { $('library-edit-error').textContent = error.message; }
+    finally {
+      controls.forEach((control, index) => control.disabled = disabled[index]);
+      $('library-edit-refresh').textContent = 'Hent oplysninger igen';
+      $('library-edit-refresh').removeAttribute('aria-busy'); editorLookupBusy = false;
+    }
+  };
+  $('library-edit-refresh').onclick = () => lookupEditor();
+  $('library-editor').addEventListener('cancel', event => { if (editorLookupBusy) event.preventDefault(); });
   $('library-edit-close').onclick = () => { $('library-editor').close(); openDetail(selected); };
   $('library-edit-form').onsubmit = async event => {
     event.preventDefault(); const mid = selected.id, tv = $('edit-kind').value === 'tv';
+    if (editorLookupBusy) return;
     $('library-edit-save').disabled = true; $('library-edit-error').textContent = '';
+    $('library-edit-refresh').disabled = true;
     let metadataSaved = false;
     try {
       for (const kind of ['poster','backdrop']) {
@@ -169,7 +223,7 @@ function setupLibraryUI() {
       await refresh(); selected = library.find(m => m.id === mid);
       $('library-editor').close(); await openDetail(selected); toast('Oplysningerne er gemt.');
     } catch(e) { $('library-edit-error').textContent = (metadataSaved ? 'Teksten er gemt. ' : '') + e.message; }
-    finally { $('library-edit-save').disabled = false; }
+    finally { $('library-edit-save').disabled = false; $('library-edit-refresh').disabled = false; }
   };
 }
 
