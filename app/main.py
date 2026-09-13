@@ -7,6 +7,7 @@ import secrets
 import shutil
 import sqlite3
 import subprocess
+import sys
 import threading
 import tempfile
 import time
@@ -20,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog, library as library_metadata
+from app import hub, media, demos, catalog, uploads, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -83,6 +84,7 @@ def stop_job(key):
 @asynccontextmanager
 async def lifespan(app):
     global GPU
+    await asyncio.to_thread(chunk_uploads.cleanup, True)
     if os.getenv('TRANSCODE_DEVICE', 'auto') != 'cpu':
         try:
             check = await asyncio.to_thread(subprocess.run, ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=s=640x360:d=0.1', '-c:v', 'h264_nvenc', '-f', 'null', '-'], capture_output=True, timeout=15)
@@ -97,6 +99,7 @@ async def lifespan(app):
     async def cleanup():
         while True:
             await asyncio.sleep(30)
+            await asyncio.to_thread(chunk_uploads.cleanup)
             with LOCK:
                 expired = [key for key, job in JOBS.items() if time.time() - job['touch'] > 120]
             for key in expired:
@@ -448,6 +451,8 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
     info = movie(mid)[1].get('catalog', {})
     return {'id': mid, 'metadata_status': info.get('status', 'disabled'), 'metadata_message': catalog.message(info)}
 
+
+chunk_uploads = uploads.register(app, sys.modules[__name__])
 
 DEMO_LOCK = threading.Lock()
 DEMO_PACK_LOCK = threading.Lock()

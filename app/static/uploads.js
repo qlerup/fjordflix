@@ -34,7 +34,78 @@ function createUploadQueue(send, changed = () => {}) {
   };
   return queue;
 }
-if (typeof module !== 'undefined') module.exports = {createUploadQueue};
+const UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024;
+
+function uploadRequest(method, url, body, progress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    xhr.timeout = 120000;
+    if (body && !(body instanceof Blob)) {
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      body = JSON.stringify(body);
+    }
+    xhr.upload.onprogress = event => { if (event.lengthComputable) progress?.(event.loaded); };
+    const fail = (message, status = 0) => reject(Object.assign(new Error(message), {status}));
+    xhr.onload = () => {
+      let result;
+      try { result = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300 && result) resolve(result);
+      else fail(typeof result?.detail === 'string' ? result.detail : `Upload mislykkedes (${xhr.status}).`, xhr.status);
+    };
+    xhr.onerror = () => fail('Forbindelsen blev afbrudt. Tryk Prøv igen for at fortsætte.');
+    xhr.ontimeout = () => fail('Serveren svarede ikke. Tryk Prøv igen for at fortsætte.');
+    xhr.onabort = () => fail('Upload blev afbrudt.');
+    xhr.send(body ?? null);
+  });
+}
+
+function createChunkUploader(request = uploadRequest, wait = ms => new Promise(resolve => setTimeout(resolve, ms))) {
+  const sessions = new WeakMap();
+  async function retry(...args) {
+    for (let attempt = 0; ; attempt++) {
+      try { return await request(...args); }
+      catch (error) {
+        if (attempt >= 3 || (error.status && ![408, 429].includes(error.status) && (error.status < 500 || error.status === 507))) throw error;
+        await wait(1000 * 2 ** attempt);
+      }
+    }
+  }
+  return async (file, progress) => {
+    let state;
+    const saved = sessions.get(file);
+    if (saved) {
+      try { state = await retry('GET', `/api/uploads/${saved}`); }
+      catch (error) { if (error.status !== 404) throw error; sessions.delete(file); }
+    }
+    if (!state) {
+      state = await retry('POST', '/api/uploads', {filename: file.name, size: file.size});
+      sessions.set(file, state.id);
+    }
+    const url = `/api/uploads/${state.id}`;
+    while (state.offset < file.size) {
+      const offset = state.offset;
+      progress(Math.floor(offset / file.size * 100), false);
+      state = await retry('PUT', `${url}?offset=${offset}`, file.slice(offset, offset + UPLOAD_CHUNK_SIZE),
+        loaded => progress(Math.min(99, Math.floor((offset + loaded) / file.size * 100)), false));
+      if (state.offset <= offset || state.offset > file.size) throw new Error('Serveren returnerede en ugyldig uploadposition.');
+    }
+    progress(100, true);
+    state = await retry('POST', `${url}/complete`);
+    while (state.status === 'processing') {
+      await wait(1500);
+      state = await retry('GET', url);
+      // A restarted server makes an interrupted processing job available again.
+      if (state.status === 'uploading') state = await retry('POST', `${url}/complete`);
+    }
+    if (state.status !== 'done') {
+      sessions.delete(file);
+      throw new Error(state.message || 'Videoen kunne ikke behandles.');
+    }
+    return state;
+  };
+}
+if (typeof module !== 'undefined') module.exports = {createUploadQueue, createChunkUploader, UPLOAD_CHUNK_SIZE};
 
 function setupUploads() {
   const input = $('upload-file'), zone = input.closest('.dropzone');
@@ -42,23 +113,7 @@ function setupUploads() {
   zone.querySelector('span').textContent = 'MP4, MKV, MOV, WebM, M4V, AVI og TS · maks. 100 GB pr. fil';
   const list = document.createElement('ul'); list.className = 'upload-queue';
   $('upload-progress').before(list);
-  const send = (file, progress) => new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', `/api/upload?filename=${encodeURIComponent(file.name)}`);
-    xhr.upload.onprogress = event => {
-      if (event.lengthComputable) progress(Math.round(event.loaded / event.total * 100), false);
-    };
-    xhr.upload.onload = () => progress(100, true);
-    xhr.onload = () => {
-      let result = {};
-      try { result = JSON.parse(xhr.responseText); } catch {}
-      if (xhr.status >= 200 && xhr.status < 300) resolve(result);
-      else reject(new Error(typeof result.detail === 'string' ? result.detail : `Upload mislykkedes (${xhr.status}).`));
-    };
-    xhr.onerror = () => reject(new Error('Forbindelsen blev afbrudt. Kontrollér biblioteket, før du uploader filen igen.'));
-    xhr.onabort = () => reject(new Error('Upload blev afbrudt.'));
-    xhr.send(file);
-  });
+  const send = createChunkUploader();
   const queue = createUploadQueue(send, render);
   function render() {
     const pending = queue.items.filter(item => item.status === 'queued');
@@ -80,6 +135,12 @@ function setupUploads() {
       name.textContent = item.file.name; status.textContent = item.message;
       text.append(name, status); row.append(text);
       if (!queue.running && item.status !== 'done') {
+        if (item.status === 'error') {
+          const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'secondary small';
+          retry.textContent = 'Prøv igen';
+          retry.onclick = () => { item.status = 'queued'; item.message = 'Venter'; $('upload-form').requestSubmit(); };
+          row.append(retry);
+        }
         const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary small';
         remove.textContent = 'Fjern'; remove.setAttribute('aria-label', `Fjern ${item.file.name}`);
         remove.onclick = () => { queue.items.splice(queue.items.indexOf(item), 1); render(); };

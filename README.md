@@ -185,6 +185,14 @@ viser fremdrift og resultat for hver fil, uploader én ad gangen og fortsætter
 efter fejl. Maksimum er fortsat 100 GB pr. fil. Vinduet kan lukkes under upload;
 browserfanen skal holdes åben, indtil køen er færdig.
 
+Filer sendes som separate HTTP-requests på højst 2 MiB (2.097.152 bytes),
+så hele videofilen ikke rammer Cloudflares grænse pr. request. Serveren samler
+bidderne uden at ændre videoen. Afbrudte requests forsøges igen automatisk;
+**Prøv igen** fortsætter fra serverens gemte position, så længe samme browserfane
+er åben. Videobehandling og TMDB-opslag kører i baggrunden med statusvisning.
+Uafsluttede uploads ryddes op efter 48 timer uden aktivitet. Uploadsessionerne
+gemmes på disk; løsningen bruger én server-worker som i den medfølgende Docker-opsætning.
+
 Afsnit vises i en vandret karrusel med billede, afsnitsnummer, titel, spilletid
 og set-status. Vælg sæson, og brug swipe, scroll, pileknapper eller tastaturets
 piletaster til at finde et afsnit. Kun uploadede afsnit vises.
