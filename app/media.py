@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from fastapi import HTTPException
 
 TTL = 120
+AIRPLAY_TTL = 600
 _db = None
 
 def origin(name, value=None):
@@ -64,6 +65,9 @@ def init(db):
     global _db
     with db() as conn:
         conn.execute('CREATE TABLE IF NOT EXISTS media_grants (token TEXT PRIMARY KEY, login TEXT NOT NULL, movie TEXT NOT NULL, stream TEXT, expires REAL NOT NULL)')
+        columns = {r['name'] for r in conn.execute('PRAGMA table_info(media_grants)')}
+        if 'airplay_until' not in columns:
+            conn.execute('ALTER TABLE media_grants ADD COLUMN airplay_until REAL NOT NULL DEFAULT 0')
         conn.execute('CREATE TABLE IF NOT EXISTS media_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)')
     _db = db
     config()
@@ -74,18 +78,25 @@ def save_config(direct, web, db):
         conn.executemany('INSERT OR REPLACE INTO media_settings VALUES (?,?)', [('media',direct),('web',web)])
         conn.execute('DELETE FROM media_grants')
 
-def issue(result, request, mid, db):
+def issue(result, request, mid, db, *, airplay=False, duration=0):
     direct, _ = config()
-    if not direct:
+    if not direct and not airplay:
         return result
     ticket = secrets.token_urlsafe(32)
     sid = result.get('session')
+    now = time.time()
+    ttl = AIRPLAY_TTL if airplay else TTL
+    until = now + min(86400, max(3600, duration + 3600)) if airplay else 0
     with db() as conn:
         conn.execute('DELETE FROM media_grants WHERE expires < ?', (time.time(),))
-        conn.execute('INSERT INTO media_grants VALUES (?,?,?,?,?)',
-                     (key(ticket), key(request.cookies.get('fjordflix_session', '')), mid, sid, time.time()+TTL))
+        conn.execute('INSERT INTO media_grants(token,login,movie,stream,expires,airplay_until) VALUES (?,?,?,?,?,?)',
+                     (key(ticket), key(request.cookies.get('fjordflix_session', '')), mid, sid, now+ttl, until))
     path = f'streams/{sid}/index.m3u8' if sid else f'movies/{mid}/file'
-    return {**result, 'url': f'{direct}/media/{ticket}/{path}', 'media_ticket': ticket, 'media_expires_in': TTL, 'delivery': 'direct'}
+    # Relative same-origin URLs let Safari resolve the public HTTPS origin even
+    # when a reverse proxy talks plain HTTP to this server.
+    base = direct
+    return {**result, 'url': f'{base}/media/{ticket}/{path}', 'media_ticket': ticket, 'media_expires_in': ttl,
+            'delivery': 'direct' if direct else 'same-origin', 'airplay': airplay}
 
 def validate(ticket, db, session_user, *, mid=None, sid=None):
     if not re.fullmatch(r'[A-Za-z0-9_-]{43}', ticket):
@@ -96,7 +107,15 @@ def validate(ticket, db, session_user, *, mid=None, sid=None):
         raise HTTPException(401, 'Videobilletten er udløbet. Start filmen igen.')
     if mid is not None and (grant['movie'] != mid or grant['stream'] is not None) or sid is not None and grant['stream'] != sid:
         raise HTTPException(403, 'Videobilletten gælder ikke denne film eller stream.')
-    return session_user(grant['login'])
+    user = session_user(grant['login'])
+    if grant['airplay_until']:
+        if grant['airplay_until'] <= time.time():
+            raise HTTPException(401, 'AirPlay-sessionen er udløbet. Start filmen igen.')
+        # The receiver keeps its own scoped grant alive while the phone sleeps.
+        with db() as conn:
+            conn.execute('UPDATE media_grants SET expires=? WHERE token=? AND expires>?',
+                         (min(time.time()+AIRPLAY_TTL, grant['airplay_until']), key(ticket), time.time()))
+    return user
 
 def renew(ticket, request, db, revoke=False):
     with db() as conn:
@@ -104,7 +123,8 @@ def renew(ticket, request, db, revoke=False):
         if revoke:
             conn.execute('DELETE FROM media_grants WHERE token=? AND login=? AND expires>?', args)
         else:
-            changed = conn.execute('UPDATE media_grants SET expires=? WHERE token=? AND login=? AND expires>?', (time.time()+TTL, *args)).rowcount
+            changed = conn.execute('UPDATE media_grants SET expires=CASE WHEN airplay_until>0 THEN MIN(?,airplay_until) ELSE ? END WHERE token=? AND login=? AND expires>? AND (airplay_until=0 OR airplay_until>?)',
+                                   (time.time()+AIRPLAY_TTL, time.time()+TTL, *args, time.time())).rowcount
             if not changed:
                 raise HTTPException(410, 'Videobilletten er udløbet. Start filmen igen.')
 

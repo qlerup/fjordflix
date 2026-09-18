@@ -49,3 +49,7 @@ html:fullscreen #player-dialog{width:100vw;height:100dvh;max-height:none;aspect-
 }
 @media(prefers-reduced-motion:reduce){#player-dialog *{transition:none!important}}
 #player-dialog .video-wrap,#player-dialog video{min-width:0;min-height:0}
+
+#player-dialog #player-airplay[hidden]{display:none}
+#player-dialog #player-airplay[aria-pressed=true]{color:#70b7ff;background:#70b7ff22}
+#player-dialog #player-airplay:disabled{opacity:.4}

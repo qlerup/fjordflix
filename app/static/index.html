@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="da">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Dit eget biograflærred</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/categories.css?v=6"><script defer src="/static/categories.js?v=6"></script><script defer src="/static/deletion.js?v=1"></script><script defer src="/static/library-ui.js?v=audio-languages1"></script><script defer src="/static/uploads.js?v=chunks3"></script><script defer src="/static/tracks.js?v=1"></script><script defer src="/static/app.js?v=tracks1"></script><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/tvremote.js?v=10"></script>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Dit eget biograflærred</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/categories.css?v=6"><script defer src="/static/categories.js?v=6"></script><script defer src="/static/deletion.js?v=1"></script><script defer src="/static/library-ui.js?v=audio-languages1"></script><script defer src="/static/uploads.js?v=chunks3"></script><script defer src="/static/tracks.js?v=airplay1"></script><script defer src="/static/app.js?v=airplay1"></script><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/tvremote.js?v=10"></script>
 <link rel="icon" href="/static/logos/web/favicon.ico?v=2" sizes="any">
 <link rel="icon" href="/static/logos/web/favicon-32x32.png?v=2" type="image/png" sizes="32x32">
 <link rel="icon" href="/static/logos/web/favicon-16x16.png?v=2" type="image/png" sizes="16x16">
@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="application-name" content="FjordFlix">
 <meta name="msapplication-config" content="/static/logos/web/browserconfig.xml">
-<link rel="stylesheet" href="/static/player.css?v=2"><script defer src="/static/player.js?v=2"></script><link rel="stylesheet" href="/static/mobile.css?v=2"><link rel="stylesheet" href="/static/library.css?v=tracks1"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script></head>
+<link rel="stylesheet" href="/static/player.css?v=airplay1"><script defer src="/static/player.js?v=airplay1"></script><link rel="stylesheet" href="/static/mobile.css?v=2"><link rel="stylesheet" href="/static/library.css?v=tracks1"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script></head>
 <body>
 <div id="toast" role="status" hidden></div>
 <section id="auth" class="auth" hidden>
@@ -37,7 +37,7 @@
 <p class="fine">Videoadressen kræver fungerende direkte HTTPS-adgang til serveren. DNS-posten skal være DNS-only. Et tomt felt slår opdelingen fra. Gemte ændringer afslutter eksisterende videobilletter.</p>
 <p id="media-settings-error" class="error" role="alert"></p><button class="primary" type="submit">Gem og genindlæs</button></form></dialog>
 <dialog id="player-dialog" aria-label="Filmafspiller">
-  <div class="video-wrap"><video id="video" playsinline></video></div>
+  <div class="video-wrap"><video id="video" playsinline x-webkit-airplay="allow"></video></div>
   <div class="player-top player-overlay">
     <button id="player-close" class="player-icon" aria-label="Luk afspiller" title="Tilbage (Escape)" data-icon="back"></button>
     <div class="player-heading"><span class="eyebrow">DU SER NU</span><strong id="player-title"></strong></div>
@@ -52,7 +52,7 @@
       <button id="player-forward" class="player-icon" aria-label="10 sekunder frem" title="10 sekunder frem" data-icon="forward"></button>
       <div class="player-volume"><button id="player-mute" class="player-icon" aria-label="Slå lyd fra" title="Lyd til / fra (M)" data-icon="volume"></button><input id="player-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Lydstyrke"></div>
       <span id="timeline-time" class="player-time">0:00 / 0:00</span>
-      <div class="player-options"><select id="player-quality" aria-label="Skift afspilningskvalitet"><option value="auto">Automatisk</option><option value="original">Original</option><option value="1080">1080p · 8 Mbit/s</option><option value="720">720p · 4 Mbit/s</option><option value="480">480p · 2 Mbit/s</option></select><button id="player-fullscreen" class="player-icon" aria-label="Fuld skærm" title="Fuld skærm (F)" data-icon="fullscreen"></button></div>
+      <div class="player-options"><select id="player-quality" aria-label="Skift afspilningskvalitet"><option value="auto">Automatisk</option><option value="original">Original</option><option value="1080">1080p · 8 Mbit/s</option><option value="720">720p · 4 Mbit/s</option><option value="480">480p · 2 Mbit/s</option></select><button id="player-airplay" class="player-icon" aria-label="AirPlay: vælg TV" title="AirPlay: vælg TV" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 17H3V3h18v14h-3M12 15l6 6H6Z"/></svg></button><button id="player-fullscreen" class="player-icon" aria-label="Fuld skærm" title="Fuld skærm (F)" data-icon="fullscreen"></button></div>
     </div>
     <div class="player-bottom"><span id="actual-badge" class="badge">Forbereder</span><span id="playback-info"></span></div>
   </div>
@@ -62,3 +62,4 @@
 <details class="fine" style="margin:24px"><summary>Om filmdata · TMDB</summary><p>Filmoplysninger og covers: <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">The Movie Database (TMDB)</a>.</p><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p></details>
 <dialog id="metadata-settings-dialog" class="compact"><button class="close" data-close="metadata-settings-dialog" aria-label="Luk filmdata">✕</button><span class="eyebrow">FILMOPLYSNINGER</span><h2>TMDB API-nøgle</h2><p class="muted">Hent automatisk titel, beskrivelse og billeder efter upload. Nøglen gemmes på serveren og gælder alle brugere.</p><p id="metadata-status" role="status"></p><form id="metadata-settings-form"><label>API-nøgle eller API Read Access Token<input id="metadata-token" type="password" autocomplete="off" maxlength="4096" spellcheck="false" required placeholder="Indsæt din nøgle fra TMDB"></label><p class="fine">En gemt nøgle vises aldrig igen. Indsæt en ny for at erstatte den. Gem kræver ikke genstart og tester ikke forbindelsen.</p><p id="metadata-error" class="error" role="alert"></p><button id="metadata-save" class="primary full">Gem API-nøgle</button></form><button id="metadata-disable" class="text-button">Fjern nøgle og slå opslag fra</button><p class="fine"><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">Hent nøgle hos TMDB</a>. Gratis til ikke-kommerciel brug efter TMDB's vilkår.</p></dialog>
 </body></html>
+

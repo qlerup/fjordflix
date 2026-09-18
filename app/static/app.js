@@ -1,6 +1,8 @@
 const $ = (id) => document.getElementById(id);
 let state, library = [], selected, view = 'home', authMode = 'login', hls, playback, lastSaved = 0, switching = false, playGeneration = 0, planGeneration = 0;
 const video = $('video');
+const airplaySupported = typeof video.webkitShowPlaybackTargetPicker === 'function' && !!video.canPlayType('application/vnd.apple.mpegurl');
+function airplayActive() { return !!video.webkitCurrentPlaybackTargetIsWireless; }
 let hlsLibraryPromise;
 function loadHlsLibrary() {
   if (window.Hls) return Promise.resolve();
@@ -143,7 +145,7 @@ async function capabilities(movie, quality) {
   if (movie.video === 'h264' && movie.pix_fmt !== 'yuv420p') supported = false;
   // HDR passthrough is deliberately conservative until the full output chain is known.
   if (movie.hdr) supported = false;
-  return {quality, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:navigator.connection?.downlink || 0, ...FjordTracks.request()};
+  return {quality, airplay:airplaySupported, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:navigator.connection?.downlink || 0, ...FjordTracks.request()};
 }
 async function openDetail(movie) {
   if (movie?.isSeries) movie = FjordLibrary.initial(movie.episodes);
@@ -192,21 +194,22 @@ async function startPlayback(position = 0, fallback = false) {
   badge('actual-badge', 'Forbereder'); $('playback-info').textContent = '';
   $('timeline').max = selected.duration;
   try {
-    await loadHlsLibrary();
+    if (!video.canPlayType('application/vnd.apple.mpegurl')) await loadHlsLibrary();
     if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
     if (fallback) { data.direct = false; data.h264 = false; }
     const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position});
     if (generation !== playGeneration || !$('player-dialog').open) { if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
     playback = result; lastSaved = 0;
-    if(result.media_ticket) video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
-    $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}`;
+    if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
+    $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
-    if (result.session && Hls.isSupported()) {
+    if (!result.session || video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
+    else if (window.Hls?.isSupported()) {
       hls = new Hls({startPosition:0, maxBufferLength:30, backBufferLength:30});
       hls.loadSource(result.url); hls.attachMedia(video);
       hls.on(Hls.Events.ERROR, (_, info) => { if (info.fatal) showPlayerError('Streamen blev afbrudt. Vælg kvalitet igen for at genstarte.'); });
-    } else if (!result.session || video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
+    }
     else { showPlayerError('Denne browser understøtter ikke HLS. Prøv en nyere browser.'); }
     FjordTracks.attach(result).catch(e => { if (e.name !== 'AbortError' && generation === playGeneration) toast(e.message); });
   } finally { switching = false; }
@@ -226,7 +229,7 @@ setInterval(() => {
   if(playback?.session) api(`/streams/${playback.session}/heartbeat`, 'POST').catch(() => {});
   if(playback?.media_ticket) api('/media/heartbeat', 'POST', {ticket:playback.media_ticket}).catch(e => showPlayerError(e.message));
 }, 30000);
-window.addEventListener('pagehide', () => { if(playback && selected) { fetch(`/api/movies/${selected.id}/progress`, {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify({position:position()}),keepalive:true}); if(playback.session) fetch(`/api/streams/${playback.session}`, {method:'DELETE',keepalive:true}); } });
+window.addEventListener('pagehide', () => { if(playback && selected) { fetch(`/api/movies/${selected.id}/progress`, {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify({position:position()}),keepalive:true}); if(playback.session && !airplayActive()) fetch(`/api/streams/${playback.session}`, {method:'DELETE',keepalive:true}); } });
 
 setupUploads();
 let demoPackTimer;
@@ -318,3 +321,4 @@ $('media-settings-form').onsubmit = async event => {
   } catch(e) { $('media-settings-error').textContent=e.message; }
 };
 boot().catch(error => { $('auth').hidden = false; $('auth-error').textContent = 'Serveren kunne ikke kontaktes. ' + error.message; });
+

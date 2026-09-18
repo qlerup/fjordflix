@@ -31,7 +31,7 @@ const FjordTracks = {
           if (place === 'detail') await updatePlan();
           else {
             const burn = this.selectedSubtitle()?.delivery === 'burn';
-            if (kind === 'audio' || burn || playback?.subtitle_delivery === 'burn') {
+            if (kind === 'audio' || playback?.airplay || burn || playback?.subtitle_delivery === 'burn') {
               await startPlayback(position());
             } else if (playback) {
               playback.subtitle_track = this.subtitle;
@@ -117,3 +117,4 @@ const FjordTracks = {
   }
 };
 if (typeof module !== 'undefined') module.exports = FjordTracks;
+

@@ -243,3 +243,17 @@ beholder eksisterende billeder. Tekst gemmes før billeder; ved billedfejl
 vises det tydeligt, at teksten allerede er gemt. Videofil, tekniske data,
 favoritter og afspilningshistorik ændres ikke af redigeringen. Der er ingen
 automatisk baggrundsopdatering, der overskriver manuelle oplysninger.
+
+
+
+### AirPlay (Safari / iPhone / iPad / Mac)
+
+Start filmen, vælg lyd og undertekster, og tryk på AirPlay-ikonet ved siden af fuld skærm. Knappen vises i browsere med WebKits AirPlay-vælger og native HLS. Safari får en AirPlay-klar HLS-stream allerede ved lokal afspilning, så både knappen og systemets AirPlay-vælger bruger samme kilde. Andre browsere beholder deres normale afspilning.
+
+- Det valgte lydspor sendes som AAC-stereo. Understøttet H.264-video kan bevares uden ny videokodning, når undertekster er slået fra.
+- Valgte undertekster brændes ind i videobilledet på AirPlay-klare afspillere. Det gælder også lokal Safari-afspilning og kræver transcoding. Tekster kan derfor ikke ændres i TV'ets egen undertekstmenu; brug FjordFlix.
+- Skift af lyd, tekst eller kvalitet genstarter streamen fra den aktuelle position. Det kan give en kort pause. Undertekster følger originalfilens tidslinje efter spoling.
+- TV'et bruger en tilfældig billet, der kun gælder denne stream, uden login-cookies. TV'ets forespørgsler holder billetten aktiv, når telefonen sover. Billetter har 10 minutters inaktivitetsfrist og en absolut grænse på filmens varighed plus en time (højst 24 timer); log ud eller luk afspilleren for at stoppe adgangen.
+- Med direkte video konfigureret bruges den eksisterende videoadresse og dens adgangskontrol. Ellers bruges samme adresse som hjemmesiden. TV'et skal kunne nå adressen; eksterne loginporte som Cloudflare Access kan blokere TV'et og kræver en tilgængelig videoadresse.
+
+Verifikation: `python -m pytest tests/test_airplay.py tests/test_tracks.py tests/test_media_delivery.py -q` bruger rigtig FFmpeg til at kontrollere valgt lyd, synlige undertekster før/efter spoling og adgang uden cookies. `node --test tests/test_airplay_ui.cjs` kræver `jsdom` og tester UI med simulerede WebKit-API'er. Den trådløse forbindelse skal desuden afprøves på fysisk Apple-udstyr: forbind TV, lås telefonen i mindst tre minutter, prøv spoling og skift af spor, afbryd AirPlay, og kontrollér at lukning af afspilleren stopper streamen.

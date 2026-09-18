@@ -128,3 +128,24 @@ playerDialog.addEventListener('keydown',event=>{
   else if(event.key.toLowerCase()==='m') video.muted=!video.muted;
   else if(event.key.toLowerCase()==='f') togglePlayerFullscreen();
 });
+
+// Keep the picker in the click gesture: the source is AirPlay-ready from the start.
+const airplayButton = $('player-airplay');
+airplayButton.hidden = !airplaySupported;
+function updateAirplayButton() {
+  const active = airplayActive();
+  airplayButton.setAttribute('aria-pressed', String(active));
+  airplayButton.setAttribute('aria-label', active ? 'AirPlay aktiv: skift TV eller afbryd' : 'AirPlay: vælg TV');
+  airplayButton.title = active ? 'AirPlay aktiv: skift TV eller afbryd' : 'AirPlay: vælg TV';
+  airplayButton.disabled = !playback || switching || !video.currentSrc;
+  if (active) $('player-loading').hidden = true;
+  wakePlayerControls();
+}
+airplayButton.onclick = () => {
+  if (!playback || switching) return;
+  try { video.webkitShowPlaybackTargetPicker(); }
+  catch { toast('AirPlay kunne ikke åbnes. Prøv igen i Safari.'); }
+};
+video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', updateAirplayButton);
+for (const event of ['loadedmetadata', 'emptied', 'playing']) video.addEventListener(event, updateAirplayButton);
+updateAirplayButton();

@@ -101,7 +101,7 @@ async def lifespan(app):
             await asyncio.sleep(30)
             await asyncio.to_thread(chunk_uploads.cleanup)
             with LOCK:
-                expired = [key for key, job in JOBS.items() if time.time() - job['touch'] > 120]
+                expired = [key for key, job in JOBS.items() if time.time() - job['touch'] > job.get('idle_timeout', 120)]
             for key in expired:
                 await asyncio.to_thread(stop_job, key)
             with db() as conn:
@@ -124,8 +124,9 @@ async def security(request, call_next):
     is_media = request.url.path.startswith('/media/')
     is_probe = request.url.path == '/media/connection-check'
     if is_media:
-        if (not is_probe and (not direct or request.headers.get('host', '').lower() != urlparse(direct).netloc.lower())) or request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'):
+        if (direct and not is_probe and request.headers.get('host', '').lower() != urlparse(direct).netloc.lower()) or ((direct or is_probe) and (request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'))):
             return Response('Video skal hentes via den direkte videoadresse uden Cloudflare.', status_code=403)
+        web_origin = web_origin or str(request.base_url).rstrip('/')
         if not is_probe and request.headers.get('origin') not in (None, web_origin):
             return Response('Ugyldig video-oprindelse.', status_code=403)
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
@@ -922,6 +923,7 @@ def movie_subtitles(mid: str, index: int, u=Depends(user)):
 
 
 class Playback(BaseModel):
+    airplay: bool = False
     quality: str = 'auto'
     direct: bool = False
     h264: bool = False
@@ -936,7 +938,7 @@ def decide(meta, data):
         audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    burn = subtitle and subtitle['delivery'] == 'burn'
+    burn = subtitle and (subtitle['delivery'] == 'burn' or data.airplay)
     remap_audio = len(meta.get('tracks', {}).get('audio', [])) > 1
     if data.quality not in ('auto', 'original', '1080', '720', '480'):
         raise HTTPException(400, 'Ukendt kvalitet.')
@@ -947,12 +949,12 @@ def decide(meta, data):
             quality = '1080' if data.bandwidth >= 12 else ('720' if data.bandwidth >= 6 else '480')
         else:
             quality = 'original'
-    if quality == 'original' and data.direct and not burn and not remap_audio:
+    if quality == 'original' and data.direct and not data.airplay and not burn and not remap_audio:
         return {'mode': 'Direct Play', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Browseren understøtter originalfilen.'}
     if quality == 'original' and data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'] and not burn:
         return {'mode': 'Direct Stream', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Videoen bevares. Indpakning og lyd tilpasses afspilleren.'}
     target = min(meta['height'], int(quality) if quality.isdigit() else 1080)
-    return {'mode': 'Transcoding', 'height': target, 'mbps': limit.get(quality, 8), 'reason': 'Valgt kvalitet eller format kræver videokonvertering.'}
+    return {'mode': 'Transcoding', 'height': target, 'mbps': limit.get(quality, 8), 'reason': 'AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else 'Valgt kvalitet eller format kræver videokonvertering.'}
 
 
 @app.post('/api/movies/{mid}/plan')
@@ -966,33 +968,45 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     row, meta = movie(mid)
     result = decide(meta, data)
     audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
-    burn = subtitle and subtitle['delivery'] == 'burn'
+    burn = subtitle and (subtitle['delivery'] == 'burn' or data.airplay)
     result.update(audio_track=audio['index'] if audio else None,
                   subtitle_track=subtitle['index'] if subtitle else None,
-                  subtitle_delivery=subtitle['delivery'] if subtitle else None)
+                  subtitle_delivery=('burn' if burn else subtitle['delivery']) if subtitle else None, airplay=data.airplay)
     offset = min(data.start, max(0, meta['duration'] - 1))
     if result['mode'] == 'Direct Play':
         return media.issue({**result, 'url': f'/api/movies/{mid}/file', 'session': None, 'offset': 0, 'encoder': 'Original'}, request, mid, db)
+    subtitle_file = None
+    if data.airplay and subtitle and subtitle['delivery'] == 'text':
+        try:
+            subtitle_file = tracks.webvtt(row['path'], subtitle['index'], DATA / 'subtitles')
+        except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):
+            raise HTTPException(503, 'Underteksterne kunne ikke klargøres til AirPlay. Prøv igen.')
     with LOCK:
         if len(JOBS) >= int(os.getenv('MAX_TRANSCODES', 3)):
             raise HTTPException(503, 'Serverens stream-pladser er optaget. Prøv igen om lidt.')
         if shutil.disk_usage(DATA).free < 2 * 1024**3:
             raise HTTPException(507, 'For lidt diskplads til transcoding.')
         sid = secrets.token_hex(16)
-        folder = DATA / 'streams' / sid
+        folder = (DATA / 'streams' / sid).resolve()
         folder.mkdir()
-        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', row['path']]
-        cmd += ['-map', '[vout]' if burn else '0:v:0', '-map', f"0:{audio['index']}" if audio else '0:a:0?', '-sn']
+        if subtitle_file:
+            shutil.copyfile(subtitle_file, folder / 'subtitles.vtt')
+        bitmap = burn and subtitle['delivery'] == 'burn'
+        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', str(Path(row['path']).resolve())]
+        cmd += ['-map', '[vout]' if bitmap else '0:v:0', '-map', f"0:{audio['index']}" if audio else '0:a:0?', '-sn']
         encoder = 'Remux + AAC'
         if result['mode'] == 'Direct Stream':
             cmd += ['-c:v', 'copy']
         else:
             encoder = 'NVIDIA NVENC' if GPU else 'CPU · H.264'
             filters = []
+            if subtitle_file:
+                # Extracted cues use the original timeline, even after seeking.
+                filters += [f'setpts=PTS-STARTPTS+{offset}/TB', 'subtitles=filename=subtitles.vtt', 'setpts=PTS-STARTPTS']
             if meta['hdr']:
                 filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']
             filters += [f"scale=-2:{result['height']}", 'format=yuv420p']
-            if burn:
+            if bitmap:
                 cmd += ['-filter_complex', f"[0:{subtitle['index']}]scale={int(meta['width'])}:{int(meta['height'])}[sub];[0:v:0][sub]overlay=eof_action=pass:shortest=0," + ','.join(filters) + '[vout]']
             else:
                 cmd += ['-vf', ','.join(filters)]
@@ -1003,15 +1017,15 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                 cmd += ['-forced-idr', '1']
         cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file', '-hls_segment_filename', str(folder / 'segment%05d.ts'), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
-        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log)
-        JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time()}
+        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log, cwd=folder)
+        JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time(), 'idle_timeout': media.AIRPLAY_TTL if data.airplay else 120}
     for _ in range(200):
         playlist = folder / 'index.m3u8'
         # Prepare several segments before playback, so Chrome does not exhaust
         # the first two seconds while the next playlist update is pending.
         contents = playlist.read_text() if playlist.exists() else ''
         if contents.count('#EXTINF:') >= 3 or '#EXT-X-ENDLIST' in contents:
-            return media.issue({**result, 'url': f'/api/streams/{sid}/index.m3u8', 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db)
+            return media.issue({**result, 'url': f'/api/streams/{sid}/index.m3u8', 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db, airplay=data.airplay, duration=meta['duration'])
         if process.poll() is not None:
             break
         time.sleep(0.1)
@@ -1102,3 +1116,4 @@ app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), na
 @app.get('/')
 def index():
     return FileResponse(Path(__file__).parent / 'static' / 'index.html')
+
