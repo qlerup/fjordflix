@@ -203,7 +203,7 @@ async function startPlayback(position = 0, fallback = false) {
     playback = result; lastSaved = 0;
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
     $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
-    video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
+    video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (!result.session || video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else if (window.Hls?.isSupported()) {
       hls = new Hls({startPosition:0, maxBufferLength:30, backBufferLength:30});

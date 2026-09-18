@@ -91,7 +91,7 @@ def issue(result, request, mid, db, *, airplay=False, duration=0):
         conn.execute('DELETE FROM media_grants WHERE expires < ?', (time.time(),))
         conn.execute('INSERT INTO media_grants(token,login,movie,stream,expires,airplay_until) VALUES (?,?,?,?,?,?)',
                      (key(ticket), key(request.cookies.get('fjordflix_session', '')), mid, sid, now+ttl, until))
-    path = f'streams/{sid}/index.m3u8' if sid else f'movies/{mid}/file'
+    path = f"streams/{sid}/{result.get('playlist', 'index.m3u8')}" if sid else f'movies/{mid}/file'
     # Relative same-origin URLs let Safari resolve the public HTTPS origin even
     # when a reverse proxy talks plain HTTP to this server.
     base = direct

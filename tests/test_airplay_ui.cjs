@@ -19,6 +19,12 @@ function setup(safari) {
   w.HTMLMediaElement.prototype.pause=function(){};
   w.HTMLMediaElement.prototype.play=async function(){};
   Object.defineProperty(w.HTMLMediaElement.prototype,'currentSrc',{get(){return this.src}});
+  const textTracks = [];
+  const trackEvents = new w.EventTarget();
+  textTracks.addEventListener = trackEvents.addEventListener.bind(trackEvents);
+  textTracks.removeEventListener = trackEvents.removeEventListener.bind(trackEvents);
+  Object.defineProperty(w.HTMLMediaElement.prototype,'textTracks',{get(){return textTracks}});
+  w.addNativeTrack = track => {textTracks.push(track);trackEvents.dispatchEvent(new w.Event('addtrack'));};
   if(safari)w.HTMLMediaElement.prototype.webkitShowPlaybackTargetPicker=function(){w.pickerCalls=(w.pickerCalls||0)+1};
   w.fetch=async(path,options={})=>{
     const data=options.body?JSON.parse(options.body):undefined;
@@ -29,7 +35,7 @@ function setup(safari) {
     else if(path.endsWith('/plan'))result={mode:'Direct Stream',height:720,mbps:1,reason:'Test'};
     else if(path.endsWith('/play'))result={mode:'Direct Stream',height:720,mbps:1,encoder:'AAC',session:'s1',offset:data.start,
       url:'http://fjord.test/media/test/streams/s1/index.m3u8',media_ticket:'t'.repeat(43),airplay:data.airplay,
-      subtitle_delivery:data.subtitle_track===null?null:'burn',subtitle_track:data.subtitle_track};
+      subtitle_delivery:data.subtitle_track===null?null:data.burn_subtitles?'burn':'hls',subtitle_track:data.subtitle_track};
     return {ok:true,json:async()=>result};
   };
   const scripts=[...html.matchAll(/<script defer src="\/static\/([^"?]+)(?:\?[^\"]*)?"/g)].map(m=>fs.readFileSync('app/static/'+m[1],'utf8'));
@@ -51,12 +57,27 @@ test('AirPlay uses native HLS and carries selected tracks through changes and ba
     assert.equal(w.document.querySelector('script[src="/static/vendor/hls.min.js"]'),null);
     let play=calls.filter(c=>c.path.endsWith('/play')).at(-1).data;
     assert.equal(play.audio_track,2);assert.equal(play.subtitle_track,3);assert.equal(play.airplay,true);
+    assert.equal(play.burn_subtitles,false);
+    const native={label:'FjordFlix',mode:'disabled'};
+    w.addNativeTrack(native);
+    assert.equal(native.mode,'showing');
+    assert.equal(v.querySelector('track'),null); // HLS rendition, no browser-only blob.
+    const fallback=w.document.getElementById('player-burn-subtitles');
+    assert.equal(fallback.parentElement.hidden,false);
+    fallback.checked=true;await fallback.onchange();
+    assert.equal(calls.filter(c=>c.path.endsWith('/play')).at(-1).data.burn_subtitles,true);
+    assert.equal(native.mode,'disabled');
+    fallback.checked=false;await fallback.onchange();
+    assert.equal(calls.filter(c=>c.path.endsWith('/play')).at(-1).data.burn_subtitles,false);
+    v.dispatchEvent(new w.Event('loadedmetadata'));
+    assert.equal(native.mode,'showing');
     button.click();assert.equal(w.pickerCalls,1);
     v.webkitCurrentPlaybackTargetIsWireless=true;
     v.dispatchEvent(new w.Event('webkitcurrentplaybacktargetiswirelesschanged'));
     assert.equal(button.getAttribute('aria-pressed'),'true');
+    const deletes=calls.filter(c=>c.method==='DELETE').length;
     w.dispatchEvent(new w.Event('pagehide'));await tick();
-    assert.equal(calls.filter(c=>c.method==='DELETE').length,0);
+    assert.equal(calls.filter(c=>c.method==='DELETE').length,deletes);
     v.currentTime=25;
     const subtitles=w.document.getElementById('player-subtitle');subtitles.value='';await subtitles.onchange();
     play=calls.filter(c=>c.path.endsWith('/play')).at(-1).data;

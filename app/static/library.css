@@ -57,3 +57,8 @@
   .episode-selectors { grid-template-columns: 1fr; gap: 0; }
   #library-editor textarea { font-size: 16px; }
 }
+
+
+.airplay-subtitle-fallback{grid-column:1/-1;font-size:12px}
+.airplay-subtitle-fallback input[type=checkbox]{width:auto;display:inline-block;margin-right:8px}
+.airplay-subtitle-fallback[hidden]{display:none}

@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog, uploads, quality, tracks, library as library_metadata
+from app import hub, media, demos, catalog, uploads, quality, tracks, hls_subtitles, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -924,6 +924,7 @@ def movie_subtitles(mid: str, index: int, u=Depends(user)):
 
 class Playback(BaseModel):
     airplay: bool = False
+    burn_subtitles: bool = False
     quality: str = 'auto'
     direct: bool = False
     h264: bool = False
@@ -938,7 +939,7 @@ def decide(meta, data):
         audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    burn = subtitle and (subtitle['delivery'] == 'burn' or data.airplay)
+    burn = subtitle and (subtitle['delivery'] == 'burn' or (data.airplay and data.burn_subtitles))
     remap_audio = len(meta.get('tracks', {}).get('audio', [])) > 1
     if data.quality not in ('auto', 'original', '1080', '720', '480'):
         raise HTTPException(400, 'Ukendt kvalitet.')
@@ -968,10 +969,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     row, meta = movie(mid)
     result = decide(meta, data)
     audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
-    burn = subtitle and (subtitle['delivery'] == 'burn' or data.airplay)
+    burn = subtitle and (subtitle['delivery'] == 'burn' or (data.airplay and data.burn_subtitles))
+    soft = bool(data.airplay and subtitle and not burn)
     result.update(audio_track=audio['index'] if audio else None,
                   subtitle_track=subtitle['index'] if subtitle else None,
-                  subtitle_delivery=('burn' if burn else subtitle['delivery']) if subtitle else None, airplay=data.airplay)
+                  subtitle_delivery=('burn' if burn else 'hls' if soft else subtitle['delivery']) if subtitle else None, airplay=data.airplay)
     offset = min(data.start, max(0, meta['duration'] - 1))
     if result['mode'] == 'Direct Play':
         return media.issue({**result, 'url': f'/api/movies/{mid}/file', 'session': None, 'offset': 0, 'encoder': 'Original'}, request, mid, db)
@@ -1000,9 +1002,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         else:
             encoder = 'NVIDIA NVENC' if GPU else 'CPU · H.264'
             filters = []
-            if subtitle_file:
+            if subtitle_file and burn:
                 # Extracted cues use the original timeline, even after seeking.
                 filters += [f'setpts=PTS-STARTPTS+{offset}/TB', 'subtitles=filename=subtitles.vtt', 'setpts=PTS-STARTPTS']
+            if soft:
+                filters += ['setpts=PTS-STARTPTS']
             if meta['hdr']:
                 filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']
             filters += [f"scale=-2:{result['height']}", 'format=yuv420p']
@@ -1025,7 +1029,19 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         # the first two seconds while the next playlist update is pending.
         contents = playlist.read_text() if playlist.exists() else ''
         if contents.count('#EXTINF:') >= 3 or '#EXT-X-ENDLIST' in contents:
-            return media.issue({**result, 'url': f'/api/streams/{sid}/index.m3u8', 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db, airplay=data.airplay, duration=meta['duration'])
+            if soft:
+                try:
+                    rendition = hls_subtitles.prepare(folder, row['path'], subtitle_file, offset, result['mode'] == 'Direct Stream')
+                    (folder / 'master.m3u8').write_text(hls_subtitles.master(result, subtitle), encoding='utf-8')
+                    with LOCK:
+                        JOBS[sid]['subtitles'] = rendition
+                    result['playlist'] = 'master.m3u8'
+                    result['initial_time'] = max(0, offset - rendition['origin'])
+                    offset = rendition['origin']
+                except (OSError, ValueError, KeyError, IndexError, subprocess.SubprocessError):
+                    stop_job(sid)
+                    raise HTTPException(503, 'Tekstsporet kunne ikke klargøres. Prøv indbrændte undertekster under Lyd og tekst.')
+            return media.issue({**result, 'url': f"/api/streams/{sid}/{result.get('playlist', 'index.m3u8')}", 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db, airplay=data.airplay, duration=meta['duration'])
         if process.poll() is not None:
             break
         time.sleep(0.1)
@@ -1045,10 +1061,21 @@ def stream_file(sid, filename, u):
         job = JOBS.get(sid)
         if not job or job['user'] != u['id']:
             raise HTTPException(404)
-        if not re.fullmatch(r'(index\.m3u8|segment\d+\.ts)', filename):
+        if not re.fullmatch(r'(index\.m3u8|master\.m3u8|subtitles\.m3u8|subtitle\d+\.vtt|segment\d+\.ts)', filename):
             raise HTTPException(404)
         job['touch'] = time.time()
         path = job['folder'] / filename
+        if filename == 'subtitles.m3u8' or filename.endswith('.vtt'):
+            if not job.get('subtitles'):
+                raise HTTPException(404)
+            playlist = (job['folder'] / 'index.m3u8').read_text()
+            if filename == 'subtitles.m3u8':
+                return Response(hls_subtitles.rendition_playlist(playlist), media_type='application/vnd.apple.mpegurl')
+            try:
+                text = hls_subtitles.segment_text(job['subtitles'], playlist, int(filename[8:-4]))
+            except KeyError:
+                raise HTTPException(404)
+            return Response(text, media_type='text/vtt')
     if not path.exists():
         raise HTTPException(404)
     return FileResponse(path, media_type='application/vnd.apple.mpegurl' if filename.endswith('m3u8') else 'video/mp2t')
