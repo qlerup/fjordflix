@@ -1,6 +1,7 @@
 {$MEDIA_DOMAIN} {
     # No access log: media URLs contain short-lived bearer tickets.
-    handle /media/* {
+    @media path /media/* /tv-media/*
+    handle @media {
         reverse_proxy {$MEDIA_UPSTREAM}
     }
     handle {

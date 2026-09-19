@@ -246,6 +246,44 @@ automatisk baggrundsopdatering, der overskriver manuelle oplysninger.
 
 
 
+### LG webOS og andre TV-klienter
+
+Serveren har et indbygget token-API til selvstændige TV-apps. Det følger med ved
+normal opdatering via FjordHub; TV-appens kildekode og installationsfil ligger
+ikke i dette repository.
+
+- `GET /tv-api/info` viser API-versionen uden login.
+- `POST /tv-api/login` modtager `name` og `password`. Eksisterende FjordFlix- eller
+  FjordHub-login og loginbegrænsning genbruges. Svaret indeholder `token` og
+  `expires_in`; der sættes ingen cookie. Brug HTTPS til login over internettet.
+- TV-klienten sender `Authorization: Bearer <token>` til `/tv-api/state`,
+  `/tv-api/movies` og de tilsvarende endpoints for billeder, favoritter,
+  afspilningsposition, afspilning og stream-heartbeat. Tokenet har samme
+  syvdages levetid som en normal session; serveren gemmer kun dets hash.
+- API'et kræver token, også selv om forespørgslen indeholder en gyldig
+  browsercookie. CORS understøtter pakkede apps uden at tillade cookie-credentials.
+  Det eksisterende browser-login og dets CSRF-kontrol er uændret.
+- Afspilning returnerer en separat, kortlivet videobillet under `/tv-media/`.
+  Den gælder kun én film/stream, fornyes via `/tv-api/media/heartbeat` og kan
+  tilbagekaldes via `/tv-api/media/revoke`. `POST /tv-api/logout` ugyldiggør
+  TV-sessionen og dens billetter. FjordHub-adgang kontrolleres fortsat på serveren.
+
+Ved separat mediedomæne skal reverse proxy videresende **både `/media/*` og
+`/tv-media/*`** til FjordFlix. Eksemplet i `deploy/direct-media/Caddyfile`
+understøtter begge. En eksisterende FjordHub-mediegateway skal have TV-ruten
+tilføjet, hvis den endnu ikke findes. Undlad at logge videobillet-URL'erne.
+
+En installation med den tidligere separate `fjordflix_tv.py`-udvidelse kan
+fortsat køre under opdateringen. For at bruge det indbyggede API skal dens
+TV-Compose-override fjernes fra `COMPOSE_FILE`, hvorefter kun app-servicen
+genoprettes med den normale FjordHub-konfiguration. Bevar øvrige Compose-filer,
+data- og mediemapper, GPU-indstillinger og mediegatewayens TV-rute.
+
+Test: `python -m pytest tests/test_tv.py tests/test_media_delivery.py tests/test_hub.py -q`.
+Tests dækker token-login, cookieadskillelse, CORS, sessionsudløb, FjordHub-revokering,
+filmposition, favoritter og videobillettens rettigheder. Fysisk TV-afspilning skal
+desuden afprøves med den separate klient.
+
 ### AirPlay (Safari / iPhone / iPad / Mac)
 
 Start filmen, vælg lyd og undertekster, og tryk på AirPlay-ikonet ved siden af fuld skærm. Knappen vises i browsere med WebKits AirPlay-vælger og native HLS. Safari får en AirPlay-klar HLS-stream allerede ved lokal afspilning, så både knappen og systemets AirPlay-vælger bruger samme kilde. Andre browsere beholder deres normale afspilning.

@@ -1144,3 +1144,7 @@ app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), na
 def index():
     return FileResponse(Path(__file__).parent / 'static' / 'index.html')
 
+
+from app.tv import attach_tv
+
+attach_tv(app, sys.modules[__name__])
