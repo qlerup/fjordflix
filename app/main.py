@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog, uploads, quality, tracks, hls_subtitles, library as library_metadata
+from app import hub, media, demos, catalog, uploads, quality, tracks, hls_subtitles, opensubtitles, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -599,7 +599,7 @@ def movies(u=Depends(user)):
         if not info.get('media_type') and not info.get('manual'):
             info = {**catalog.identify(meta.get('original_title') or r['title']), **info}
         meta['catalog'] = info
-        if 'tracks' in meta:
+        if 'tracks' in meta or meta.get('external_subtitles'):
             meta['tracks'] = tracks.displayed(meta)
         info['lookup_message'] = info.get('last_lookup', {}).get('message') or catalog.message(info)
         result.append(dict(id=r['id'], title=r['title'], **meta, series_key=catalog.series_key(info),
@@ -664,6 +664,9 @@ def delete_movie(mid: str, data: LibraryDelete, u=Depends(admin)):
                 if not path.is_relative_to(MEDIA.resolve()) or path == MEDIA.resolve():
                     raise HTTPException(409, 'Videofilen ligger uden for bibliotekets mediemappe og kan ikke slettes her.')
                 paths.add(path)
+                _, movie_meta = movie(key)
+                for subtitle in movie_meta.get('external_subtitles', []):
+                    paths.add(opensubtitles.subtitle_path(DATA, key, subtitle['index']))
                 for suffix in ('', '-backdrop', '-episode', '-frame'):
                     artwork = DATA / 'posters' / f'{key}{suffix}.jpg'
                     if not artwork.resolve().is_relative_to((DATA / 'posters').resolve()):
@@ -914,7 +917,8 @@ def movie_subtitles(mid: str, index: int, u=Depends(user)):
         _, subtitle = tracks.select(meta, subtitle_index=index)
         if subtitle['delivery'] != 'text':
             raise ValueError('Dette spor vises ved at brænde underteksterne ind i videoen.')
-        path = tracks.webvtt(row['path'], index, DATA / 'subtitles')
+        source = opensubtitles.subtitle_path(DATA, mid, index) if subtitle.get('external') else row['path']
+        path = tracks.webvtt(source, 0 if subtitle.get('external') else index, DATA / 'subtitles')
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except (OSError, RuntimeError, subprocess.TimeoutExpired):
@@ -985,7 +989,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     subtitle_file = None
     if data.airplay and subtitle and subtitle['delivery'] == 'text':
         try:
-            subtitle_file = tracks.webvtt(row['path'], subtitle['index'], DATA / 'subtitles')
+            source = opensubtitles.subtitle_path(DATA, mid, subtitle['index']) if subtitle.get('external') else row['path']
+            subtitle_file = tracks.webvtt(source, 0 if subtitle.get('external') else subtitle['index'], DATA / 'subtitles')
         except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):
             raise HTTPException(503, 'Underteksterne kunne ikke klargøres til AirPlay. Prøv igen.')
     with LOCK:
@@ -1157,3 +1162,4 @@ def index():
 from app.tv import attach_tv
 
 attach_tv(app, sys.modules[__name__])
+subtitle_provider = opensubtitles.register(sys.modules[__name__])

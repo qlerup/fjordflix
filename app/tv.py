@@ -95,6 +95,16 @@ def attach_tv(app, main):
         return main.plan(mid, data, auth[0])
 
 
+    @tv.get('/tv-api/movies/{mid}/subtitles/{index}.vtt')
+    def subtitles(mid: str, index: int, auth=Depends(authorized)):
+        return main.movie_subtitles(mid, index, auth[0])
+
+
+    @tv.get('/tv-api/movies/{mid}/tracks')
+    def movie_tracks(mid: str, auth=Depends(authorized)):
+        return main.movie_tracks(mid, auth[0])
+
+
     @tv.post('/tv-api/movies/{mid}/play')
     def play(mid: str, data: main.Playback, auth=Depends(authorized)):
         result = main.play(mid, data, auth[1], auth[0])

@@ -15,7 +15,9 @@ def displayed(meta):
     """Apply per-file labels without changing the original stream metadata."""
     available = meta.get('tracks', {})
     overrides = meta.get('audio_language_overrides', {})
-    return {**available, 'audio': [
+    external = meta.get('external_subtitles', [])
+    embedded = [t for t in available.get('subtitles', []) if not t.get('external')]
+    return {**available, 'subtitles':embedded + external, 'audio': [
         {**track, 'source_language': track.get('language', 'und'),
          'language': overrides.get(str(track['index']), track.get('language', 'und'))}
         for track in available.get('audio', [])]}
@@ -52,7 +54,7 @@ def scan(path):
 
 
 def select(meta, audio_index=None, subtitle_index=None):
-    available = meta.get('tracks', {})
+    available = displayed(meta)
     audio = available.get('audio', [])
     chosen_audio = next((t for t in audio if t['index'] == audio_index), None) if audio_index is not None else (
         next((t for t in audio if t['default']), None) or next(iter(audio), None))

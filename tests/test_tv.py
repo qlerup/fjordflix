@@ -58,6 +58,7 @@ def test_login_cookie_isolation_cors_and_logout(tv_client):
     assert 'access-control-allow-credentials' not in preflight.headers
     assert client.post('/api/login', json=credentials).status_code == 200
     assert client.get('/api/movies').status_code == 200
+
     # Valid browser cookies alone do not authorize a cross-origin TV request.
     assert client.get('/tv-api/movies').status_code == 401
     assert client.post('/api/login', json=credentials, headers={'Origin':'https://evil.test'}).status_code == 403
@@ -72,6 +73,33 @@ def test_login_cookie_isolation_cors_and_logout(tv_client):
     assert client.get('/tv-api/movies', headers=headers).status_code == 401
     # Logging out of the TV does not end the separate browser login.
     assert client.get('/api/movies').status_code == 200
+
+
+def test_tv_subtitles_require_bearer_and_validate_track(tv_client, tmp_path, monkeypatch):
+    client, credentials, mid = tv_client
+    with main.db() as conn:
+        meta = json.loads(conn.execute('SELECT metadata FROM movies WHERE id=?', (mid,)).fetchone()[0])
+        meta['tracks'] = {'version':1, 'audio':[], 'subtitles':[
+            {'index':2, 'delivery':'text'}, {'index':3, 'delivery':'burn'}]}
+        meta['external_subtitles'] = [{'index':1000000002,'external':True,'codec':'subrip','delivery':'text'}]
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
+    output = tmp_path / 'subtitle.vtt'
+    output.write_text('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHej\n')
+    monkeypatch.setattr(main.tracks, 'webvtt', lambda *args: output)
+    path = f'/tv-api/movies/{mid}/subtitles/2.vtt'
+    assert client.get(path).status_code == 401
+    assert client.post('/api/login', json=credentials).status_code == 200
+    assert client.get(path).status_code == 401
+    _, headers = login(client, credentials)
+    response = client.get(path, headers=headers)
+    assert response.status_code == 200 and response.text.startswith('WEBVTT')
+    assert response.headers['access-control-allow-origin'] == '*'
+    assert client.get(path.replace('/2.vtt', '/9.vtt'), headers=headers).status_code == 400
+    assert client.get(path.replace('/2.vtt', '/3.vtt'), headers=headers).status_code == 400
+    assert client.get(f'/tv-api/movies/{mid}/tracks').status_code == 401
+    available = client.get(f'/tv-api/movies/{mid}/tracks',headers=headers).json()
+    assert available['subtitles'][-1]['index'] == 1000000002
+    assert client.get(path.replace('/2.vtt','/1000000002.vtt'),headers=headers).status_code == 200
 
 
 def test_progress_favorites_scoped_video_renewal_and_expiry(tv_client):

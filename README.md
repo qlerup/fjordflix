@@ -296,3 +296,25 @@ Start filmen, vælg lyd og undertekster, og tryk på AirPlay-ikonet ved siden af
 - Med direkte video konfigureret bruges den eksisterende videoadresse og dens adgangskontrol. Ellers bruges samme adresse som hjemmesiden. TV'et skal kunne nå adressen; eksterne loginporte som Cloudflare Access kan blokere TV'et og kræver en tilgængelig videoadresse.
 
 Verifikation: `python -m pytest tests/test_airplay.py tests/test_tracks.py tests/test_media_delivery.py -q` bruger rigtig FFmpeg til at kontrollere valgt lyd, separate tekstspor, bevarede H.264-billeddata, synkronisering før/efter spoling, indbrændingsreserven og adgang uden cookies. `node --test tests/test_airplay_ui.cjs` kræver `jsdom` og tester UI med simulerede WebKit-API'er. Den trådløse forbindelse skal desuden afprøves på fysisk Apple-udstyr: forbind TV, lås telefonen i mindst tre minutter, prøv spoling og skift af spor, undertekster Fra, separate undertekster og indbrændingsreserven, afbryd AirPlay, og kontrollér at lukning af afspilleren stopper streamen.
+# Undertekster fra OpenSubtitles
+
+Som administrator: åbn **Din server → Undertekster · OpenSubtitles**. Opret en
+konto på OpenSubtitles.com og en API-nøgle under **API Consumers**. Indtast
+nøgle, brugernavn og adgangskode, og vælg **Gem og test forbindelse**. Gemte
+hemmeligheder vises ikke igen; de opbevares i serverens database.
+
+Åbn en film og vælg **Find undertekster**, vælg sprog (dansk er standard), og
+søg. Resultater viser udgave, match på filens fingeraftryk og eventuelle
+markeringer for tvungne undertekster eller hørehæmmede. Vælg **Hent SRT** for
+at gemme og vælge sporet. Titelmatch alene garanterer ikke timing; samples og
+andre klip kræver særlig opmærksomhed. Søgning og download er for administratorer.
+Alle brugere kan afspille de hentede spor. Downloadkvoten kommer fra kontoen;
+den samme gemte fil hentes ikke igen ved genafspilning eller gentaget download.
+
+SRT-filer gemmes i `DATA_DIR/subtitles/downloaded`; de oprindelige videofiler
+ændres ikke. Tekstspor leveres som WebVTT til browseren og LG-appen og tvinger
+ikke i sig selv videotranscoding. Genåbn filmen i den opdaterede TV-app for at
+hente sporlisten igen. Fjernelse af API-forbindelsen bevarer de hentede filer;
+sletning af filmen fjerner dens hentede SRT-filer. Tag database og datamappe
+med i backup. Integrationens tests bruger simulerede API-svar, så de forbruger
+ikke downloads fra en rigtig konto.
