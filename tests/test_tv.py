@@ -125,6 +125,10 @@ def test_quality_plan_preserves_4k_or_reports_transcoding_without_starting_jobs(
     for request, mode, height in [
         ({'quality':'auto','direct':True,'h264':True}, 'Direct Play', 2160),
         ({'quality':'original','direct':False,'h264':True}, 'Direct Stream', 2160),
+        ({'quality':'2160','direct':True,'h264':True}, 'Direct Play', 2160),
+        ({'quality':'2160','direct':False,'h264':True}, 'Direct Stream', 2160),
+        ({'quality':'2160','direct':False,'h264':False}, 'Transcoding', 2160),
+        ({'quality':'original','direct':False,'h264':False}, 'Transcoding', 2160),
         ({'quality':'1080','direct':True,'h264':True}, 'Transcoding', 1080),
         ({'quality':'720','direct':True,'h264':True}, 'Transcoding', 720),
     ]:
@@ -153,3 +157,16 @@ def test_expired_session_and_hub_revocation(tv_client, monkeypatch):
     assert client.get('/tv-api/movies', headers=headers).status_code == 403
     # Hub revocation invalidates the session, including subsequent media checks.
     assert client.get('/tv-api/state', headers=headers).status_code == 401
+
+
+@pytest.mark.parametrize('height', [720, 1080, 1600, 2160])
+@pytest.mark.parametrize('quality', ['2160', 'original'])
+def test_hdr_transcoding_preserves_resolution_without_upscaling(height, quality):
+    meta = {'format': 'mkv', 'video': 'hevc', 'audio': 'truehd',
+            'width': 3840, 'height': height, 'bitrate': 40000000,
+            'hdr': True, 'pix_fmt': 'yuv420p10le'}
+    plan = main.decide(meta, main.Playback(quality=quality, h264=True))
+    assert plan['mode'] == 'Transcoding'
+    assert plan['height'] == height
+    if height > 1080:
+        assert plan['mbps'] == 25

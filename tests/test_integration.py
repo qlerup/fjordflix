@@ -88,6 +88,20 @@ def test_complete_streaming_flow():
         assert viewer.delete(f'/api/streams/{sid}').status_code == 200
         assert not (main.DATA / 'streams' / sid).exists()
 
+        response = viewer.post(f'/api/movies/{mid}/play', json={'quality': '2160'})
+        assert response.status_code == 200, response.text
+        stream4k = response.json()
+        assert stream4k['mode'] == 'Transcoding' and stream4k['height'] == 2160
+        playlist4k = viewer.get(stream4k['url']).text
+        segment4k = next(line for line in playlist4k.splitlines() if line.endswith('.ts'))
+        path4k = main.DATA / 'streams' / stream4k['session'] / segment4k
+        probe4k = subprocess.run(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json', str(path4k)], capture_output=True, check=True)
+        video4k = json.loads(probe4k.stdout)['streams'][0]
+        assert (video4k['width'], video4k['height']) == (3840, 2160)
+        subprocess.run(['ffmpeg', '-v', 'error', '-xerror', '-i', str(path4k), '-f', 'null', '-'], capture_output=True, check=True)
+        assert viewer.delete(f"/api/streams/{stream4k['session']}").status_code == 200
+
+
         seek = viewer.post(f'/api/movies/{mid}/play', json={'quality':'720', 'start':6}).json()
         assert seek['offset'] == 6 and seek['height'] == 720
         viewer.delete(f"/api/streams/{seek['session']}")

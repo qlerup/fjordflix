@@ -941,21 +941,23 @@ def decide(meta, data):
         raise HTTPException(400, str(exc))
     burn = subtitle and (subtitle['delivery'] == 'burn' or (data.airplay and data.burn_subtitles))
     remap_audio = len(meta.get('tracks', {}).get('audio', [])) > 1
-    if data.quality not in ('auto', 'original', '1080', '720', '480'):
+    if data.quality not in ('auto', 'original', '2160', '1080', '720', '480'):
         raise HTTPException(400, 'Ukendt kvalitet.')
-    limit = {'1080': 8, '720': 4, '480': 2}
+    limit = {'2160': 25, '1080': 8, '720': 4, '480': 2}
     quality = data.quality
     if quality == 'auto':
         if data.bandwidth and meta['bitrate'] / 1e6 > data.bandwidth * 0.7:
             quality = '1080' if data.bandwidth >= 12 else ('720' if data.bandwidth >= 6 else '480')
         else:
             quality = 'original'
-    if quality == 'original' and data.direct and not data.airplay and not burn and not remap_audio:
+    preserve = quality == 'original' or (quality == '2160' and meta['height'] <= 2160)
+    if preserve and data.direct and not data.airplay and not burn and not remap_audio:
         return {'mode': 'Direct Play', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Browseren understøtter originalfilen.'}
-    if quality == 'original' and data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'] and not burn:
+    if preserve and data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'] and not burn:
         return {'mode': 'Direct Stream', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Videoen bevares. Indpakning og lyd tilpasses afspilleren.'}
-    target = min(meta['height'], int(quality) if quality.isdigit() else 1080)
-    return {'mode': 'Transcoding', 'height': target, 'mbps': limit.get(quality, 8), 'reason': 'AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else 'Valgt kvalitet eller format kræver videokonvertering.'}
+    target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' else 1080))
+    mbps = limit.get(quality, 25 if target > 1080 else 8)
+    return {'mode': 'Transcoding', 'height': target, 'mbps': mbps, 'reason': 'AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else 'Valgt kvalitet eller format kræver videokonvertering.'}
 
 
 @app.post('/api/movies/{mid}/plan')

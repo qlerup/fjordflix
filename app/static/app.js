@@ -150,6 +150,10 @@ async function capabilities(movie, quality) {
 async function openDetail(movie) {
   if (movie?.isSeries) movie = FjordLibrary.initial(movie.episodes);
   if (!movie) return;
+  for (const id of ['detail-quality', 'player-quality']) {
+    const option = $(id).querySelector('[value="2160"]');
+    option.hidden = option.disabled = !(movie.width >= 3840 || movie.height >= 2160);
+  }
   selected = movie; $('detail-title').textContent = movie.title;
   $('detail-art').style.backgroundImage = `url('${FjordLibrary.artwork(movie, 'backdrop')}')`;
   $('detail-meta').innerHTML = [`${movie.width} × ${movie.height}`,movie.video.toUpperCase(),movie.hdr ? 'HDR' : 'SDR',clock(movie.duration)].map(t => `<span>${escapeHtml(t)}</span>`).join('');
