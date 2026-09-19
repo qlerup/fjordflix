@@ -170,3 +170,51 @@ def test_hdr_transcoding_preserves_resolution_without_upscaling(height, quality)
     assert plan['height'] == height
     if height > 1080:
         assert plan['mbps'] == 25
+
+def test_hdr_hevc_remux_preserves_video_and_surround_audio(tv_client):
+    import subprocess
+    from pathlib import Path
+    client, credentials, mid = tv_client
+    _, headers = login(client, credentials)
+    row, _ = main.movie(mid)
+    path = Path(row['path'])
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=1280x720:r=24',
+                    '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=5.1', '-t', '2', '-c:v', 'libx265',
+                    '-x265-params', 'pools=1:frame-threads=1:log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc', '-pix_fmt', 'yuv420p10le',
+                    '-color_primaries', 'bt2020', '-color_trc', 'smpte2084', '-colorspace', 'bt2020nc',
+                    '-tag:v', 'hvc1', '-c:a', 'ac3', '-y', str(path)], check=True, capture_output=True)
+    meta = {'width':1280,'height':720,'video':'hevc','audio':'ac3','format':'mp4',
+            'hdr':True,'pix_fmt':'yuv420p10le','duration':2,'bitrate':1000000,
+            'tracks':{'audio':[{'index':1,'codec':'ac3','default':True,'channels':6}]}}
+    (main.DATA / 'streams').mkdir(exist_ok=True)
+    with main.db() as conn:
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
+    response = client.post(f'/tv-api/movies/{mid}/play', headers=headers,
+                           json={'quality':'original', 'video_copy':True, 'audio_copy':True})
+    assert response.status_code == 200, response.text
+    plan = response.json()
+    assert plan['mode'] == 'Direct Stream'
+    try:
+        playlist = client.get(plan['url']).text
+        name = next(line for line in playlist.splitlines() if line.endswith('.ts'))
+        segment = main.DATA / 'streams' / plan['session'] / name
+        # Decode the actual HLS segment and inspect the input stream description.
+        result = subprocess.run(['ffmpeg','-hide_banner','-i',str(segment),'-f','null','-'], capture_output=True, check=True)
+        description = result.stderr.decode('utf-8', errors='replace')
+        assert 'Video: hevc' in description and 'yuv420p10le' in description
+        assert 'smpte2084' in description, description
+        assert 'Audio: ac3' in description and '5.1' in description
+    finally:
+        main.stop_job(plan['session'])
+
+@pytest.mark.parametrize('options,expected', [
+    ({'direct':True,'video_copy':True}, 'Direct Play'),
+    ({'direct':False,'video_copy':True}, 'Direct Stream'),
+    ({'direct':False,'video_copy':False}, 'Transcoding'),
+    ({'direct':True,'video_copy':True,'quality':'720'}, 'Transcoding'),
+])
+def test_hdr_plan_uses_actual_video_capability(options, expected):
+    meta = {'height':2160,'width':3840,'video':'hevc','pix_fmt':'yuv420p10le','hdr':True,'bitrate':40000000}
+    result = main.decide(meta, main.Playback(**{'quality':'original', **options}))
+    assert result['mode'] == expected
+    assert result['height'] == (720 if options.get('quality') == '720' else 2160)

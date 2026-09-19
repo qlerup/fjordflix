@@ -25,7 +25,11 @@ def source_quality(video, audio, tracks=()):
     features = str(first_audio.get('Format_AdditionalFeatures', '')).split()
     atmos = atmos or ('JOC' in features and audio.get('codec_name') == 'eac3') or (
         first_audio.get('Format') == 'MLP FBA' and '16-ch' in features and audio.get('codec_name') == 'truehd')
-    return {'version': 1, 'dynamic_range': dynamic_range, 'audio_codec': audio.get('codec_name'),
+    dovi = next((s for s in side_data if s.get('side_data_type') == 'DOVI configuration record'), {})
+    return {'version': 2, 'video_profile': video.get('profile'), 'video_level': video.get('level'),
+            'frame_rate': video.get('avg_frame_rate') or video.get('r_frame_rate'),
+            'dv_profile': dovi.get('dv_profile'), 'dv_el': bool(dovi.get('el_present_flag')),
+            'dynamic_range': dynamic_range, 'audio_codec': audio.get('codec_name'),
             'audio_profile': profile, 'audio_channels': audio.get('channels'),
             'audio_layout': audio.get('channel_layout', ''), 'dolby_atmos': bool(atmos)}
 

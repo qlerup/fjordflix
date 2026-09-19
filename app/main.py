@@ -418,7 +418,7 @@ async def refresh_source_quality():
         rows = conn.execute('SELECT id,path,metadata FROM movies').fetchall()
     for row in rows:
         saved = json.loads(row['metadata']).get('quality', {})
-        if saved.get('version') == 1 and (saved.get('mediainfo') or not shutil.which('mediainfo')) and json.loads(row['metadata']).get('tracks', {}).get('version') == 1:
+        if saved.get('version') == 2 and (saved.get('mediainfo') or not shutil.which('mediainfo')) and json.loads(row['metadata']).get('tracks', {}).get('version') == 1:
             continue
         try:
             details = await asyncio.to_thread(probe, Path(row['path']))
@@ -928,6 +928,9 @@ class Playback(BaseModel):
     quality: str = 'auto'
     direct: bool = False
     h264: bool = False
+    video_copy: bool = False
+    audio_copy: bool = False
+    capability_reason: str = Field(default='', max_length=300)
     bandwidth: float = Field(default=0, ge=0, le=100000)
     start: float = Field(default=0, ge=0, le=1e8)
     audio_track: int | None = Field(default=None, ge=0, strict=True)
@@ -940,7 +943,7 @@ def decide(meta, data):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     burn = subtitle and (subtitle['delivery'] == 'burn' or (data.airplay and data.burn_subtitles))
-    remap_audio = len(meta.get('tracks', {}).get('audio', [])) > 1
+    remap_audio = data.audio_track is not None and len(meta.get('tracks', {}).get('audio', [])) > 1
     if data.quality not in ('auto', 'original', '2160', '1080', '720', '480'):
         raise HTTPException(400, 'Ukendt kvalitet.')
     limit = {'2160': 25, '1080': 8, '720': 4, '480': 2}
@@ -952,12 +955,12 @@ def decide(meta, data):
             quality = 'original'
     preserve = quality == 'original' or (quality == '2160' and meta['height'] <= 2160)
     if preserve and data.direct and not data.airplay and not burn and not remap_audio:
-        return {'mode': 'Direct Play', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Browseren understøtter originalfilen.'}
-    if preserve and data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'] and not burn:
+        return {'mode': 'Direct Play', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Afspilleren understøtter originalfilen.'}
+    if preserve and not burn and ((data.video_copy and not data.airplay and meta['video'] in ('h264', 'hevc')) or (data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'])):
         return {'mode': 'Direct Stream', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Videoen bevares. Indpakning og lyd tilpasses afspilleren.'}
     target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' else 1080))
     mbps = limit.get(quality, 25 if target > 1080 else 8)
-    return {'mode': 'Transcoding', 'height': target, 'mbps': mbps, 'reason': 'AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else 'Valgt kvalitet eller format kræver videokonvertering.'}
+    return {'mode': 'Transcoding', 'height': target, 'mbps': mbps, 'reason': 'AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else (data.capability_reason if preserve and data.capability_reason else 'Valgt kvalitet eller format kræver videokonvertering.')}
 
 
 @app.post('/api/movies/{mid}/plan')
@@ -998,7 +1001,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         bitmap = burn and subtitle['delivery'] == 'burn'
         cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', str(Path(row['path']).resolve())]
         cmd += ['-map', '[vout]' if bitmap else '0:v:0', '-map', f"0:{audio['index']}" if audio else '0:a:0?', '-sn']
-        encoder = 'Remux + AAC'
+        encoder = 'Remux + original lyd' if data.audio_copy else 'Remux + AAC'
         if result['mode'] == 'Direct Stream':
             cmd += ['-c:v', 'copy']
         else:
@@ -1021,7 +1024,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                 # NVENC otherwise forces I-frames without IDR boundaries. HLS then
                 # waits for the default GOP (~10s at 24fps), stalling Chrome at its end.
                 cmd += ['-forced-idr', '1']
-        cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file', '-hls_segment_filename', str(folder / 'segment%05d.ts'), str(folder / 'index.m3u8')]
+        if data.audio_copy and not data.airplay and audio and audio['codec'] in ('aac', 'ac3', 'eac3'):
+            cmd += ['-c:a', 'copy']
+        else:
+            cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']
+        cmd += ['-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file', '-hls_segment_filename', str(folder / 'segment%05d.ts'), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log, cwd=folder)
         JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time(), 'idle_timeout': media.AIRPLAY_TTL if data.airplay else 120}
