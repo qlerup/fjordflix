@@ -90,6 +90,11 @@ def attach_tv(app, main):
         return main.progress(mid, data, auth[0])
 
 
+    @tv.post('/tv-api/movies/{mid}/plan')
+    def plan(mid: str, data: main.Playback, auth=Depends(authorized)):
+        return main.plan(mid, data, auth[0])
+
+
     @tv.post('/tv-api/movies/{mid}/play')
     def play(mid: str, data: main.Playback, auth=Depends(authorized)):
         result = main.play(mid, data, auth[1], auth[0])

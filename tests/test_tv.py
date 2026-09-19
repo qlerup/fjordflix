@@ -113,6 +113,28 @@ def test_direct_media_host_proxy_and_ticket_revocation(tv_client):
     assert client.get(play['url']).status_code == 401
 
 
+def test_quality_plan_preserves_4k_or_reports_transcoding_without_starting_jobs(tv_client):
+    client, credentials, mid = tv_client
+    assert client.post(f'/tv-api/movies/{mid}/plan', json={}).status_code == 401
+    _, headers = login(client, credentials)
+    with main.db() as conn:
+        meta = json.loads(conn.execute('SELECT metadata FROM movies WHERE id=?', (mid,)).fetchone()[0])
+        meta.update(width=3840, height=2160)
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
+    jobs_before = set(main.JOBS)
+    for request, mode, height in [
+        ({'quality':'auto','direct':True,'h264':True}, 'Direct Play', 2160),
+        ({'quality':'original','direct':False,'h264':True}, 'Direct Stream', 2160),
+        ({'quality':'1080','direct':True,'h264':True}, 'Transcoding', 1080),
+        ({'quality':'720','direct':True,'h264':True}, 'Transcoding', 720),
+    ]:
+        result = client.post(f'/tv-api/movies/{mid}/plan', headers=headers, json=request)
+        assert result.status_code == 200
+        assert result.json()['mode'] == mode and result.json()['height'] == height
+        assert result.json()['reason']
+    assert set(main.JOBS) == jobs_before
+
+
 def test_expired_session_and_hub_revocation(tv_client, monkeypatch):
     client, credentials, _ = tv_client
     token, headers = login(client, credentials)
