@@ -19,6 +19,11 @@ class SourceInput(BaseModel):
     path: str = Field(min_length=1, max_length=4096)
 
 
+class PoolConnection(BaseModel):
+    pool_id: str = Field(pattern=r'^[a-f0-9]{20}$')
+    confirm_restart: bool = False
+
+
 class Sources:
     def __init__(self, app, host):
         self.host = host
@@ -89,7 +94,21 @@ class Sources:
                 entry['directories'] = [{'name': path, 'path': local} for path in entry.get('paths', []) if (local := mapped(path))]
             for entry in data.get('mounts', []):
                 entry['local_path'] = mapped(entry['path'])
+            for entry in data.get('host_storage', {}).get('pools', []):
+                entry['local_path'] = mapped(entry['target']) if entry.get('configured') else None
             return {**data, 'configured': True}
+
+        @app.post('/api/admin/library/proxmox/connect')
+        def connect_pool(data: PoolConnection, u=Depends(host.admin)):
+            if not host.hub.managed():
+                raise HTTPException(400, 'Tilslutning kræver FjordHub.')
+            if not data.confirm_restart:
+                raise HTTPException(400, 'Bekræft genstart af FjordHubs container.')
+            result = host.hub.call('/api/hub/apps/fjordflix/library/connect',
+                {'user_id': u.get('hub_id'), **data.model_dump()}, timeout=50)
+            if not result.get('accepted'):
+                raise HTTPException(400, result.get('error', 'Lageret kunne ikke tilsluttes.'))
+            return result
 
         @app.post('/api/admin/library', status_code=201)
         def add(data: SourceInput, u=Depends(host.admin)):

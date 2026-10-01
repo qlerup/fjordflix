@@ -63,6 +63,27 @@ def test_write_guide_requires_admin_and_is_not_a_mutation(mounted, monkeypatch):
     assert len(calls) == 1
 
 
+def test_pool_connection_requires_confirmation_and_forwards_admin(mounted, monkeypatch):
+    client, _ = mounted
+    monkeypatch.setattr(main.hub, 'managed', lambda: True)
+    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'id':'owner','admin':True,'hub_id':17})
+    calls = []
+    def call(path, payload, **kwargs):
+        calls.append((path,payload))
+        return {'ok':True,'accepted':True,'job':{'state':'queued'}}
+    monkeypatch.setattr(main.hub, 'call', call)
+    url = '/api/admin/library/proxmox/connect'
+    assert client.post(url,json={'pool_id':'a'*20}).status_code == 400
+    assert client.post(url,json={'pool_id':'/etc','confirm_restart':True}).status_code == 422
+    assert not calls
+    result = client.post(url,json={'pool_id':'a'*20,'confirm_restart':True})
+    assert result.status_code == 200 and result.json()['job']['state'] == 'queued'
+    assert calls == [('/api/hub/apps/fjordflix/library/connect',{'user_id':17,'pool_id':'a'*20,'confirm_restart':True})]
+    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'id':'viewer','admin':False})
+    assert client.post(url,json={'pool_id':'a'*20,'confirm_restart':True}).status_code == 403
+    assert len(calls) == 1
+
+
 def scan():
     assert main.library_sources.lock.acquire(blocking=False)
     main.library_sources.rescan.clear()

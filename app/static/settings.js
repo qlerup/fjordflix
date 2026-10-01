@@ -1,6 +1,6 @@
 (() => {
   const dialog = $('admin-dialog');
-  let folder = '', timer, browsing = false;
+  let folder = '', timer, poolTimer, poolPending = false, browsing = false;
   const fail = error => { $('source-error').textContent = error.message; };
   async function loadSources() {
     clearTimeout(timer);
@@ -87,12 +87,13 @@
   };
   $('library-write-close').onclick = () => { $('library-write-guide').hidden = true; writeTrigger?.focus(); };
   $('source-proxmox').onclick = async () => {
+    clearTimeout(poolTimer);
     $('source-proxmox').disabled = true;
     $('proxmox-inventory').hidden = false;
     $('proxmox-status').textContent = 'Henter storage-pools, diske og partitioner fra Proxmox…';
     $('proxmox-selection').textContent = '';
     $('proxmox-guide').hidden = true;
-    for (const id of ['proxmox-storages', 'proxmox-disks', 'proxmox-mounts']) $(id).replaceChildren();
+    for (const id of ['proxmox-storages', 'proxmox-disks', 'proxmox-mounts', 'proxmox-pools']) $(id).replaceChildren();
     const size = value => value ? `${(value / 1024 ** 3).toLocaleString('da-DK', {maximumFractionDigits: 1})} GiB` : 'Ukendt størrelse';
     function entry(container, title, description, directories, reason, commands = '', access = null) {
       const row = document.createElement('div'); row.className = 'source-row';
@@ -134,6 +135,35 @@
     try {
       const data = await api('/admin/library/proxmox');
       $('proxmox-status').textContent = data.errors.length ? data.errors.join(' ') : `Forbundet til Proxmox · LXC ${data.ctid}. Vælg en mediemappe fra et tilgængeligt lager.`;
+      const hostStorage = data.host_storage || {available:false, pools:[]};
+      const job = hostStorage.job || {state:'idle'};
+      poolPending = ['queued','applying','restarting'].includes(job.state);
+      $('proxmox-pool-status').textContent = hostStorage.error || (hostStorage.available
+        ? (job.message || 'Vælg et lager. Tilslutningen kopierer ingen filer.')
+        : 'Automatisk tilslutning er ikke sat op. Åbn Indstillinger → Lageradgang i FjordHub.');
+      for (const pool of hostStorage.pools || []) {
+        entry('proxmox-pools', pool.source, pool.type,
+          pool.local_path ? [{name:pool.target,path:pool.local_path}] : [],
+          'Lageret skal tilsluttes FjordHubs LXC.');
+        const actions = $('proxmox-pools').lastElementChild.querySelector('.proxmox-actions');
+        if (!pool.local_path) {
+          actions.replaceChildren();
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary small';
+          button.textContent = poolPending ? 'Tilslutning i gang…' : 'Tilslut lager';
+          button.disabled = poolPending || job.state === 'interrupted' || !pool.allow_other;
+          if (!pool.allow_other) button.title = 'FUSE-lageret mangler allow_other. Kontrollér opsætningen på Proxmox.';
+          button.onclick = async () => {
+            if (!confirm(`Tilslut ${pool.source} skrivebeskyttet? FjordHubs LXC og alle dens apps kan genstarte. Afslut aktive afspilninger og uploads først. Ingen filer kopieres.`)) return;
+            poolPending = true;
+            $('proxmox-pools').querySelectorAll('button').forEach(b => { b.disabled = true; });
+            $('proxmox-pool-status').textContent = 'Starter tilslutningen. Vent mens FjordHub eventuelt genstarter…';
+            try { await api('/admin/library/proxmox/connect', 'POST', {pool_id:pool.id,confirm_restart:true}); }
+            catch (error) { $('proxmox-pool-status').textContent = error.message + ' Kontrollerer status; forespørgslen sendes ikke igen.'; }
+            poolTimer = setTimeout(() => { if (dialog.open) $('source-proxmox').click(); }, 5000);
+          };
+          actions.append(button);
+        }
+      }
       for (const storage of data.storages) entry('proxmox-storages', storage.id,
         `${storage.type} · ${size(storage.total_bytes)} · ${size(storage.free_bytes)} ledigt · ${storage.directories.length ? 'Klar til valg' : storage.online ? 'Kræver tilslutning' : 'Offline'}`,
         storage.directories, storage.reason + (storage.path ? ` Sti på Proxmox: ${storage.path}.` : ''), storage.commands);
@@ -143,7 +173,10 @@
       for (const mount of data.mounts) entry('proxmox-mounts', mount.path, mount.source,
         mount.local_path ? [{name: mount.path, path: mount.local_path}] : [], 'Mappen er konfigureret i LXC, men er ikke tilgængelig i FjordFlix endnu.', '', mount.write_guide);
     } catch (error) { $('proxmox-status').textContent = error.message; }
-    finally { $('source-proxmox').disabled = false; }
+    finally {
+      $('source-proxmox').disabled = false;
+      if (poolPending && dialog.open) poolTimer = setTimeout(() => $('source-proxmox').click(), 5000);
+    }
   };
   $('mergerfs-form').onsubmit = async event => {
     event.preventDefault(); $('mergerfs-connect').disabled = true;
@@ -212,6 +245,6 @@
   new MutationObserver(() => {
     if (dialog.open) {
       dialog.querySelector('[data-settings-tab].active').click();
-    } else clearTimeout(timer);
+    } else { clearTimeout(timer); clearTimeout(poolTimer); }
   }).observe(dialog, {attributes: true, attributeFilter: ['open']});
 })();

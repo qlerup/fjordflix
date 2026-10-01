@@ -56,6 +56,37 @@ with sync_playwright() as playwright:
     expect(page.locator('#library-write-guide')).to_be_hidden()
     expect(button).to_be_focused()
     assert all(method == 'GET' for path, method in page.evaluate('requests'))
+    page.set_viewport_size({'width':1440,'height':1000})
+    page.clock.install()
+    page.evaluate('''() => {
+      window.posts = 0; window.checks = 0;
+      const original = api;
+      window.api = async (path, method='GET', body) => {
+        if (path === '/admin/library/proxmox/connect') {
+          posts++; if (!body.confirm_restart || body.pool_id !== 'a'.repeat(20)) throw Error('invalid request');
+          return {accepted:true,job:{state:'queued'}};
+        }
+        if (path === '/admin/library/proxmox') {
+          if (posts && ++checks === 1) throw Error('FjordHub genstarter');
+          const ready = posts && checks > 1;
+          return {errors:[],ctid:'1000',storages:[],disks:[],mounts:[],host_storage:{available:true,
+            job:{state:ready?'ready':'idle',message:ready?'Lageret er klar':'Vælg lager'},
+            pools:[{id:'a'.repeat(20),source:'/mnt/media',target:'/mnt/fjordflix/pool-test',type:'mergerfs',allow_other:true,
+              configured:!!ready,local_path:ready?'/library/server/fjordflix/pool-test':null}]}};
+        }
+        return original(path,method,body);
+      };
+    }''')
+    page.locator('#source-proxmox').click()
+    page.once('dialog', lambda dialog: dialog.accept())
+    page.get_by_role('button', name='Tilslut lager', exact=True).click()
+    expect(page.locator('#proxmox-pool-status')).to_contain_text('Starter tilslutningen')
+    page.clock.fast_forward(5000)
+    expect(page.locator('#proxmox-status')).to_have_text('FjordHub genstarter')
+    page.clock.fast_forward(5000)
+    expect(page.locator('#proxmox-pool-status')).to_have_text('Lageret er klar')
+    expect(page.locator('#proxmox-pools').get_by_role('button', name='Vælg mappe')).to_be_visible()
+    assert page.evaluate('posts') == 1
     assert not errors, errors
     browser.close()
 print('Desktop/mobile guide, scope, optional ACL, focus and no mutation requests: passed')
