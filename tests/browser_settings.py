@@ -19,7 +19,7 @@ with sync_playwright() as p:
     page.get_by_role('button', name='Indstillinger', exact=True).click()
     expect(page.locator('#admin-dialog')).to_be_visible()
     for section, heading in [('media', 'Video direkte fra serveren'), ('metadata', 'TMDB API-nøgle'),
-                             ('subtitles', 'OpenSubtitles'), ('users', 'Brugere'), ('server', 'Server og test'), ('library', 'Biblioteksmapper')]:
+                             ('subtitles', 'OpenSubtitles'), ('users', 'Brugere'), ('server', 'Server'), ('library', 'Biblioteksmapper')]:
         page.locator(f'[data-settings-tab="{section}"]').click()
         expect(page.locator('#admin-dialog').get_by_role('heading', name=heading, exact=True)).to_be_visible()
         assert page.locator('dialog[open]').count() == 1

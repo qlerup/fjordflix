@@ -66,7 +66,7 @@ async function boot() {
   if (!state.user) { showAuth(); return; }
   $('auth').hidden = true; $('shell').hidden = false;
   $('logout').textContent = state.user.name[0].toUpperCase(); $('logout').title = `${state.user.name} · Log ud`;
-  ['admin-open','upload-open','demo-button'].forEach(id => $(id).hidden = !state.user.admin);
+  ['admin-open','upload-open'].forEach(id => $(id).hidden = !state.user.admin);
   $('create-invite').hidden = state.managed;
   $('invite-result').hidden = true;
   let userNote = $('hub-user-note');
@@ -86,7 +86,7 @@ function render() {
   $('library-title').innerHTML = `${query ? 'Søgeresultater' : heading}${category.label ? ` · ${escapeHtml(category.label)}` : ''} <span>${visible.length}</span>`;
   $('empty').hidden = visible.length > 0;
   $('empty').querySelector('h3').textContent = query ? 'Ingen film matcher søgningen' : view === 'favorites' ? 'Din liste venter på favoritter' : 'Her begynder samlingen';
-  $('empty').querySelector('p').textContent = query ? 'Prøv en anden filmtitel.' : view === 'favorites' ? 'Åbn en film, og tryk på Min liste for at gemme den her.' : state.user.admin ? 'Upload din første film, eller prøv afspilleren med den genererede 4K-testfilm.' : 'Din administrator kan tilføje film til det fælles bibliotek.';
+  $('empty').querySelector('p').textContent = query ? 'Prøv en anden filmtitel.' : view === 'favorites' ? 'Åbn en film, og tryk på Min liste for at gemme den her.' : state.user.admin ? 'Upload din første film, eller tilføj en mappe under Indstillinger.' : 'Din administrator kan tilføje film til det fælles bibliotek.';
   fillGrid('movie-grid', visible);
   if (!visible.length && category.label) {
     $('empty').querySelector('h3').textContent = `Ingen titler i ${category.label}`;
@@ -106,7 +106,6 @@ function render() {
   $('hero-action').textContent = featured ? featured.isSeries ? '☷ Se afsnit' : '▶ Se filmen' : '＋ Tilføj din første film';
   $('hero-action').hidden = !featured && !state.user.admin;
   $('hero-action').onclick = () => featured ? openDetail(featured) : $('upload-dialog').showModal();
-  $('demo-button').hidden = !state.user.admin || !!featured;
 }
 function fillGrid(id, movies) {
   $(id).innerHTML = movies.map(m => {
@@ -158,7 +157,7 @@ async function openDetail(movie) {
   $('subtitle-find').hidden = !state.user?.admin;
   $('detail-art').style.backgroundImage = `url('${FjordLibrary.artwork(movie, 'backdrop')}')`;
   $('detail-meta').innerHTML = [`${movie.width} × ${movie.height}`,movie.video.toUpperCase(),movie.hdr ? 'HDR' : 'SDR',clock(movie.duration)].map(t => `<span>${escapeHtml(t)}</span>`).join('');
-  $('detail-description').textContent = `${(movie.size / 1024**3).toFixed(2)} GB · ${(movie.bitrate/1e6).toFixed(1)} Mbit/s · ${movie.audio?.toUpperCase() || 'Uden lyd'}. ${movie.title.includes('testfilm') ? 'Genereret testmønster med lyd til at teste 4K og transcoding.' : 'En film fra dit fælles bibliotek.'}`;
+  $('detail-description').textContent = `${(movie.size / 1024**3).toFixed(2)} GB · ${(movie.bitrate/1e6).toFixed(1)} Mbit/s · ${movie.audio?.toUpperCase() || 'Uden lyd'}. En film fra dit fælles bibliotek.`;
   $('detail-quality').value = 'auto'; $('favorite-button').textContent = movie.favorite ? '✓ På min liste' : '＋ Min liste';
   const info = movie.catalog;
   if (info?.status === 'matched' || info?.manual) {
@@ -237,41 +236,6 @@ setInterval(() => {
 window.addEventListener('pagehide', () => { if(playback && selected) { fetch(`/api/movies/${selected.id}/progress`, {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify({position:position()}),keepalive:true}); if(playback.session && !airplayActive()) fetch(`/api/streams/${playback.session}`, {method:'DELETE',keepalive:true}); } });
 
 setupUploads();
-let demoPackTimer;
-let stressDemoTimer;
-async function updateStressDemo() {
-  clearTimeout(stressDemoTimer);
-  try {
-    const status = await api('/demo-stress');
-    $('demo-stress-button').disabled = status.running;
-    $('demo-stress-status').textContent = status.error || (status.running ? 'Opretter 4K ved 120 Mbit/s. Det kan tage flere minutter; du kan lukke vinduet imens.' : status.id ? 'Bitstorm er klar. Vælg Original for at teste den fulde bitrate, eller 1080p for at teste transcoding.' : 'Syntetisk testfilm med bevægelse og støj. Eksisterende testfilm genbruges.');
-    if(status.running) stressDemoTimer = setTimeout(updateStressDemo, 2000);
-    else if(status.id) await refresh();
-  } catch(e) { $('demo-stress-button').disabled = false; $('demo-stress-status').textContent = e.message; }
-}
-$('demo-stress-button').onclick = async () => {
-  $('demo-stress-button').disabled = true;
-  try { await api('/demo-stress', 'POST'); await updateStressDemo(); }
-  catch(e) { $('demo-stress-button').disabled = false; $('demo-stress-status').textContent = e.message; }
-};
-$('admin-open').addEventListener('click', updateStressDemo);
-async function updateDemoPack() {
-  clearTimeout(demoPackTimer);
-  try {
-    const status = await api('/demo-pack');
-    $('demo-pack-button').disabled = status.running;
-    $('demo-pack-status').textContent = status.error || (status.running ? `Opretter testfilm · ${status.completed} af 3 klar. Du kan lukke dette vindue imens.` : status.completed === 3 ? 'Alle tre testfilm er klar i biblioteket.' : 'Oprettes på serveren. Det kan tage nogle minutter. Eksisterende testfilm genbruges.');
-    if(status.running) demoPackTimer = setTimeout(updateDemoPack, 2000);
-    else if(status.completed) await refresh();
-  } catch(e) { $('demo-pack-button').disabled = false; $('demo-pack-status').textContent = e.message; }
-}
-$('demo-pack-button').onclick = async () => {
-  $('demo-pack-button').disabled = true;
-  try { await api('/demo-pack', 'POST'); await updateDemoPack(); }
-  catch(e) { $('demo-pack-button').disabled = false; $('demo-pack-status').textContent = e.message; }
-};
-$('admin-open').addEventListener('click', updateDemoPack);
-$('demo-button').onclick = async () => { $('demo-button').disabled = true; $('demo-button').textContent = 'Genererer 4K-testfilm…'; try { await api('/demo', 'POST'); await refresh(); toast('4K-testfilmen er klar. Åbn den og prøv 1080p.'); } catch(e) { toast(e.message); } finally { $('demo-button').disabled = false; $('demo-button').textContent = 'Prøv med en 4K-testfilm'; } };
 $('admin-open').onclick = async () => { try { const data = await api('/admin'); $('server-stats').innerHTML = `<div><strong>${data.gpu ? 'NVIDIA NVENC' : 'CPU'}</strong>Transcoding-motor · ${data.gpu ? 'GPU-test bestået' : 'softwarekonvertering'}</div><div><strong>${data.free_gb} GB</strong>Ledig serverplads</div><div><strong>${data.streams} / ${data.max_streams}</strong>Aktive konverteringssessioner</div><div><strong>${data.users.length}</strong>Brugere på serveren</div>`; $('users-list').innerHTML = data.users.map(u => `<div class="user-row">${escapeHtml(u.name)}<span>${u.admin ? 'Administrator' : 'Bruger'}</span></div>`).join(''); $('admin-dialog').showModal(); } catch(e) { toast(e.message); } };
 $('create-invite').onclick = async () => { try { const result = await api('/invites','POST'); $('invite-result').hidden = false; $('invite-code').value = result.token; } catch(e) { toast(e.message); } };
 $('copy-invite').onclick = async () => { try { await navigator.clipboard.writeText($('invite-code').value); toast('Invitationskoden er kopieret.'); } catch { $('invite-code').select(); toast('Markér og kopiér invitationskoden.'); } };

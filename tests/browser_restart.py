@@ -1,4 +1,5 @@
 """Check resume and restart using a fresh QA server at :8097."""
+from media_fixture import upload_clip
 from playwright.sync_api import sync_playwright
 
 with sync_playwright() as p:
@@ -9,7 +10,7 @@ with sync_playwright() as p:
     page.locator('#password').fill('Temporary-restart-test-73!')
     page.locator('#auth-submit').click()
     page.wait_for_function('() => state.user')
-    page.evaluate("async () => { await api('/demo','POST'); await refresh(); }")
+    upload_clip(page)
     page.locator('.movie-card').first.click()
     assert page.locator('#restart-button').is_hidden()
     page.locator('[data-close="detail"]').click()

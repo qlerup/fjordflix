@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from media_fixture import clip_bytes
 
 test_dir = tempfile.TemporaryDirectory(prefix='fjordflix-test-')
 os.environ['DATA_DIR'] = test_dir.name
@@ -39,7 +40,7 @@ def test_complete_streaming_flow():
         assert not any(p.is_file() for p in (main.DATA / 'media').rglob('*'))
 
         began = time.monotonic()
-        generated = owner.post('/api/demo')
+        generated = owner.put('/api/upload?filename=QA%20clip.mp4', content=clip_bytes())
         assert generated.status_code == 200, generated.text
         mid = generated.json()['id']
         movie = owner.get('/api/movies').json()[0]

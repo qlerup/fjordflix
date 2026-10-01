@@ -4,7 +4,7 @@ Logoer og appikoner: [Se den komplette ikonpakke og anvendelse](app/static/logos
 
 Privat streamingserver med dansk brugerflade, mørkt biografdesign og reel FFmpeg-transcoding.
 
-## Start og første test
+## Start og første film
 
 Kræver Docker med Linux-containere. Den medfølgende Compose-fil er sat op til NVIDIA GPU-adgang. På en maskine uden NVIDIA GPU skal linjen `gpus: all` fjernes fra `compose.yaml`; appen bruger derefter CPU-transcoding.
 
@@ -16,7 +16,7 @@ docker compose up -d --build
 
 Åbn http://localhost:8096. Opret selv den første administrator. Der er ingen standardadgangskode. Førstegangsopsætningen låses atomisk, så snart administratoren er oprettet.
 
-1. Vælg **Prøv med en 4K-testfilm**. Den genererer et 12-sekunders 3840 × 2160-testmønster med lyd lokalt.
+1. Tilføj en film via upload eller vælg dine mediemapper under **Indstillinger → Bibliotek**.
 2. Åbn filmen og vælg **Original kvalitet** for at teste Direct Play, hvis browseren understøtter formatet.
 3. Vælg **1080p · 8 Mbit/s** for at teste transcoding. Under afspilning vises faktisk metode, opløsning og encoder.
 4. Brug **Upload film** til egne MP4/MKV/MOV/WebM/M4V/AVI/TS-filer. Filmen bliver tilgængelig for alle oprettede brugere.
@@ -77,7 +77,7 @@ Afspilleren bruger egne kontroller med én tidslinje for hele filmen, også ved 
 - To fingre scroller. Der er også særskilte knapper til scroll, tilbage, afspil/pause, 10 sekunders spring, kvalitet, lyd og søgning.
 - QR-koden kan bruges én gang og udløber efter tre minutter. En telefon knyttes til én browserfane, ikke alle brugerens skærme.
 - Åbn **Fjernbetjening** igen for at afbryde telefonen eller lave en ny kode. Lukning/genindlæsning af pc-fanen afslutter parringen. En forbindelse varer højst otte timer og kræver, at pc-brugerens login stadig er gyldigt.
-- Telefonen får adgang til navigation og afspilning i FjordFlix samt generering af testfilmen, når pc-brugeren er administrator. Den får ikke brugerens login-cookie, adgang til administration eller kontrol over Windows. Knapper, der kræver pc’en, fremhæves ikke som klikbare og viser en forklaring ved fjernklik.
+- Telefonen får adgang til navigation og afspilning i FjordFlix. Den får ikke brugerens login-cookie, adgang til administration eller kontrol over Windows. Knapper, der kræver pc’en, fremhæves ikke som klikbare og viser en forklaring ved fjernklik.
 - Ingen Raspberry Pi-image, Wi-Fi-guide eller automatisk QR-visning efter login endnu.
 
 Kopiér `compose.override.example.yaml` til `compose.override.yaml`, og udskift eksempeladressen `192.168.1.100` med pc’ens lokale IP-adresse. Genstart med `docker compose up -d`. QR-koden bruger netværksadressen via `REMOTE_PUBLIC_URL`, mens localhost-adressen stadig virker. Den personlige override-fil ignoreres af Git. Kør `docker compose -f compose.yaml up -d` for opsætning med adgang kun via localhost.
@@ -121,10 +121,10 @@ docker compose ps
 docker compose logs --tail 100 app
 docker compose stop
 docker compose start
-docker compose exec -T app python -m pytest tests/test_integration.py -q -s
+python -m pytest tests/test_integration.py tests/test_legacy_cleanup.py -q
 ```
 
-Integrationstesten opretter altid en separat midlertidig database og testfilm og ændrer ikke brugerens bibliotek. Den tester opsætningslås, invitationer, rettigheder, CSRF, byte ranges, reel 4K → 1080p-transcoding, FFprobe-kontrol af output, HLS-adgang, seek, oprydning, upload og isoleret brugerhistorik.
+Test køres fra kildekoden med Python-afhængighederne og FFmpeg/FFprobe installeret; tests leveres ikke i appens image. Integrationstesten opretter altid en separat midlertidig database og testfilm og ændrer ikke brugerens bibliotek. Den tester opsætningslås, invitationer, rettigheder, CSRF, byte ranges, reel 4K → 1080p-transcoding, FFprobe-kontrol af output, HLS-adgang, seek, oprydning, upload og isoleret brugerhistorik.
 
 `tests/browser_smoke.py` anvender en separat lokal Playwright-browser og forventer en frisk, midlertidig QA-container på port 8097. Skærmbilleder ligger i `test-results/`. Ingen testkonto oprettes i installationen på 8096.
 
@@ -133,23 +133,6 @@ Integrationstesten opretter altid en separat midlertidig database og testfilm og
 ### Web via Tunnel, video direkte
 
 Administratorer kan vælge **Server → Direkte videoforbindelse**. Webadressen foreslås fra FjordHub; videoadressen kræver en separat, fungerende HTTPS-indgang uden Cloudflare-proxy. Se [opsætning og Docker-konfiguration til Caddy](deploy/direct-media/README.md). Funktionen er slået fra som standard og ændrer ikke automatisk DNS eller routeren.
-
-### Flere testfilm
-
-Åbn tandhjulet i FjordFlix og vælg **Tilføj 3 testfilm** under Testbibliotek.
-Serveren opretter Fjordens ro (30 sekunder, 1080p), Det sidste sollys (1 minut,
-1080p) og Langt fra jorden (2 minutter, 4K). Filmene har originale illustrationer
-med langsom bevægelse og et lydløst lydspor. De tester bibliotek, afspilning og
-seek, men er ikke en belastningstest svarende til en film med høj bitrate.
-Oprettelsen fortsætter, når dialogen lukkes; eksisterende testfilm genbruges.
-
-**Tilføj 120 Mbit/s-testfilm** opretter også Bitstorm: 60 sekunders syntetisk
-4K/24-video med bevægelse og støj, H.264 og cirka 120 Mbit/s (omkring 900 MB).
-Oprettelsen kræver 2 GB ledig plads og kontrollerer den faktiske bitrate før
-filmen føjes til biblioteket. Vælg **Original** for at teste den fulde bitrate
-eller **1080p** for at teste transcoding. Automatisk kvalitet kan nedskalere
-ud fra browserens netværksestimat. Testen svarer ikke til alle egenskaber ved
-en UHD-remux, der eksempelvis kan bruge HEVC, HDR og andre lydformater.
 
 ### Teknisk grundlag
 
@@ -189,7 +172,7 @@ Brug helst filnavne som `The.Matrix.1999.1080p.mkv`. Årstal hjælper med at
 skelne genindspilninger. Uklare eller manglende matches beholder filnavn og
 videostillbillede. Uden token eller ved API-fejl lykkes upload stadig, og
 brugerfladen fortæller, at metadata ikke blev hentet. Allerede uploadede film
-får ikke nye TMDB-oplysninger automatisk. Testfilm springer opslaget over.
+får ikke nye TMDB-oplysninger automatisk.
 
 Administratorer kan åbne en film eller et afsnit og vælge **Hent oplysninger igen**
 uden at uploade filen på ny. Det seneste resultat vises i filmdetaljerne, med
@@ -340,3 +323,7 @@ hente sporlisten igen. Fjernelse af API-forbindelsen bevarer de hentede filer;
 sletning af filmen fjerner dens hentede SRT-filer. Tag database og datamappe
 med i backup. Integrationens tests bruger simulerede API-svar, så de forbruger
 ikke downloads fra en rigtig konto.
+
+Ved opdatering fjernes de tidligere indbyggede testfilm automatisk ved opstart,
+inklusive deres videofiler, covers og historik. Oprydningen genkender de gamle
+genererede poster og bevarer uploadede film og filer fra tilføjede mediemapper.

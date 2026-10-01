@@ -9,7 +9,7 @@ with sync_playwright() as p:
     page.locator('#username').fill('Media QA')
     page.locator('#password').fill('Temporary-media-test-73!')
     page.locator('#auth-submit').click()
-    page.locator('.movie-card').filter(has_text='Nordlys').click()
+    page.locator('.movie-card').filter(has_text='QA clip').click()
     page.evaluate("async () => { await api(`/movies/${selected.id}/progress`, 'POST', {position:0}); selected.position=0; }")
     page.locator('#detail-quality').select_option('720')
     page.locator('#play-button').click()

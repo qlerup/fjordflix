@@ -1,4 +1,5 @@
 """Two independent browser contexts, reading the actual displayed QR and sending touch input."""
+from media_fixture import upload_clip
 import math
 import sys
 from pathlib import Path
@@ -70,10 +71,8 @@ with sync_playwright() as p:
         phone.wait_for_timeout(400)
         assert len(clicks)==before_clicks+1, 'One touch must send exactly one click'
 
-    # The reported failure: generate the demo through the paired phone.
-    click_on_tv(tv.locator('#demo-button'), tap=True)
-    expect(tv.locator('.movie-card').first).to_be_visible(timeout=180000)
-    expect(tv.locator('#demo-button')).to_be_enabled(timeout=180000)
+    upload_clip(tv)
+    expect(tv.locator(".movie-card").first).to_be_visible(timeout=180000)
 
     # Select a film entirely through the phone's touchpad and click button.
     click_on_tv(tv.locator('.movie-card').first)
@@ -106,5 +105,5 @@ with sync_playwright() as p:
     tv.get_by_role('button',name='Afbryd telefon',exact=True).click()
     expect(phone.locator('#connect-error')).to_contain_text('Parringen er afsluttet')
     assert not errors,errors
-    print('PASS: QR decoded, actual touch movement, touchpad tap generates demo, click button selects movie, taps favorite and play, pauses, goes back, searches, screen isolation, revocation. No JS errors.')
+    print('PASS: QR decoded, actual touch movement, click button selects movie, taps favorite and play, pauses, goes back, searches, screen isolation, revocation. No JS errors.')
     browser.close()

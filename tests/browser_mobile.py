@@ -1,4 +1,5 @@
 ﻿"""Mobile visual and interaction checks on a fresh GPU QA container at :8097."""
+from media_fixture import upload_clip
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -16,16 +17,7 @@ with sync_playwright() as p:
     page.locator('#password').fill('Temporary-mobile-test-73!')
     page.locator('#auth-submit').click()
     page.wait_for_function('() => state.user')
-    page.evaluate("api('/demo-pack', 'POST')")
-    for _ in range(180):
-        status = page.evaluate("api('/demo-pack')")
-        assert not status['error'], status
-        if status['completed'] == 3:
-            break
-        page.wait_for_timeout(1000)
-    else:
-        raise AssertionError('Demo generation timed out')
-    page.evaluate('refresh()')
+    upload_clip(page, count=3)
     for width in [320,390,430]:
         page.set_viewport_size({'width':width,'height':844})
         page.screenshot(path=f'test-results/mobile-library-{width}.png', full_page=True)

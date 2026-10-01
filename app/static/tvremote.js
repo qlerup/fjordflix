@@ -8,10 +8,9 @@ let remoteHover;
 function remoteTarget(element) {
   const dropdown = element?.closest('.fx-select-button,.fx-select-option');
   if (dropdown) return ['detail-quality','player-quality','series-season'].includes(dropdown.dataset.selectId) && !dropdown.disabled ? dropdown : null;
-  const target = element?.closest('.sidebar-view,.category-link,.movie-card,[data-view],#play-button,#restart-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#demo-button,#player-toggle,#player-rewind,#player-forward,#player-mute,#player-fullscreen,#timeline,#player-volume');
+  const target = element?.closest('.sidebar-view,.category-link,.movie-card,[data-view],#play-button,#restart-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#player-toggle,#player-rewind,#player-forward,#player-mute,#player-fullscreen,#timeline,#player-volume');
   if(!target || target.disabled) return null;
   if(target.id === 'hero-action' && !library.length) return null;
-  if(target.id === 'demo-button' && !state?.user?.admin) return null;
   return target;
 }
 function remoteStatus(text) { $('remote-status').textContent = text; }
@@ -99,7 +98,7 @@ function handleRemoteCommand(event) {
   if(event.type === 'click') {
     placeRemoteCursor();
     const element = document.elementFromPoint(remoteTV.x,remoteTV.y);
-    // Browsing/playback and the admin's demo action; no account, upload or external-link actions.
+    // Browsing/playback; no account, upload or external-link actions.
     const allowed = remoteTarget(element);
     if(allowed && !allowed.disabled) {
       if(allowed.type === 'range') {

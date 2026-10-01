@@ -1,4 +1,5 @@
 """Run against an empty QA container exposed on localhost:8097 and 127.0.0.1:8099."""
+from media_fixture import upload_clip
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright
 
@@ -19,7 +20,7 @@ with sync_playwright() as p:
     page.locator('#password').fill('Temporary-media-test-73!')
     page.locator('#auth-submit').click()
     page.wait_for_function('() => state.user')
-    page.evaluate("async () => { await api('/demo','POST'); await refresh(); }")
+    upload_clip(page)
     page.locator('#admin-open').click()
     page.locator('#media-settings-open').click()
     page.locator('#media-web-url').fill('http://localhost:8097')

@@ -1,4 +1,5 @@
 """Run against disposable QA container on 8097, never the user's installation."""
+from media_fixture import upload_clip
 import json
 import sys
 from pathlib import Path
@@ -21,11 +22,11 @@ with sync_playwright() as p:
     page.get_by_role('button', name='Opret administrator').click()
     expect(page.get_by_role('heading', name='Her begynder samlingen')).to_be_visible()
     page.screenshot(path=str(out / '02-library-empty.png'), full_page=True)
-    page.get_by_role('button', name='Prøv med en 4K-testfilm').click()
+    upload_clip(page)
     expect(page.locator('.movie-card')).to_have_count(1, timeout=180000)
     page.screenshot(path=str(out / '03-library.png'), full_page=True)
     page.locator('.movie-card').click()
-    expect(page.get_by_role('dialog').get_by_role('heading', name='Nordlys · 4K testfilm')).to_be_visible()
+    expect(page.get_by_role('dialog').get_by_role('heading', name='QA clip 1')).to_be_visible()
     page.locator('#detail-quality').select_option('original')
     expect(page.locator('#plan-badge')).to_have_text('Direct Play', timeout=20000)
     page.screenshot(path=str(out / '04-details.png'), full_page=True)
@@ -52,5 +53,5 @@ with sync_playwright() as p:
     page.screenshot(path=str(out / '07-mobile.png'), full_page=True)
     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Mobile overflow'
     assert not errors, errors
-    print('Browser smoke passed: setup, demo, direct 4K playback, 1080p transcoding, invite, search, mobile width; no JS exceptions.')
+    print('Browser smoke passed: setup, upload, direct 4K playback, 1080p transcoding, invite, search, mobile width; no JS exceptions.')
     browser.close()

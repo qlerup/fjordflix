@@ -4,7 +4,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
-COPY tests ./tests
 RUN mkdir -p app/static/vendor && curl --fail --location https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js -o app/static/vendor/hls.min.js
 ENV DATA_DIR=/data NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
 EXPOSE 8080

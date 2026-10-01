@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
+from app import hub, media, legacy_cleanup, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -84,6 +84,7 @@ def stop_job(key):
 @asynccontextmanager
 async def lifespan(app):
     global GPU
+    await asyncio.to_thread(legacy_cleanup.remove_test_movies, db, DATA, MEDIA)
     await asyncio.to_thread(chunk_uploads.cleanup, True)
     if os.getenv('TRANSCODE_DEVICE', 'auto') != 'cpu':
         try:
@@ -484,115 +485,6 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
 
 library_sources = sources.Sources(app, sys.modules[__name__])
 chunk_uploads = uploads.register(app, sys.modules[__name__])
-
-DEMO_LOCK = threading.Lock()
-DEMO_PACK_LOCK = threading.Lock()
-DEMO_PACK = {'running': False, 'completed': 0, 'error': ''}
-STRESS_DEMO = {'running': False, 'id': None, 'error': ''}
-
-
-def generate_stress_demo():
-    path = None
-    try:
-        with db() as conn:
-            existing = conn.execute('SELECT id FROM movies WHERE title=?', (demos.STRESS_TITLE,)).fetchone()
-        if existing:
-            mid = existing['id']
-        else:
-            if shutil.disk_usage(MEDIA).free < 2 * 1024**3:
-                raise RuntimeError('Der skal være mindst 2 GB ledig plads.')
-            mid = secrets.token_hex(16)
-            path = MEDIA / f'{mid}.mp4'
-            demos.generate_stress(path, GPU)
-            meta = probe(path)
-            if not 110_000_000 <= meta['bitrate'] <= 130_000_000:
-                raise RuntimeError('Testfilmen ramte ikke den ønskede bitrate. Prøv igen.')
-            index_movie(path, demos.STRESS_TITLE, mid)
-        with DEMO_PACK_LOCK:
-            STRESS_DEMO['id'] = mid
-    except Exception as exc:
-        if path:
-            path.unlink(missing_ok=True)
-        with DEMO_PACK_LOCK:
-            STRESS_DEMO['error'] = str(exc) if isinstance(exc, RuntimeError) else 'Testfilmen kunne ikke genereres. Tjek serverens plads og GPU, og prøv igen.'
-    finally:
-        with DEMO_PACK_LOCK:
-            STRESS_DEMO['running'] = False
-
-
-@app.get('/api/demo-stress')
-def stress_demo_status(u=Depends(admin)):
-    with DEMO_PACK_LOCK:
-        return dict(STRESS_DEMO)
-
-
-@app.post('/api/demo-stress')
-def stress_demo_start(u=Depends(admin)):
-    with DEMO_PACK_LOCK:
-        if not STRESS_DEMO['running']:
-            STRESS_DEMO.update(running=True, id=None, error='')
-            threading.Thread(target=generate_stress_demo, daemon=True).start()
-        return dict(STRESS_DEMO)
-
-
-def generate_demo_pack():
-    try:
-        for number, spec in enumerate(demos.CATALOG):
-            with db() as conn:
-                exists = conn.execute('SELECT id FROM movies WHERE title=?', (spec[1],)).fetchone()
-            if not exists:
-                mid = secrets.token_hex(16)
-                path = MEDIA / f'{mid}.mp4'
-                try:
-                    if shutil.disk_usage(MEDIA).free < 1024**3:
-                        raise RuntimeError('Der skal være mindst 1 GB ledig plads til testfilmene.')
-                    demos.generate(spec, path, GPU)
-                    index_movie(path, spec[1], mid)
-                except Exception:
-                    path.unlink(missing_ok=True)
-                    raise
-            with DEMO_PACK_LOCK:
-                DEMO_PACK['completed'] = number + 1
-    except Exception:
-        with DEMO_PACK_LOCK:
-            DEMO_PACK['error'] = 'Testfilmene kunne ikke færdiggøres. Tjek ledig plads og prøv igen.'
-    finally:
-        with DEMO_PACK_LOCK:
-            DEMO_PACK['running'] = False
-
-
-@app.get('/api/demo-pack')
-def demo_pack_status(u=Depends(admin)):
-    with DEMO_PACK_LOCK:
-        return dict(DEMO_PACK)
-
-
-@app.post('/api/demo-pack')
-def demo_pack_start(u=Depends(admin)):
-    with DEMO_PACK_LOCK:
-        if not DEMO_PACK['running']:
-            DEMO_PACK.update(running=True, completed=0, error='')
-            threading.Thread(target=generate_demo_pack, daemon=True).start()
-        return dict(DEMO_PACK)
-
-
-@app.post('/api/demo')
-def demo(u=Depends(admin)):
-    with DEMO_LOCK:
-        with db() as conn:
-            existing = conn.execute("SELECT id FROM movies WHERE title='Nordlys · 4K testfilm'").fetchone()
-        if existing:
-            return {'id': existing['id']}
-        mid = secrets.token_hex(16)
-        path = MEDIA / f'{mid}.mp4'
-        command = ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=3840x2160:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000', '-t', '12', '-c:v', 'h264_nvenc' if GPU else 'libx264', '-preset', 'fast' if GPU else 'ultrafast', '-b:v', '35M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart', '-y', str(path)]
-        result = subprocess.run(command, capture_output=True, timeout=180)
-        if result.returncode:
-            path.unlink(missing_ok=True)
-            raise HTTPException(500, 'Testfilmen kunne ikke genereres.')
-        index_movie(path, 'Nordlys · 4K testfilm', mid)
-        return {'id': mid}
-
 
 @app.get('/api/movies')
 def movies(u=Depends(user)):
