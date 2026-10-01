@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, legacy_cleanup, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
+from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -1075,3 +1075,4 @@ from app.tv import attach_tv
 
 attach_tv(app, sys.modules[__name__])
 subtitle_provider = opensubtitles.register(sys.modules[__name__])
+onboarding.register(sys.modules[__name__])

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="da">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Dit eget biograflærred</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/categories.css?v=6"><script defer src="/static/categories.js?v=6"></script><script defer src="/static/deletion.js?v=1"></script><script defer src="/static/library-ui.js?v=audio-languages1"></script><script defer src="/static/uploads.js?v=chunks3"></script><script defer src="/static/tracks.js?v=airplay2"></script><script defer src="/static/app.js?v=settings2"></script><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/tvremote.js?v=10"></script>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Dit eget biograflærred</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/categories.css?v=6"><script defer src="/static/categories.js?v=6"></script><script defer src="/static/deletion.js?v=1"></script><script defer src="/static/library-ui.js?v=audio-languages1"></script><script defer src="/static/uploads.js?v=chunks3"></script><script defer src="/static/tracks.js?v=airplay2"></script><link rel="stylesheet" href="/static/onboarding.css?v=1"><script defer src="/static/onboarding.js?v=1"></script><script defer src="/static/app.js?v=onboarding1"></script><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/tvremote.js?v=10"></script>
 <link rel="icon" href="/static/logos/web/favicon.ico?v=2" sizes="any">
 <link rel="icon" href="/static/logos/web/favicon-32x32.png?v=2" type="image/png" sizes="32x32">
 <link rel="icon" href="/static/logos/web/favicon-16x16.png?v=2" type="image/png" sizes="16x16">
@@ -100,5 +100,24 @@
 <p id="subtitle-search-status" class="muted" role="status"></p><div id="subtitle-results"></div>
 <p class="fine">Undertekster fra <a href="https://www.opensubtitles.com" target="_blank" rel="noopener noreferrer">OpenSubtitles.com</a>. Kontrollér timing efter download — især for samples og alternative filmudgaver.</p>
 </dialog>
+
+<dialog id="onboarding-dialog" aria-labelledby="onboarding-title">
+  <header class="onboarding-header"><span class="eyebrow">VELKOMMEN TIL FJORDFLIX</span><h2 id="onboarding-title">Gør biblioteket til dit eget</h2><p class="muted">To valgfrie trin til din server. Du kan altid ændre dem under Indstillinger.</p><ol class="onboarding-steps"><li data-onboarding-nav="tmdb">1 · Coverbilleder og filmdata</li><li data-onboarding-nav="subtitles">2 · Undertekster</li></ol></header>
+  <div class="onboarding-content">
+    <section data-onboarding-step="tmdb" aria-labelledby="onboarding-tmdb-title"><span class="eyebrow">TRIN 1 AF 2 · TMDB</span><h3 id="onboarding-tmdb-title">Billeder og historier til dine film</h3><p class="muted">Hent covers, baggrundsbilleder, titler og beskrivelser fra The Movie Database, når du tilføjer film og serier.</p>
+      <ol class="onboarding-guide"><li><a href="https://www.themoviedb.org/signup" target="_blank" rel="noopener noreferrer">Opret en TMDB-konto ↗</a>, eller log ind på din eksisterende konto.</li><li>Åbn <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">Indstillinger → API ↗</a>, og ansøg om API-adgang. Beskriv din brug af FjordFlix, og følg TMDB’s vilkår.</li><li>Kopiér dit <strong>API Read Access Token</strong> eller din API-nøgle, og indsæt det herunder.</li></ol>
+      <p class="fine">TMDB anbefaler at oprette API-adgang fra en computer. <a href="https://developer.themoviedb.org/docs/getting-started" target="_blank" rel="noopener noreferrer">Se TMDB’s vejledning ↗</a></p>
+      <form id="onboarding-tmdb-form"><label>API-nøgle eller Read Access Token<input id="onboarding-tmdb-token" type="password" autocomplete="off" maxlength="4096" required></label><p class="fine">Nøglen gemmes på serveren og bruges til nye film. Gem tester ikke forbindelsen.</p><button class="primary" type="submit">Gem og fortsæt →</button></form>
+    </section>
+    <section data-onboarding-step="subtitles" aria-labelledby="onboarding-os-title" hidden><span class="eyebrow">TRIN 2 AF 2 · OPENSUBTITLES</span><h3 id="onboarding-os-title">Find undertekster til filmaftenen</h3><p class="muted">Søg og hent undertekster fra OpenSubtitles direkte i afspilleren. Downloadkvoten afhænger af din konto.</p>
+      <ol class="onboarding-guide"><li><a href="https://www.opensubtitles.com" target="_blank" rel="noopener noreferrer">Åbn OpenSubtitles.com ↗</a> og vælg Register for at oprette en konto. Bekræft din email, hvis du bliver bedt om det.</li><li>Log ind, åbn <a href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">API Consumers ↗</a>, og opret en API-nøgle til din brug af FjordFlix.</li><li>Indsæt API-nøglen sammen med dit OpenSubtitles-brugernavn og din adgangskode.</li></ol>
+      <p class="fine"><a href="https://opensubtitles.tawk.help/article/getting-started" target="_blank" rel="noopener noreferrer">Se OpenSubtitles’ vejledning ↗</a>. Brug din konto på OpenSubtitles.com.</p>
+      <form id="onboarding-os-form"><label>API-nøgle<input id="onboarding-os-key" type="password" autocomplete="off" maxlength="512" required></label><div class="onboarding-fields"><label>Brugernavn<input id="onboarding-os-user" autocomplete="off" maxlength="200" required></label><label>Adgangskode<input id="onboarding-os-password" type="password" autocomplete="off" maxlength="512" required></label></div><p class="fine">Gem tester login hos OpenSubtitles. Oplysningerne vises aldrig igen.</p><button class="primary" type="submit">Gem og afslut →</button></form>
+    </section>
+    <p id="onboarding-error" class="error" role="alert"></p><p id="onboarding-status" class="fine" role="status"></p>
+  </div>
+  <footer class="onboarding-footer"><button id="onboarding-skip-all" class="text-button" type="button">Vent med hele opsætningen</button><button id="onboarding-skip" class="secondary" type="button">Gør det senere →</button></footer>
+</dialog>
+
 </body></html>
 

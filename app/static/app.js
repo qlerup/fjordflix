@@ -32,11 +32,12 @@ async function api(path, method = 'GET', data) {
 }
 function badge(id, mode) { $(id).textContent = mode; $(id).className = `badge ${mode === 'Transcoding' ? 'transcode' : mode === 'Direct Stream' ? 'remux' : ''}`; }
 function showAuth() {
+  window.FjordOnboarding?.close();
   $('shell').hidden = true; $('auth').hidden = false;
   if (state.managed) authMode = 'login';
   else if (state.setup) authMode = 'setup';
   const setup = authMode === 'setup', register = authMode === 'register';
-  $('auth-kicker').textContent = setup ? 'FØRSTE GANG · TRIN 1 AF 1' : register ? 'GØR DIG KLAR TIL FILMAFTEN' : 'GODT AT SE DIG IGEN';
+  $('auth-kicker').textContent = setup ? 'FØRSTE GANG · DIN ADMINISTRATOR' : register ? 'GØR DIG KLAR TIL FILMAFTEN' : 'GODT AT SE DIG IGEN';
   $('auth-title').textContent = setup ? 'Velkommen hjem.' : register ? 'Opret din bruger' : 'Log ind';
   $('auth-description').textContent = setup ? 'Gør FjordFlix til din egen. Opret serverens administrator, og tilføj derefter dine film.' : register ? 'Brug invitationen fra din administrator for at få adgang til biblioteket.' : 'Dit bibliotek og din næste film venter på dig.';
   $('auth-submit').textContent = setup ? 'Opret administrator →' : register ? 'Opret bruger →' : 'Log ind →';
@@ -74,6 +75,7 @@ async function boot() {
   userNote.hidden = !state.managed;
   userNote.textContent = 'Konti, adgangskoder og roller styres i FjordHub → Brugere. Listen viser de brugere, der har adgang til FjordFlix.';
   await refresh();
+  if (state.user.admin && window.FjordOnboarding) await window.FjordOnboarding.open();
 }
 async function refresh() { library = await api('/movies'); render(); }
 function render() {

@@ -327,3 +327,22 @@ ikke downloads fra en rigtig konto.
 Ved opdatering fjernes de tidligere indbyggede testfilm automatisk ved opstart,
 inklusive deres videofiler, covers og historik. Oprydningen genkender de gamle
 genererede poster og bevarer uploadede film og filer fra tilføjede mediemapper.
+
+### Første administrators opsætning
+
+Den første administrator, der åbner FjordFlix, får en valgfri modal med to trin:
+TMDB til covers og filmdata samt OpenSubtitles til undertekster. Begge trin har
+vejledning og links til konto og API-opsætning. Gemte forbindelser genkendes,
+og guiden springer allerede konfigurerede trin over. Almindelige brugere og
+andre administratorer får ikke den automatiske guide.
+
+Man kan vælge **Gør det senere** for hvert trin eller **Vent med hele opsætningen**.
+Valgene gemmes på serveren og huskes efter login og genstart. Afbrudt opsætning
+fortsætter fra det næste udestående trin. Opsætningerne kan altid ændres under
+**Indstillinger → Filmdata / Undertekster**. Guiden vises også én gang på
+opgraderede installationer, hvis en af forbindelserne endnu ikke er konfigureret.
+TMDB-nøglen gemmes uden netværkstest; OpenSubtitles-login testes inden lagring.
+
+Test: `python -m pytest tests/test_onboarding.py tests/test_catalog_settings.py tests/test_opensubtitles.py tests/test_hub.py -q`. Den isolerede
+`python tests/browser_onboarding.py` kræver Playwright/Chromium og tester modal,
+mobilvisning, gem, fejl, genoptagelse og fravalg med simuleret OpenSubtitles-login.
