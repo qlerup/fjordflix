@@ -59,12 +59,15 @@ class Sources:
                     'truncated': len(children) > 1000}
 
         @app.get('/api/admin/library/proxmox')
-        def proxmox(u=Depends(host.admin)):
+        def proxmox(pool_path: str = '', u=Depends(host.admin)):
             if not host.hub.managed():
                 return {'configured': False, 'storages': [], 'disks': [], 'mounts': [],
                         'errors': ['Proxmox-oversigten kræver forbindelsen gennem FjordHub. Monterede biblioteksdrev kan stadig vælges med Tilføj mappe.']}
             try:
-                data = host.hub.call('/api/hub/apps/fjordflix/library', {'user_id': u.get('hub_id')}, method='GET', timeout=50)
+                payload = {'user_id': u.get('hub_id')}
+                if pool_path:
+                    payload['pool_path'] = pool_path
+                data = host.hub.call('/api/hub/apps/fjordflix/library', payload, method='GET', timeout=50)
             except HTTPException as exc:
                 if exc.status_code == 503:
                     raise HTTPException(503, 'Lageroversigten kunne ikke hentes fra FjordHub. Opdatér både FjordHub og FjordFlix, og kontrollér Proxmox-forbindelsen.') from exc
@@ -79,6 +82,9 @@ class Sources:
                     return str(self.allowed(str(local)))
                 except HTTPException:
                     return None
+            pool = data.get('custom_pool')
+            if pool is not None:
+                pool['directories'] = [{'name': path, 'path': local} for path in pool.get('paths', []) if (local := mapped(path))]
             for entry in data.get('storages', []) + data.get('disks', []):
                 entry['directories'] = [{'name': path, 'path': local} for path in entry.get('paths', []) if (local := mapped(path))]
             for entry in data.get('mounts', []):

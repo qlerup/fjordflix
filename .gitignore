@@ -14,3 +14,6 @@ compose.library.yaml
 *.db-wal
 *.db-shm
 docker-compose.fjordhub-gpu.yml
+# Local, explicitly granted library write mounts; retained across app updates.
+docker-compose.fjordhub-library.yml
+.library-permissions.lock

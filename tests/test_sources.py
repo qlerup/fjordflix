@@ -46,6 +46,23 @@ def mounted(monkeypatch, tmp_path):
     return TestClient(main.app), root
 
 
+def test_write_guide_requires_admin_and_is_not_a_mutation(mounted, monkeypatch):
+    client, root = mounted
+    monkeypatch.setattr(main.hub, 'managed', lambda: True)
+    guide = {'source': '/mnt/Film', 'target': '/mnt/Film', 'ctid': '1000', 'commands': 'review only'}
+    calls = []
+    def call(path, payload, **kwargs):
+        calls.append((payload, kwargs['method']))
+        return {'storages': [], 'disks': [], 'mounts': [{'path': '/mnt/Film', 'write_guide': guide}], 'errors': []}
+    monkeypatch.setattr(main.hub, 'call', call)
+    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'id': 'owner', 'admin': True, 'hub_id': 17})
+    assert client.get('/api/admin/library/proxmox').json()['mounts'][0]['write_guide'] == guide
+    assert calls == [({'user_id': 17}, 'GET')]
+    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'id': 'viewer', 'admin': False})
+    assert client.get('/api/admin/library/proxmox').status_code == 403
+    assert len(calls) == 1
+
+
 def scan():
     assert main.library_sources.lock.acquire(blocking=False)
     main.library_sources.rescan.clear()

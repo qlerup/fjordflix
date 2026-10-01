@@ -61,6 +61,31 @@
     finally { browsing = false; $('source-select').disabled = !folder; }
   }
   $('source-browse').onclick = () => browse();
+  let writeGuide = null, writeTrigger = null;
+  function showWriteGuide(guide, trigger) {
+    writeGuide = guide; writeTrigger = trigger;
+    $('library-write-acl').checked = false;
+    $('library-write-scope').textContent = `Proxmox: ${guide.source} → LXC ${guide.ctid}: ${guide.target}`;
+    $('library-write-commands').textContent = guide.commands;
+    $('library-write-status').textContent = 'Adgangen er ikke ændret. Kør guiden og kontrollér skrivetestens resultat i Proxmox.';
+    $('library-write-guide').hidden = false;
+    $('library-write-title').focus();
+    $('library-write-guide').scrollIntoView({block: 'nearest'});
+  }
+  $('library-write-acl').onchange = () => {
+    if (writeGuide) $('library-write-commands').textContent = $('library-write-acl').checked ? writeGuide.permissions_commands : writeGuide.commands;
+  };
+  $('library-write-copy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($('library-write-commands').textContent);
+      $('library-write-status').textContent = 'Kopieret. Kør kommandoerne i Proxmox Shell. Intet er udført her.';
+    } catch (_) {
+      $('library-write-status').textContent = 'Browseren tillader ikke kopiering her. Markér og kopiér kommandoerne manuelt.';
+      const selection = getSelection(), range = document.createRange();
+      range.selectNodeContents($('library-write-commands')); selection.removeAllRanges(); selection.addRange(range);
+    }
+  };
+  $('library-write-close').onclick = () => { $('library-write-guide').hidden = true; writeTrigger?.focus(); };
   $('source-proxmox').onclick = async () => {
     $('source-proxmox').disabled = true;
     $('proxmox-inventory').hidden = false;
@@ -69,7 +94,7 @@
     $('proxmox-guide').hidden = true;
     for (const id of ['proxmox-storages', 'proxmox-disks', 'proxmox-mounts']) $(id).replaceChildren();
     const size = value => value ? `${(value / 1024 ** 3).toLocaleString('da-DK', {maximumFractionDigits: 1})} GiB` : 'Ukendt størrelse';
-    function entry(container, title, description, directories, reason, commands = '') {
+    function entry(container, title, description, directories, reason, commands = '', access = null) {
       const row = document.createElement('div'); row.className = 'source-row';
       const info = document.createElement('div');
       const name = document.createElement('strong'); name.textContent = title;
@@ -97,6 +122,13 @@
         };
         actions.append(button);
       }
+      if (access) {
+        const button = document.createElement('button'); button.className = 'secondary small';
+        button.type = 'button'; button.textContent = 'Få fuld adgang';
+        button.setAttribute('aria-label', `Få fuld adgang til ${access.target}`);
+        button.onclick = () => showWriteGuide(access, button);
+        actions.append(button);
+      }
       row.append(actions); $(container).append(row);
     }
     try {
@@ -109,9 +141,37 @@
         `${disk.parent ? 'Partition' : disk.model || disk.type || 'Disk'} · ${size(disk.size)} · ${disk.used || 'Intet filsystem oplyst'} · ${disk.mounted ? 'Monteret på Proxmox' : 'Ikke monteret på Proxmox'}`,
         disk.directories, disk.reason);
       for (const mount of data.mounts) entry('proxmox-mounts', mount.path, mount.source,
-        mount.local_path ? [{name: mount.path, path: mount.local_path}] : [], 'Mappen er konfigureret i LXC, men er ikke tilgængelig i FjordFlix endnu.');
+        mount.local_path ? [{name: mount.path, path: mount.local_path}] : [], 'Mappen er konfigureret i LXC, men er ikke tilgængelig i FjordFlix endnu.', '', mount.write_guide);
     } catch (error) { $('proxmox-status').textContent = error.message; }
     finally { $('source-proxmox').disabled = false; }
+  };
+  $('mergerfs-form').onsubmit = async event => {
+    event.preventDefault(); $('mergerfs-connect').disabled = true;
+    $('mergerfs-status').textContent = 'Kontrollerer forbindelsen og LXC-monteringer…';
+    $('mergerfs-paths').replaceChildren();
+    try {
+      const data = await api('/admin/library/proxmox?pool_path=' + encodeURIComponent($('mergerfs-path').value.trim()));
+      const pool = data.custom_pool;
+      if (!pool) throw new Error('Opdatér FjordHub for at få mergerfs-vejledningen. ' + (data.errors || []).join(' '));
+      $('mergerfs-status').textContent = pool.reason;
+      $('proxmox-inventory').hidden = false;
+      $('proxmox-guide').hidden = !pool.commands;
+      $('proxmox-guide').open = !!pool.commands;
+      $('proxmox-commands').textContent = pool.commands;
+      if (pool.commands) {
+        $('proxmox-selection').textContent = pool.source + ': Kør vejledningen på Proxmox, og åbn derefter denne tilslutning igen. LXC og dens apps genstartes.';
+        $('proxmox-guide').scrollIntoView({block:'nearest'});
+      } else if (!pool.directories.length) {
+        $('mergerfs-status').textContent += ' Mappen er delt med LXC, men kan endnu ikke læses i FjordFlix. Kontrollér læserettigheder og at LXC-stien ligger under appens biblioteksrod (normalt /mnt), og genstart FjordFlix.';
+      }
+      for (const directory of pool.directories) {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary';
+        button.textContent = 'Vælg mappe: ' + directory.name;
+        button.onclick = () => browse(directory.path);
+        $('mergerfs-paths').append(button);
+      }
+    } catch(error) { $('mergerfs-status').textContent = error.message; }
+    finally { $('mergerfs-connect').disabled = false; }
   };
   $('source-picker-close').onclick = () => { $('source-picker').hidden = true; $('source-browse').focus(); };
   $('source-select').onclick = async () => {
