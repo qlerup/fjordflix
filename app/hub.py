@@ -14,7 +14,7 @@ def managed():
     return bool(os.getenv('FJORDHUB_URL') or os.getenv('FJORDHUB_API_KEY'))
 
 
-def call(path, payload=None, method='POST'):
+def call(path, payload=None, method='POST', timeout=5):
     url = os.getenv('FJORDHUB_URL', '').rstrip('/')
     key = os.getenv('FJORDHUB_API_KEY', '')
     app_id = os.getenv('FJORDHUB_APP_ID', 'fjordflix')
@@ -22,7 +22,7 @@ def call(path, payload=None, method='POST'):
         raise HTTPException(503, 'FjordHub-forbindelsen er ikke korrekt konfigureret.')
     data = {**(payload or {}), 'app_id': app_id}
     try:
-        with httpx.Client(timeout=5, trust_env=False) as client:
+        with httpx.Client(timeout=timeout, trust_env=False) as client:
             response = client.request(method, url+path, headers={'X-Hub-Key': key}, **({'params':data} if method == 'GET' else {'json':data}))
         result = response.json()
     except (httpx.HTTPError, ValueError):

@@ -1,0 +1,20 @@
+# Copy to compose.library.yaml and replace the host paths with existing mounts.
+# Standalone: docker compose -f compose.yaml -f compose.library.yaml up -d --build
+# FjordHub: include this file alongside docker-compose.yml and any GPU overrides.
+services:
+  app:
+    environment:
+      LIBRARY_ROOTS: '["/library"]'
+    volumes:
+      - type: bind
+        source: /mnt/media/film
+        target: /library/Film
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/media/serier
+        target: /library/Serier
+        read_only: true
+        bind:
+          create_host_path: false

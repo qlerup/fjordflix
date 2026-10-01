@@ -6,6 +6,7 @@ test-results/
 data/
 media/
 compose.override.yaml
+compose.library.yaml
 .env
 .env.*
 !.env.example

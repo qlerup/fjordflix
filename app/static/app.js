@@ -275,34 +275,28 @@ $('demo-button').onclick = async () => { $('demo-button').disabled = true; $('de
 $('admin-open').onclick = async () => { try { const data = await api('/admin'); $('server-stats').innerHTML = `<div><strong>${data.gpu ? 'NVIDIA NVENC' : 'CPU'}</strong>Transcoding-motor · ${data.gpu ? 'GPU-test bestået' : 'softwarekonvertering'}</div><div><strong>${data.free_gb} GB</strong>Ledig serverplads</div><div><strong>${data.streams} / ${data.max_streams}</strong>Aktive konverteringssessioner</div><div><strong>${data.users.length}</strong>Brugere på serveren</div>`; $('users-list').innerHTML = data.users.map(u => `<div class="user-row">${escapeHtml(u.name)}<span>${u.admin ? 'Administrator' : 'Bruger'}</span></div>`).join(''); $('admin-dialog').showModal(); } catch(e) { toast(e.message); } };
 $('create-invite').onclick = async () => { try { const result = await api('/invites','POST'); $('invite-result').hidden = false; $('invite-code').value = result.token; } catch(e) { toast(e.message); } };
 $('copy-invite').onclick = async () => { try { await navigator.clipboard.writeText($('invite-code').value); toast('Invitationskoden er kopieret.'); } catch { $('invite-code').select(); toast('Markér og kopiér invitationskoden.'); } };
-$('media-settings-open').onclick = async () => {
+async function loadMediaSettings() {
   try {
     const data=await api('/admin/media');
     $('media-web-url').value=data.web_url;
     $('media-direct-url').value=data.media_url;
     $('media-hub-source').textContent=data.hub_url ? `Adresse i FjordHub: ${data.hub_url}` : '';
     $('media-settings-error').textContent='';
-    $('admin-dialog').close(); $('media-settings-dialog').showModal();
   } catch(e) { toast(e.message); }
-};
-const metadataButton = document.createElement('button');
-metadataButton.className = 'secondary';
-metadataButton.textContent = 'Filmoplysninger · TMDB';
-$('media-settings-open').after(metadataButton);
+}
 function showMetadataStatus(data) {
   $('metadata-status').textContent = data.configured
     ? (data.source === 'environment' ? 'API-nøgle er sat via serverens miljøvariabel.' : 'API-nøgle er gemt på serveren.')
     : 'Automatiske filmopslag er slået fra.';
   $('metadata-disable').disabled = !data.configured;
 }
-metadataButton.onclick = async () => {
+async function loadMetadataSettings() {
   try {
     showMetadataStatus(await api('/admin/metadata'));
     $('metadata-token').value = ''; $('metadata-error').textContent = '';
-    $('admin-dialog').close(); $('metadata-settings-dialog').showModal();
   } catch(e) { toast(e.message); }
-};
-$('metadata-settings-dialog').addEventListener('close', () => { $('metadata-token').value = ''; });
+}
+$('admin-dialog').addEventListener('close', () => { $('metadata-token').value = ''; });
 $('metadata-settings-form').onsubmit = async event => {
   event.preventDefault(); $('metadata-save').disabled = true; $('metadata-error').textContent = '';
   try {

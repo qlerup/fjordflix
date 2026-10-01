@@ -45,6 +45,28 @@ FjordLens og FjordFlix kan få adgang til samme NVIDIA GPU samtidig. De deler hu
 
 Eksisterende lokale brugere sammenlægges ikke automatisk med Hub-brugere, selv om navnene matcher. Filmfiler og historik slettes ikke, men migration af eksisterende solo-historik til Hub-identiteter er en separat opgave. Cloudflare-opdelingen af web- og videotrafik er endnu ikke implementeret.
 
+## Biblioteksmapper på Proxmox, NAS og lokale drev
+
+Åbn **Indstillinger → Bibliotek → Tilføj mappe**. Vælg et tilgængeligt drev eller en undermappe, og gentag for film, serier og øvrige samlinger. Alle titler samles i det eksisterende bibliotek. Mapperne scannes rekursivt ved serverstart, hvert 15. minut og med **Scan alle mapper**. Status viser nye titler, opdateringer og læsefejl. Overlappende mapper afvises for at undgå dobbelt indeksering.
+
+**Proxmox-diske og storage** viser både storage-pools (også `local` og `local-lvm`) og fysiske diske med partitioner gennem FjordHubs Proxmox API-forbindelse. Begge apps skal opdateres. Oversigten bruger kun læseadgang: `Datastore.Audit` til storage, `Sys.Audit` til diske og `VM.Audit` til LXC-konfiguration. Der oprettes ingen diske, formateres intet og køres ingen kopiering. En pool med en eksisterende disk monteret i LXC kan bruges, mens en pool uden et tilgængeligt filsystem forklares som krævende tilslutning. PVE's markering »mounted« betyder ikke i sig selv, at filerne er tilgængelige i LXC.
+
+Hub-installationens `docker-compose.yml` deler som standard Docker-værtens `/mnt` skrivebeskyttet med FjordFlix på `/library/server`. Brug `LIBRARY_HOST_ROOT` i installationens `.env`, hvis dine eksisterende LXC-mounts ligger under en anden fælles mappe, fx `/media`. Mappevælgeren viser kun de mapper, appen faktisk kan læse. Del eksisterende mediemapper med LXC og genskab app-containeren efter ændringer af mounts. Proxmox API'et viser lageroversigten; det giver ikke FjordFlix adgang til rå diske eller værtsfilsystemet automatisk. Disk-mounts angivet med UUID gættes ikke sammen med `/dev/sdX`; brug storage-poolen eller listen over LXC-mapper.
+
+FjordFlix læser originalvideoen direkte fra den valgte sti ved indeksering og afspilning; den kopieres ikke til uploadmappen. Database, covers, undertekstcache og midlertidig HLS-konvertering ligger fortsat i `DATA_DIR`. Direct Play, Direct Stream og transcoding bruger samme kildefil. Filnavne med fx `S01E02` grupperes som serier via den eksisterende metadatafunktion.
+
+Docker kan kun vise mapper, der er monteret ind i app-containeren. Kopiér `compose.library.example.yaml` til `compose.library.yaml`, og ret host-stierne til eksisterende mapper på Docker-værten. Eksemplet eksponerer flere mapper skrivebeskyttet under `/library` og afviser manglende host-stier. Start solo-installationen med:
+
+```sh
+docker compose -f compose.yaml -f compose.library.yaml up -d --build
+```
+
+Ved FjordHub-installation skal samme override inkluderes i appens Compose-opsætning sammen med `docker-compose.yml` og eventuelle GPU-filer. Bevar overriden ved opdateringer. `LIBRARY_ROOTS` er en JSON-liste over absolutte stier **inde i app-containeren**, som administratoren må gennemse; standard er `["/library"]`. Ved kørsel uden Docker sættes variablen til de monterede biblioteksdrev på værten.
+
+I Proxmox skal lageret først være tilgængeligt i den VM/LXC, hvor Docker kører. For LXC kan en eksisterende host-mappe deles via et bind mount; se [Proxmox' dokumentation om bind mounts](https://github.com/proxmox/pve-docs/blob/master/pct.adoc). For en VM monteres lageret i gæsten, fx gennem en netværksdeling. Proxmox-lagre til virtuelle disk-images er ikke i sig selv browsbare mediemapper. Appen har ingen Proxmox-administratoradgang og monterer ikke drev automatisk.
+
+Fjernelse af en kilde fjerner dens titler, favoritter og historik fra FjordFlix, men **sletter aldrig originalfilerne**. En enkelt ekstern titel kan ikke slettes via den permanente filmsletning. Manglende filer/drev bevarer indeks og historik, så en midlertidig afbrydelse ikke tømmer biblioteket; afspilning kræver, at filen igen er tilgængelig. Symlinks i scannede mapper følges ikke. Ændrede filer genundersøges uden at fjerne manuelle filmdata eller historik.
+
 ## Telefon som fjernbetjening (lokal test)
 
 Afspilleren bruger egne kontroller med én tidslinje for hele filmen, også ved transcoding. Den har afspil/pause, 10-sekunders spring, lyd, kvalitet og fuld skærm. Kontrollerne skjules efter inaktivitet under afspilning. Mellemrum/K, piletaster, M og F kan bruges, når fokus ikke står i en knap eller et inputfelt. På browsere uden HTML-fuldskærm kan videoens systemafspiller bruges som fallback.

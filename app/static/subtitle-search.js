@@ -1,22 +1,18 @@
 /* Provider credentials stay on the server. Only administrators spend its quota. */
 (() => {
-  const button = document.createElement('button');
-  button.className = 'secondary'; button.textContent = 'Undertekster · OpenSubtitles';
-  $('media-settings-open').after(button);
   const showStatus = data => {
     $('os-status').textContent = data.configured ? `Tilsluttet som ${data.username}. Hentede undertekster gemmes lokalt.` : 'OpenSubtitles er ikke tilsluttet.';
     $('os-disconnect').disabled = !data.configured;
   };
   const clearSecrets = () => { $('os-key').value = ''; $('os-password').value = ''; };
-  button.onclick = async () => {
+  window.loadSubtitleSettings = async () => {
     try {
       const data = await api('/admin/opensubtitles'); showStatus(data);
       clearSecrets(); $('os-username').value = data.username; $('os-error').textContent = '';
-      $('admin-dialog').close(); $('os-settings').showModal();
+
     } catch(e) { toast(e.message); }
   };
-  $('os-settings').addEventListener('close',clearSecrets);
-  $('os-close').onclick = () => $('os-settings').close();
+  $('admin-dialog').addEventListener('close',clearSecrets);
   $('os-form').onsubmit = async event => {
     event.preventDefault(); $('os-save').disabled = true; $('os-error').textContent = 'Tester forbindelsen…';
     try {

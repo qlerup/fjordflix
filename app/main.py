@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from app import hub, media, demos, catalog, uploads, quality, tracks, hls_subtitles, opensubtitles, library as library_metadata
+from app import hub, media, demos, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -108,9 +108,11 @@ async def lifespan(app):
                 conn.execute('DELETE FROM sessions WHERE expires < ?', (time.time(),))
     task = asyncio.create_task(cleanup())
     quality_task = asyncio.create_task(refresh_source_quality())
+    sources_task = asyncio.create_task(library_sources.watch())
     yield
     task.cancel()
     quality_task.cancel()
+    sources_task.cancel()
     for key in list(JOBS):
         stop_job(key)
 
@@ -167,7 +169,7 @@ def session_user(token):
                 with db() as conn:
                     conn.execute('DELETE FROM sessions WHERE user_id=?', (row['id'],))
             raise
-        return {'id':row['id'], 'name':profile['username'], 'admin':profile.get('role') == 'admin'}
+        return {'id':row['id'], 'name':profile['username'], 'admin':profile.get('role') == 'admin', 'hub_id': row['hub_id']}
     if row['hub_id'] is not None:
         raise HTTPException(401, 'Denne bruger kræver en FjordHub-forbindelse.')
     return {'id':row['id'], 'name':row['name'], 'admin':row['admin']}
@@ -436,7 +438,7 @@ async def refresh_source_quality():
                 conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), row['id']))
 
 
-def index_movie(path, title, mid, enrich=False):
+def index_movie(path, title, mid, enrich=False, source=None):
     meta = probe(path)
     subprocess.run(['ffmpeg', '-v', 'error', '-protocol_whitelist', 'file,pipe', '-ss', str(min(2, meta['duration'] / 3)), '-i', str(path), '-frames:v', '1', '-vf', 'scale=960:-2', '-y', str(DATA / 'posters' / f'{mid}.jpg')], capture_output=True, timeout=60)
     # Keep a video frame separate from the series poster that TMDB may replace.
@@ -449,7 +451,11 @@ def index_movie(path, title, mid, enrich=False):
         if meta['catalog'].get('title'):
             title = meta['catalog']['title']
     with db() as conn:
+        if source:
+            meta['library_source'] = source[0]
         conn.execute('INSERT INTO movies VALUES (?,?,?,?,?)', (mid, title[:160], str(path), json.dumps(meta), time.time()))
+        if source:
+            conn.execute('INSERT INTO library_files VALUES (?,?,?)', (mid, *source))
     return mid
 
 
@@ -476,6 +482,7 @@ async def upload(request: Request, filename: str, u=Depends(admin)):
     return {'id': mid, 'metadata_status': info.get('status', 'disabled'), 'metadata_message': catalog.message(info)}
 
 
+library_sources = sources.Sources(app, sys.modules[__name__])
 chunk_uploads = uploads.register(app, sys.modules[__name__])
 
 DEMO_LOCK = threading.Lock()
@@ -630,7 +637,14 @@ def movie(mid):
         row = conn.execute('SELECT * FROM movies WHERE id=?', (mid,)).fetchone()
     if not row:
         raise HTTPException(404, 'Filmen findes ikke.')
-    return dict(row), json.loads(row['metadata'])
+    meta = json.loads(row['metadata'])
+    if meta.get('library_source'):
+        with db() as conn:
+            source = conn.execute('SELECT path FROM library_sources WHERE id=?', (meta['library_source'],)).fetchone()
+        path = Path(row['path']).resolve()
+        if not source or not path.is_relative_to(Path(source['path'])) or not any(path.is_relative_to(root) for root in library_sources.roots()):
+            raise HTTPException(409, 'Bibliotekskilden er ikke længere tilgængelig på denne sti.')
+    return dict(row), meta
 
 
 class LibraryDelete(BaseModel):
@@ -650,6 +664,8 @@ def delete_movie(mid: str, data: LibraryDelete, u=Depends(admin)):
             selected_item = next((item for item in items if item['id'] == mid), None)
             if selected_item is None:
                 raise HTTPException(404, 'Filmen eller afsnittet findes ikke.')
+            if any(item.get('library_source') for item in items if item['id'] in ids):
+                raise HTTPException(409, 'Originalfiler i biblioteksmapper slettes ikke. Fjern mappen under Indstillinger → Bibliotek for at fjerne dens titler.')
             if len(ids) > 1:
                 key = selected_item['series_key']
                 series_ids = {item['id'] for item in items if key and item['series_key'] == key}
@@ -867,6 +883,8 @@ def original(mid: str, u=Depends(user)):
 
 def original_file(mid):
     row, meta = movie(mid)
+    if not Path(row['path']).is_file():
+        raise HTTPException(404, 'Videofilen er ikke tilgængelig. Kontrollér at bibliotekets lager er monteret.')
     return FileResponse(row['path'], media_type='video/webm' if 'webm' in meta['format'] else 'video/mp4')
 
 
@@ -976,6 +994,8 @@ def plan(mid: str, data: Playback, u=Depends(user)):
 @app.post('/api/movies/{mid}/play')
 def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     row, meta = movie(mid)
+    if meta.get('library_source') and not Path(row['path']).is_file():
+        raise HTTPException(404, 'Videofilen er ikke tilgængelig. Kontrollér at bibliotekets lager er monteret.')
     result = decide(meta, data)
     audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
     burn = subtitle and (subtitle['delivery'] == 'burn' or (data.airplay and data.burn_subtitles))

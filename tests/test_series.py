@@ -79,7 +79,7 @@ def client(monkeypatch, tmp_path):
 
 
 def test_quality_backfill_preserves_concurrent_edits_and_progress(client, monkeypatch):
-    details = {'version': 1, 'dynamic_range': 'Dolby Vision', 'dolby_atmos': True, 'mediainfo': True}
+    details = {'version': 2, 'dynamic_range': 'Dolby Vision', 'dolby_atmos': True, 'mediainfo': True}
     def probe(path):
         with main.db() as conn:
             row = conn.execute('SELECT metadata FROM movies').fetchone()
