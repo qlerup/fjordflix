@@ -44,6 +44,7 @@ async function play(data) {
       const pipe = '\\\\.\\pipe\\fjordflix-' + crypto.randomUUID();
       const executable = path.join(app.isPackaged ? process.resourcesPath : __dirname + '/vendor', 'mpv', 'mpv.exe');
       const child = spawn(executable, ['--no-config','--load-scripts=no','--ytdl=no','--idle=yes','--force-window=yes',
+        ...require('./subtitle-options.cjs'),
         '--fullscreen=yes','--window-dragging=no','--input-builtin-dragging=no',
         '--hwdec=auto-safe','--vo=gpu-next','--gpu-api=d3d11','--target-colorspace-hint=yes',
         '--title=FjordFlix','--osc=no','--osd-color=#FFFFFF','--osd-border-color=#101014',

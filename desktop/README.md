@@ -46,6 +46,13 @@ Test: `node smoke.cjs` med Playwright tilgængelig i `NODE_PATH`. Testen bruger
 midlertidig database, profil og lydfil, og tester login, native HTTP-afspilning og
 gemt position. Den er ikke en test af 4K/HDR-hardware eller installation på en ren pc.
 
+Undertekstregression: `node desktop/test-subtitle-switch.cjs <ffmpeg.exe> [supsample.mkv]`
+fra projektroden. Den valgfrie PGS-testfil findes hos
+https://samples.ffmpeg.org/sub/PGS/supsample.mkv og gemmes ikke i repositoryet.
+Testen genererer MKV-filer og kontrollerer synlige PGS-billeder ved sporskift,
+tekstspor, pause og position. MKV-undertekster bruger op til ti sekunders preroll
+for at finde displaydata før det aktuelle keyframe; det kan øge læsning ved seek.
+
 ## Afgrænsning og sikkerhed
 
 Renderer kører sandboxed uden Node.js. Native IPC er begrænset til hovedvinduet
