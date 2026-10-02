@@ -625,6 +625,29 @@ def edit_movie_metadata(mid: str, data: library_metadata.LibraryEdit, u=Depends(
     return {'ok': True}
 
 
+def reindex_movie_metadata(path, mid):
+    """Re-run local episode recognition, then the regular metadata refresh."""
+    title = catalog.file_title(path)
+    local = catalog.identify(title)
+    with db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('SELECT title,metadata FROM movies WHERE id=?', (mid,)).fetchone()
+        if row is None:
+            return
+        meta = json.loads(row['metadata'])
+        previous = meta.get('catalog', {})
+        if previous.get('manual'):
+            return
+        # Keep explicit matches, but repair old E01 files classified as movies.
+        if local['media_type'] == 'tv' and not previous.get('selected_tmdb_id') and (
+                previous.get('status') != 'matched' or previous.get('media_type') != 'tv'):
+            meta['catalog'] = {**local, 'lookup_title': title}
+            meta['original_title'] = title
+            conn.execute('UPDATE movies SET title=?,metadata=? WHERE id=?',
+                         (local['title'][:160], json.dumps(meta), mid))
+    return refresh_movie_metadata(mid)
+
+
 class MetadataSearch(BaseModel):
     search_title: str | None = Field(default=None, min_length=1, max_length=200)
     tmdb_id: int | None = Field(default=None, gt=0, strict=True)

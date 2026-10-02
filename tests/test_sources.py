@@ -84,12 +84,62 @@ def test_pool_connection_requires_confirmation_and_forwards_admin(mounted, monke
     assert len(calls) == 1
 
 
-def scan():
+def scan(reindex_source=None):
     assert main.library_sources.lock.acquire(blocking=False)
     main.library_sources.rescan.clear()
     main.library_sources.status = {'running': True, 'added': 0, 'updated': 0, 'errors': []}
-    main.library_sources.scan()
+    main.library_sources.scan(reindex_source)
     assert not main.library_sources.status['running']
+
+
+def test_reindex_repairs_existing_episodes_and_fetches_metadata(mounted, monkeypatch):
+    client, root = mounted
+    folder = root / 'Serier' / 'Example Show'
+    folder.mkdir()
+    for name in ['E01.mkv', 'E02.mkv']:
+        (folder / name).write_bytes(b'video')
+    sid = client.post('/api/admin/library', json={'path': str(root / 'Serier')}).json()['id']
+    scan()  # Fixture simulates the old movie-only classification.
+    before = client.get('/api/movies').json()
+    ids = {item['id'] for item in before}
+    with main.db() as conn:
+        conn.execute('INSERT INTO progress VALUES (?,?,?,?)', ('owner', before[0]['id'], 42, 1))
+    calls = []
+    def enrich(title, *args):
+        calls.append(title)
+        return {**main.catalog.identify(title), 'status': 'disabled'}
+    monkeypatch.setattr(main.catalog, 'enrich', enrich)
+    scan(sid)
+    after = client.get('/api/movies').json()
+    assert set(calls) == {'Example Show E01', 'Example Show E02'}
+    assert {item['id'] for item in after} == ids
+    assert {item['catalog']['episode'] for item in after} == {1, 2}
+    assert len({item['series_key'] for item in after}) == 1
+    assert next(item for item in after if item['id'] == before[0]['id'])['position'] == 42
+    assert main.library_sources.status['updated'] == 2
+    assert main.library_sources.status['errors'] == []
+    with main.db() as conn:
+        row = conn.execute('SELECT metadata FROM movies WHERE id=?', (before[0]['id'],)).fetchone()
+        meta = json.loads(row['metadata'])
+        meta['catalog']['manual'] = True
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), before[0]['id']))
+    calls.clear()
+    scan(sid)
+    assert len(calls) == 1  # Explicit manual edits are not looked up again.
+
+
+def test_reindex_endpoint_scope_and_authorization(mounted, monkeypatch):
+    client, root = mounted
+    sid = client.post('/api/admin/library', json={'path': str(root / 'Film')}).json()['id']
+    calls = []
+    monkeypatch.setattr(main.library_sources, 'start', lambda source: calls.append(source) or True)
+    assert client.post(f'/api/admin/library/{sid}/reindex').status_code == 202
+    assert calls == [sid]
+    assert client.post('/api/admin/library/missing/reindex').status_code == 404
+    monkeypatch.setattr(main.library_sources, 'start', lambda source: False)
+    assert client.post(f'/api/admin/library/{sid}/reindex').status_code == 409
+    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'admin': False, 'id': 'viewer'})
+    assert client.post(f'/api/admin/library/{sid}/reindex').status_code == 403
 
 
 def test_episode_only_files_group_as_series(mounted, monkeypatch):

@@ -158,6 +158,15 @@ class Sources:
                 raise HTTPException(409, 'Biblioteket scannes allerede.')
             return self.status
 
+        @app.post('/api/admin/library/{sid}/reindex', status_code=202)
+        def reindex(sid: str, u=Depends(host.admin)):
+            with host.db() as conn:
+                if not conn.execute('SELECT 1 FROM library_sources WHERE id=?', (sid,)).fetchone():
+                    raise HTTPException(404, 'Biblioteksmappen findes ikke.')
+            if not self.start(sid):
+                raise HTTPException(409, 'Biblioteket scannes allerede.')
+            return self.status
+
     def roots(self):
         # JSON also supports Windows paths without ambiguous colon separators.
         configured = json.loads(os.getenv('LIBRARY_ROOTS', json.dumps([str(Path('/library').resolve())])))
@@ -176,12 +185,12 @@ class Sources:
             raise HTTPException(400, 'Mappen er ikke tilgængelig. Kontrollér at lageret er monteret.')
         return path
 
-    def start(self):
+    def start(self, reindex_source=None):
         if not self.lock.acquire(blocking=False):
             return False
         self.rescan.clear()
         self.status = {'running': True, 'added': 0, 'updated': 0, 'errors': []}
-        threading.Thread(target=self.scan, daemon=True, name='library-scan').start()
+        threading.Thread(target=self.scan, args=(reindex_source,), daemon=True, name='library-scan').start()
         return True
 
     def error(self, message):
@@ -189,13 +198,15 @@ class Sources:
         # Bound the status response even for a damaged or disconnected drive.
         self.status = {**self.status, 'errors': (self.status['errors'] + [message])[-50:]}
 
-    def scan(self):
+    def scan(self, reindex_source=None):
         try:
             with self.host.db() as conn:
                 sources = conn.execute('SELECT * FROM library_sources').fetchall()
                 known = {str(Path(r['path']).resolve()): dict(r) for r in conn.execute(
                     'SELECT m.id,m.path,f.fingerprint FROM movies m LEFT JOIN library_files f ON f.movie_id=m.id')}
             for source in sources:
+                if reindex_source is not None and source['id'] != reindex_source:
+                    continue
                 try:
                     folder = self.allowed(source['path'])
                     for directory, dirs, files in os.walk(folder, followlinks=False, onerror=lambda e: self.error(f'{source["path"]}: {e.strerror}')):
@@ -211,7 +222,7 @@ class Sources:
                                 stat = path.stat()
                                 fingerprint = f'{stat.st_size}:{stat.st_mtime_ns}'
                                 old = known.get(str(path))
-                                if old and (old['fingerprint'] is None or old['fingerprint'] == fingerprint):
+                                if old and reindex_source is None and (old['fingerprint'] is None or old['fingerprint'] == fingerprint):
                                     continue
                                 if old:
                                     details = self.host.probe(path)
@@ -222,6 +233,7 @@ class Sources:
                                             meta = {**json.loads(row['metadata']), **details}
                                             conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), old['id']))
                                             conn.execute('UPDATE library_files SET fingerprint=? WHERE movie_id=?', (fingerprint, old['id']))
+                                    self.host.reindex_movie_metadata(path, old['id'])
                                     self.status['updated'] += 1
                                 else:
                                     mid = secrets.token_hex(16)

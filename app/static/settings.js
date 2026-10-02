@@ -23,7 +23,19 @@
           try { await api(`/admin/library/${source.id}`, 'DELETE'); await loadSources(); await refresh(); }
           catch (error) { fail(error); remove.disabled = false; }
         };
-        row.append(info, remove); $('source-list').append(row);
+        const reindex = document.createElement('button'); reindex.className = 'secondary small';
+        reindex.textContent = 'Genindeksér'; reindex.disabled = data.scan.running || !source.available;
+        reindex.setAttribute('aria-label', `Genindeksér mappen ${source.path}`);
+        reindex.title = 'Gennemgå alle filer igen og hent oplysninger. Manuelle rettelser bevares.';
+        reindex.onclick = async () => {
+          reindex.disabled = true; $('source-error').textContent = '';
+          try { await api(`/admin/library/${source.id}/reindex`, 'POST'); }
+          catch (error) { fail(error); }
+          await loadSources();
+        };
+        const actions = document.createElement('div'); actions.className = 'settings-actions';
+        actions.append(reindex, remove);
+        row.append(info, actions); $('source-list').append(row);
       }
       if (!data.sources.length) {
         const empty = document.createElement('p'); empty.className = 'source-empty';
