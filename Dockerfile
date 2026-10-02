@@ -1,5 +1,8 @@
 FROM python:3.12-slim-bookworm
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg mediainfo curl fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg mediainfo curl fonts-dejavu-core ocl-icd-libopencl1 && rm -rf /var/lib/apt/lists/*
+# The NVIDIA container runtime supplies the host driver library. Register its
+# OpenCL implementation without installing a conflicting driver in the image.
+RUN mkdir -p /etc/OpenCL/vendors && printf '%s\n' 'libnvidia-opencl.so.1' > /etc/OpenCL/vendors/nvidia.icd
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

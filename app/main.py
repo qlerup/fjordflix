@@ -961,7 +961,9 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             encoder = 'NVIDIA NVENC' if GPU else 'CPU · H.264'
             if hardware_inputs:
                 cmd[cmd.index('-i'):cmd.index('-i')] = hardware_inputs
-                encoder = 'NVIDIA NVDEC + NVENC' + (' · HDR på CPU' if meta['hdr'] else ' · GPU-skalering')
+                encoder = 'NVIDIA NVDEC + NVENC' + (
+                    ' · HDR på GPU' if 'tonemap_opencl=' in filter_chain else
+                    ' · HDR på CPU' if meta['hdr'] else ' · GPU-skalering')
             if bitmap:
                 cmd += ['-filter_complex', f"[0:{subtitle['index']}]scale={int(meta['width'])}:{int(meta['height'])}[sub];[0:v:0][sub]overlay=eof_action=pass:shortest=0," + ','.join(filters) + '[vout]']
             else:
