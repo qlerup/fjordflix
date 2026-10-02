@@ -87,7 +87,9 @@ def attach_tv(app, main):
 
     @tv.post('/tv-api/movies/{mid}/progress')
     def progress(mid: str, data: main.Progress, auth=Depends(authorized)):
-        return main.progress(mid, data, auth[0])
+        result = main.progress(mid, data, auth[0])
+        main.active_streams.tv_progress(auth[2], mid, data.position)
+        return result
 
 
     @tv.post('/tv-api/movies/{mid}/plan')
@@ -117,6 +119,7 @@ def attach_tv(app, main):
         direct, _ = media.config()
         base = direct or str(auth[1].base_url).rstrip('/')
         path = f"streams/{result['session']}/{result.get('playlist', 'index.m3u8')}" if result['session'] else f'movies/{mid}/file'
+        main.active_streams.bind_tv(result.get('playback_id'), ticket, auth[2])
         return {**result, 'url': f'{base}/tv-media/{ticket}/{path}', 'media_ticket': ticket,
                 'media_expires_in': media.TTL}
 
@@ -144,12 +147,16 @@ def attach_tv(app, main):
 
     @tv.post('/tv-api/media/heartbeat')
     def renew(data: main.MediaTicket, auth=Depends(authorized)):
-        return main.media_heartbeat(data, auth[1], auth[0])
+        result = main.media_heartbeat(data, auth[1], auth[0])
+        main.active_streams.tv_touch(data.ticket)
+        return result
 
 
     @tv.post('/tv-api/media/revoke')
     def revoke(data: main.MediaTicket, auth=Depends(authorized)):
-        return main.media_revoke(data, auth[1], auth[0])
+        result = main.media_revoke(data, auth[1], auth[0])
+        main.active_streams.tv_touch(data.ticket, stop=True)
+        return result
 
 
     @tv.post('/tv-api/streams/{sid}/heartbeat')

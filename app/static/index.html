@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="application-name" content="FjordFlix">
 <meta name="msapplication-config" content="/static/logos/web/browserconfig.xml">
-<link rel="stylesheet" href="/static/player.css?v=airplay1"><script defer src="/static/player.js?v=airplay1"></script><link rel="stylesheet" href="/static/mobile.css?v=2"><link rel="stylesheet" href="/static/library.css?v=airplay2"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script><script defer src="/static/subtitle-search.js?v=settings2"></script><link rel="stylesheet" href="/static/settings.css?v=library-access1"><script defer src="/static/settings.js?v=storage-connect1"></script></head>
+<link rel="stylesheet" href="/static/player.css?v=airplay1"><script defer src="/static/player.js?v=airplay1"></script><link rel="stylesheet" href="/static/mobile.css?v=2"><link rel="stylesheet" href="/static/library.css?v=airplay2"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script><script defer src="/static/subtitle-search.js?v=settings2"></script><link rel="stylesheet" href="/static/settings.css?v=library-access1"><script defer src="/static/settings.js?v=storage-connect1"></script><link rel="stylesheet" href="/static/active-streams.css?v=1"><script defer src="/static/active-streams.js?v=1"></script></head>
 <body>
 <div id="toast" role="status" hidden></div>
 <section id="auth" class="auth" hidden>
@@ -31,6 +31,7 @@
 <div class="settings-header"><span class="eyebrow">FJORDFLIX</span><h2 id="settings-title">Indstillinger</h2><p class="muted">Dit bibliotek og din server.</p></div>
 <div class="settings-layout"><nav class="settings-nav" aria-label="Indstillinger">
 <button class="active" data-settings-tab="library" aria-current="page">Bibliotek</button>
+<button data-settings-tab="active-streams">Aktive streams</button>
 <button data-settings-tab="media">Afspilning</button><button data-settings-tab="metadata">Filmdata</button>
 <button data-settings-tab="subtitles">Undertekster</button><button data-settings-tab="users">Brugere</button><button data-settings-tab="server">Server</button>
 </nav><div class="settings-content">
@@ -58,6 +59,12 @@
 <details class="source-help"><summary>Tilslut en mergerfs-pool</summary><p>En pool, som kun er monteret på Proxmox, vises ikke nødvendigvis som storage. Angiv dens samlede mappe her. Du får en vejledning til at dele den med FjordHubs LXC med læseadgang.</p><form id="mergerfs-form"><label>Poolens sti på Proxmox<input id="mergerfs-path" placeholder="/mnt/mediahub-storage" required maxlength="1024"></label><button id="mergerfs-connect" class="secondary" type="submit">Vis tilslutning</button></form><p id="mergerfs-status" class="muted" role="status"></p><div id="mergerfs-paths" class="settings-actions"></div></details>
 <details class="source-help"><summary>Mangler dit Proxmox-drev?</summary><p>FjordFlix kan se lager, der er monteret i appens VM eller container og gjort tilgængeligt som biblioteksdrev. Montér først Proxmox-mappen eller netværksdrevet, og giv appen læseadgang. Derefter kan du vælge den her.</p></details>
 <p class="fine">Mapper scannes automatisk ved serverstart og hvert 15. minut. Covers og indeks gemmes lokalt. Manglende drev fjerner ikke titler eller historik. Fjernelse af en mappe her fjerner dens titler fra biblioteket, men lader originalfilerne blive på drevet.</p></section>
+<section id="active-streams-panel" data-settings-panel="active-streams" hidden>
+<span class="eyebrow">LIGE NU</span><h2>Aktive streams</h2>
+<p class="muted">Se, hvem der ser med, og hvordan serveren leverer filmen.</p>
+<p id="active-streams-status" class="fine" role="status">Henter aktive streams…</p>
+<div id="active-streams-list" class="active-streams-list"></div>
+</section>
 <section id="media-settings-dialog" data-settings-panel="media" hidden>
 <span class="eyebrow">FORBINDELSE</span><h2>Video direkte fra serveren</h2>
 <p>Login og bibliotek kan gå gennem Cloudflare. Videoen hentes fra en separat adresse uden tunnel eller proxy hos Cloudflare.</p>

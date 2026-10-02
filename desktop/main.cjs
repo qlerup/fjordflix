@@ -25,7 +25,8 @@ async function api(route, data) {
 }
 async function finish(run) {
   if (run.finished) return;
-  run.finished = true; clearInterval(run.timer); run.socket?.destroy();
+  run.finished = true; clearInterval(run.timer); clearTimeout(run.statusTimer); run.socket?.destroy();
+  if (run.playbackId) await api(`/playbacks/${run.playbackId}/stop`, {}).catch(()=>{});
   if (active === run) active = null;
   if (Number.isFinite(run.position)) await api(`/movies/${run.id}/progress`, {position:run.position}).catch(()=>{});
   await api('/media/revoke', {ticket:run.ticket}).catch(()=>{});
@@ -37,7 +38,12 @@ async function play(data) {
   try {
     const chosen = selection(data);
     const result = await api(`/desktop/movies/${chosen.id}/play`, chosen);
-    const run = {id:chosen.id, ticket:result.media_ticket, position:chosen.start}; active = run;
+    const run = {id:chosen.id, ticket:result.media_ticket, position:chosen.start, playbackId:result.playback_id, status:{}}; active = run;
+    const report = () => run.playbackId && !run.finished ? api(`/playbacks/${run.playbackId}/heartbeat`, {
+      position:run.position, state:run.status['paused-for-cache'] ? 'buffering' : run.status.pause ? 'paused' : 'playing',
+      ...Object.fromEntries([['aid','audio_ordinal'],['sid','subtitle_ordinal']].flatMap(([key,name]) =>
+        run.status[key] === false ? [[name,0]] : Number.isInteger(run.status[key]) ? [[name,run.status[key]]] : []))
+    }).catch(()=>{}) : Promise.resolve();
     try {
       const url = mediaUrl(result.url, origin);
       const sub = result.subtitle_url ? mediaUrl(result.subtitle_url, origin) : null;
@@ -76,6 +82,10 @@ async function play(data) {
           const line=buffer.slice(0,end); buffer=buffer.slice(end+1);
           let message; try { message=JSON.parse(line); } catch { continue; }
           if (message.event === 'property-change' && message.name === 'time-pos' && Number.isFinite(message.data)) run.position=message.data;
+          if (message.event === 'property-change' && ['pause','paused-for-cache','aid','sid'].includes(message.name)) {
+            run.status[message.name]=message.data;
+            clearTimeout(run.statusTimer); run.statusTimer=setTimeout(report,200);
+          }
           if (message.event === 'file-loaded' && sub) command(['sub-add',sub,'select']);
           if (message.event === 'end-file') {
             if (message.reason === 'error') dialog.showMessageBox(win,{type:'error',message:'Filmen kunne ikke afspilles.',detail:'Kontrollér forbindelsen til serveren og prøv igen.'});
@@ -84,12 +94,14 @@ async function play(data) {
         }
       });
       command(['observe_property',1,'time-pos']);
+      ['pause','paused-for-cache','aid','sid'].forEach((name,i)=>command(['observe_property',i+2,name]));
       command(['script-message','fjord-title',String(result.title || 'FjordFlix')]);
       command(['loadfile',url,'replace',-1,{start:String(result.start),aid:String(result.audio),sid:String(result.subtitle)}]);
       run.timer = setInterval(async () => {
         try {
           await api('/media/heartbeat',{ticket:run.ticket});
           await api(`/movies/${run.id}/progress`,{position:run.position});
+          await report();
         } catch { child.kill(); }
       },15000);
       return {ok:true};

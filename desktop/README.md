@@ -68,6 +68,8 @@ appmenuen og topbaren (topbaren kræver den opdaterede server). Opdateringer hen
 fra offentlige GitHub Releases via electron-updater. Kun stabile, nyere versioner
 tilbydes. Download og installation kræver hver sin bekræftelse. En igangværende film
 blokerer installationen; afslut filmen og tryk på opdateringsknappen igen.
+Appen rapporterer afspilningsstatus, position og valgte spor til administratorens
+oversigt under Indstillinger → Aktive streams. Det kræver en opdateret server.
 Downloadets SHA512 kontrolleres mod udgivelsens manifest. Installationsfilerne er
 fortsat ikke codesignet. Version 0.1.0 skal opdateres manuelt én gang.
 

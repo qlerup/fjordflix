@@ -243,6 +243,7 @@ async function release() {
   video.pause(); video.removeAttribute('src'); video.load();
   if (hls) { hls.destroy(); hls = null; }
   const old = playback; playback = null;
+  if (old?.playback_id) await api(`/playbacks/${old.playback_id}/stop`, 'POST').catch(() => {});
   if (old?.media_ticket) await api('/media/revoke', 'POST', {ticket:old.media_ticket}).catch(() => {});
   if (old?.session) await api(`/streams/${old.session}`, 'DELETE').catch(() => {});
 }
@@ -258,7 +259,7 @@ async function startPlayback(position = 0, fallback = false) {
     const data = await capabilities(selected, $('player-quality').value);
     if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; }
     const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position});
-    if (generation !== playGeneration || !$('player-dialog').open) { if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
+    if (generation !== playGeneration || !$('player-dialog').open) { if(result.playback_id) await api(`/playbacks/${result.playback_id}/stop`, 'POST'); if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
     playback = result; lastSaved = 0;
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
     $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
@@ -282,6 +283,16 @@ video.onplaying = () => { $('player-loading').hidden = true; if(playback) badge(
 video.onwaiting = () => { if(playback) { $('player-loading').hidden = false; $('player-loading').textContent = 'Bufferer…'; } };
 video.onerror = () => { if(switching || !playback) return; if(playback.mode === 'Direct Play') { toast('Originalformatet kunne ikke afspilles. Prøver transcoding.'); startPlayback(video.currentTime || 0, true).catch(e => showPlayerError(e.message)); } else showPlayerError('Videoen kunne ikke afspilles. Prøv en anden kvalitet.'); };
 function position() { return Math.min(selected?.duration || 0, (video.currentTime || 0) + (playback?.offset || 0)); }
+function reportPresence() {
+  if (!playback?.playback_id) return;
+  const status = video.ended ? 'ended' : video.error ? 'error' : video.paused ? 'paused' : video.readyState < 3 ? 'buffering' : 'playing';
+  api(`/playbacks/${playback.playback_id}/heartbeat`, 'POST', {position:position(), state:status, subtitle_track:playback.subtitle_track ?? null}).catch(() => {});
+}
+for (const event of ['playing','pause','waiting','ended','error']) video.addEventListener(event, reportPresence);
+setInterval(reportPresence, 10000);
+window.addEventListener('pagehide', () => {
+  if (playback?.playback_id && !airplayActive()) fetch(`/api/playbacks/${playback.playback_id}/stop`, {method:'POST',keepalive:true});
+});
 async function saveProgress() { if(!selected || !playback) return; const p = position(); selected.position = p; await api(`/movies/${selected.id}/progress`, 'POST', {position:p}).catch(() => {}); }
 video.ontimeupdate = () => { updatePlayerTimeline(); if(Date.now() - lastSaved > 5000 && playback) { lastSaved = Date.now(); saveProgress(); } };
 video.onended = () => { saveProgress(); $('player-loading').hidden = true; };

@@ -26,7 +26,7 @@ def register(main):
         if subtitle and subtitle.get('external'):
             base = result['url'].rsplit('/file', 1)[0]
             result['subtitle_url'] = f"{base}/subtitles/{subtitle['index']}.vtt"
-        return result
+        return main.active_streams.begin(result, row, meta, u, data, audio, subtitle, native=True)
 
     @main.app.get('/media/{ticket}/movies/{mid}/subtitles/{index}.vtt')
     def subtitle(ticket: str, mid: str, index: int):

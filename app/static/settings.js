@@ -251,6 +251,7 @@
       if (name === 'media') loadMediaSettings();
       if (name === 'metadata') loadMetadataSettings();
       if (name === 'subtitles') window.loadSubtitleSettings();
+      if (name === 'active-streams') window.loadActiveStreams();
     };
   }
   // Observe showModal as admin data is loaded asynchronously by the existing UI.

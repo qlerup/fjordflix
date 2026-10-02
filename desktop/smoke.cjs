@@ -36,6 +36,11 @@ const assert=require('node:assert/strict');
     if(progress>5)break;
   }
   assert.ok(progress>5,'Native mpv must report playback progress through authenticated IPC: '+progress);
+  const streams=await page.evaluate(async()=> (await (await fetch('/api/admin/active-streams')).json()).streams);
+  assert.equal(streams.length,1,'native playback is visible to administrator');
+  assert.equal(streams[0].client,'Windows-app');
+  assert.equal(streams[0].mode,'Direct Play');
+  assert.ok(streams[0].position>5,'native position is reported');
   console.log('PASS: setup, login, isolated renderer, mpv HTTP playback and saved progress',progress,temp);
  } finally {if(electron)await electron.close();server.kill();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

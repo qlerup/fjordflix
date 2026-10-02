@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
-from app import transcoding
+from app import transcoding, active_streams
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -68,6 +68,7 @@ catalog.init(db)
 
 
 def stop_job(key):
+    active_streams.remove_session(key)
     with LOCK:
         job = JOBS.pop(key, None)
         if job:
@@ -921,7 +922,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                   subtitle_delivery=('burn' if burn else 'hls' if soft else subtitle['delivery']) if subtitle else None, airplay=data.airplay)
     offset = min(data.start, max(0, meta['duration'] - 1))
     if result['mode'] == 'Direct Play':
-        return media.issue({**result, 'url': f'/api/movies/{mid}/file', 'session': None, 'offset': 0, 'encoder': 'Original'}, request, mid, db)
+        response = media.issue({**result, 'url': f'/api/movies/{mid}/file', 'session': None, 'offset': 0, 'encoder': 'Original'}, request, mid, db)
+        return active_streams.begin(response, row, meta, u, data, audio, subtitle)
     subtitle_file = None
     if data.airplay and subtitle and subtitle['delivery'] == 'text':
         try:
@@ -977,6 +979,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             cmd += ['-c:a', 'copy']
         else:
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']
+        if result['mode'] == 'Direct Stream':
+            encoder = 'Remux + original lyd' if cmd[cmd.index('-c:a') + 1] == 'copy' else 'Remux + AAC'
         cmd += ['-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file', '-hls_segment_filename', str(folder / 'segment%05d.ts'), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log, cwd=folder)
@@ -999,7 +1003,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                 except (OSError, ValueError, KeyError, IndexError, subprocess.SubprocessError):
                     stop_job(sid)
                     raise HTTPException(503, 'Tekstsporet kunne ikke klargøres. Prøv indbrændte undertekster under Lyd og tekst.')
-            return media.issue({**result, 'url': f"/api/streams/{sid}/{result.get('playlist', 'index.m3u8')}", 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db, airplay=data.airplay, duration=meta['duration'])
+            response = media.issue({**result, 'url': f"/api/streams/{sid}/{result.get('playlist', 'index.m3u8')}", 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db, airplay=data.airplay, duration=meta['duration'])
+            return active_streams.begin(response, row, meta, u, data, audio, subtitle, audio_copy=bool(data.audio_copy and not data.airplay and audio and audio['codec'] in ('aac', 'ac3', 'eac3')))
         if process.poll() is not None:
             break
         time.sleep(0.1)
@@ -1094,6 +1099,7 @@ def stop(sid: str, u=Depends(user)):
 
 from app.remote import attach_remote
 
+active_streams.register(sys.modules[__name__])
 attach_remote(app, user, db, digest, session_user)
 app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), name='static')
 
