@@ -2,7 +2,13 @@ name: Build Windows desktop
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop.yml'
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -23,14 +29,23 @@ jobs:
         shell: pwsh
       - run: npm test
         working-directory: desktop
-      - name: Verify release version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Choose next release version
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $version = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
-          if ($env:RELEASE_TAG -ne "v$version") { throw 'Tag must match desktop/package.json version' }
+          $pages = gh api --paginate --slurp repos/${{ github.repository }}/releases | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read existing releases' }
+          $releases = @($pages | ForEach-Object { $_ })
+          $versions = @($releases | Where-Object { $_.tag_name -match '^v\d+\.\d+\.\d+$' } | ForEach-Object { [version]$_.tag_name.Substring(1) })
+          $latest = $versions | Sort-Object -Descending | Select-Object -First 1
+          $version = [version](Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
+          if ($latest -and $version -le $latest) { $version = [version]::new($latest.Major, $latest.Minor, $latest.Build + 1) }
+          Push-Location desktop
+          npm version "$version" --no-git-tag-version --allow-same-version
+          if ($LASTEXITCODE -ne 0) { throw 'Version update failed' }
+          Pop-Location
+          "RELEASE_TAG=v$version" >> $env:GITHUB_ENV
       - run: npm run dist -- --publish never
         working-directory: desktop
       - uses: actions/upload-artifact@v4
@@ -41,11 +56,9 @@ jobs:
             desktop/dist/*.blockmap
             desktop/dist/latest.yml
       - name: Publish desktop update
-        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create $env:RELEASE_TAG desktop/dist/FjordFlix-Setup.exe desktop/dist/FjordFlix-Setup.exe.blockmap desktop/dist/latest.yml --verify-tag --title "FjordFlix Windows $env:RELEASE_TAG" --generate-notes
+          gh release create $env:RELEASE_TAG desktop/dist/FjordFlix-Setup.exe desktop/dist/FjordFlix-Setup.exe.blockmap desktop/dist/latest.yml --target '${{ github.sha }}' --title "FjordFlix Windows $env:RELEASE_TAG" --generate-notes --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

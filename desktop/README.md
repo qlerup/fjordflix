@@ -57,11 +57,13 @@ fortsat ikke codesignet. Version 0.1.0 skal opdateres manuelt én gang.
 
 ## Udgiv en opdatering
 
-1. Opdatér `desktop/package.json` og lockfilen med `npm version X.Y.Z --no-git-tag-version`.
-2. Commit og push ændringen til main.
-3. Opret og push tagget `vX.Y.Z`.
+Push ændringer i `desktop/` til `main`. Workflowet tester og bygger automatisk
+Windows-installeren og udgiver installer, blockmap og `latest.yml` på GitHub.
+Downloadknappen og appens opdateringsknap bruger den nye release.
 
-Workflowet bygger Windows-installeren, kører klienttestene og publicerer en GitHub
-Release med installer, blockmap og `latest.yml`. Tag og pakkeversion skal matche.
-Et almindeligt push til main udgiver ikke en ny pc-version. Serverens web-UI
-opdateres separat. Webappens downloadknap peger på seneste stabile release.
+Versionsnummeret hæves automatisk fra den højeste eksisterende version. Pakke og
+lockfil får samme version i bygget; der kræves ingen versionscommit eller manuelt
+tag. Et højere versionsnummer i package.json bruges, hvis det er angivet manuelt.
+Udgivelser køres én ad gangen, og tagget peger på den commit, der blev bygget.
+Workflowet kan også startes manuelt. Ændringer alene i serverens web-UI udgiver
+ikke en ny pc-installation, da brugerfladen indlæses direkte fra serveren.
