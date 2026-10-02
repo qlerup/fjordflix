@@ -146,7 +146,10 @@ async function capabilities(movie, quality) {
   if (movie.video === 'h264' && movie.pix_fmt !== 'yuv420p') supported = false;
   // HDR passthrough is deliberately conservative until the full output chain is known.
   if (movie.hdr) supported = false;
-  return {quality, airplay:airplaySupported, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:navigator.connection?.downlink || 0, ...FjordTracks.request()};
+  // NetworkInformation estimates unrelated connections (and excludes private
+  // address space). It is not a measurement of throughput to our media server.
+  // Leave bandwidth unknown rather than forcing unnecessary transcoding in Auto.
+  return {quality, airplay:airplaySupported, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:0, ...FjordTracks.request()};
 }
 async function openDetail(movie) {
   if (movie?.isSeries) movie = FjordLibrary.initial(movie.episodes);
