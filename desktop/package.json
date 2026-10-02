@@ -29,6 +29,10 @@
     ],
     "extraResources": [
       {
+        "from": "player.lua",
+        "to": "player.lua"
+      },
+      {
         "from": "vendor/mpv",
         "to": "mpv"
       }

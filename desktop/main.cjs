@@ -45,8 +45,9 @@ async function play(data) {
       const executable = path.join(app.isPackaged ? process.resourcesPath : __dirname + '/vendor', 'mpv', 'mpv.exe');
       const child = spawn(executable, ['--no-config','--load-scripts=no','--ytdl=no','--idle=yes','--force-window=yes',
         '--hwdec=auto-safe','--vo=gpu-next','--gpu-api=d3d11','--target-colorspace-hint=yes',
-        '--title=FjordFlix','--osc=yes','--osd-color=#FFFFFF','--osd-border-color=#101014',
-        '--script-opts=osc-layout=bottombar,osc-seekbarstyle=bar','--input-ipc-server='+pipe],
+        '--title=FjordFlix','--osc=no','--osd-color=#FFFFFF','--osd-border-color=#101014',
+        '--script='+path.join(app.isPackaged ? process.resourcesPath : __dirname, 'player.lua'),
+        '--input-ipc-server='+pipe],
         {windowsHide:true, stdio:'ignore'});
       run.child = child;
       let startError;
@@ -81,6 +82,7 @@ async function play(data) {
         }
       });
       command(['observe_property',1,'time-pos']);
+      command(['script-message','fjord-title',String(result.title || 'FjordFlix')]);
       command(['loadfile',url,'replace',-1,{start:String(result.start),aid:String(result.audio),sid:String(result.subtitle)}]);
       run.timer = setInterval(async () => {
         try {
