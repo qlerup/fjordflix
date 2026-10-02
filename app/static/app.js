@@ -75,7 +75,13 @@ async function boot() {
   state = await api('/state');
   if (!state.user) { showAuth(); return; }
   $('auth').hidden = true; $('shell').hidden = false;
-  $('logout').textContent = state.user.name[0].toUpperCase(); $('logout').title = `${state.user.name} · Log ud`;
+  if (window.fjordDesktop) {
+    updateWindowButton(true);
+    window.fjordDesktop.getFullscreen?.().then(updateWindowButton).catch(() => {});
+  } else {
+    $('logout').textContent = state.user.name[0].toUpperCase(); $('logout').title = `${state.user.name} · Log ud`;
+    $('logout').setAttribute('aria-label', 'Log ud');
+  }
   ['admin-open','upload-open'].forEach(id => $(id).hidden = !state.user.admin);
   $('create-invite').hidden = state.managed;
   $('invite-result').hidden = true;
@@ -138,7 +144,24 @@ setupCategories();
 FjordTracks.setup();
 document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { view = button.dataset.view; document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === button)); render(); });
 $('search').oninput = render;
-$('logout').onclick = async () => { try { await api('/logout', 'POST'); authMode = 'login'; await boot(); } catch(e) { toast(e.message); } };
+function updateWindowButton(fullscreen) {
+  const button = $('logout');
+  button.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="${fullscreen ? 'M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6' : 'M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6'}"/></svg>`;
+  button.title = fullscreen ? 'Skift til vindue · F11' : 'Skift til fuldskærm · F11';
+  button.setAttribute('aria-label', button.title);
+  button.setAttribute('aria-pressed', String(fullscreen));
+}
+window.fjordDesktop?.onFullscreen?.(updateWindowButton);
+$('logout').onclick = async () => {
+  try {
+    if (window.fjordDesktop) {
+      if (!window.fjordDesktop.toggleFullscreen) { toast('Opdatér Windows-appen for at bruge knappen. F11 skifter også fuldskærm.'); return; }
+      updateWindowButton(await window.fjordDesktop.toggleFullscreen());
+      return;
+    }
+    await api('/logout', 'POST'); authMode = 'login'; await boot();
+  } catch(e) { toast(e.message); }
+};
 document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
 
 async function capabilities(movie, quality) {

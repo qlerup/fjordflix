@@ -120,6 +120,19 @@ app.whenReady().then(async () => {
     if (!trusted(event) && !trusted(event,true)) throw Error('Ikke tilladt.');
     return updates.check();
   });
+  ipcMain.handle('toggle-fullscreen', event => {
+    if (!trusted(event)) throw Error('Ikke tilladt.');
+    const next = !win.isFullScreen();
+    win.setFullScreen(next);
+    return next;
+  });
+  ipcMain.handle('get-fullscreen', event => {
+    if (!trusted(event)) throw Error('Ikke tilladt.');
+    return win.isFullScreen();
+  });
+  for (const event of ['enter-full-screen', 'leave-full-screen']) {
+    win.on(event, () => win.webContents.send('fullscreen-changed', win.isFullScreen()));
+  }
   win.webContents.setWindowOpenHandler(({url})=>{
     const target=new URL(url);
     if (['https:','http:'].includes(target.protocol) && !target.username && !target.password) shell.openExternal(target.href);
