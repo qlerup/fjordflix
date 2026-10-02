@@ -31,4 +31,4 @@ def test_download_has_fixed_release_destination(tv_client):
     client, _, _ = tv_client
     response = client.get('/downloads/windows', follow_redirects=False)
     assert response.status_code == 307
-    assert response.headers['location'].endswith('/desktop-v0.1.0/FjordFlix-Setup-0.1.0.exe')
+    assert response.headers['location'].endswith('/releases/latest/download/FjordFlix-Setup.exe')

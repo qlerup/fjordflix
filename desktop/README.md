@@ -1,6 +1,6 @@
 # FjordFlix til Windows
 
-Windows 10/11, x64. Installer med `FjordFlix-Setup-0.1.0.exe`, indtast serverens
+Windows 10/11, x64. Installer med `FjordFlix-Setup.exe`, indtast serverens
 http(s)-adresse og log ind. Serveren skal have desktop-API'et fra samme udgivelse.
 Installationen kræver ikke en separat installation af mpv eller administratoradgang.
 
@@ -31,7 +31,7 @@ npm run dist
 ```
 
 `prepare.ps1` henter den fastlåste officielle mpv-build og verificerer SHA256.
-Output: `desktop/dist/FjordFlix-Setup-0.1.0.exe`.
+Output: `desktop/dist/FjordFlix-Setup.exe`, `.blockmap` og `latest.yml`.
 Se `THIRD-PARTY.txt` og medfølgende licenser for mpv/Electron og deres kilder.
 
 Test: `node smoke.cjs` med Playwright tilgængelig i `NODE_PATH`. Testen bruger
@@ -47,5 +47,21 @@ brugerkonfiguration/scripts. Video leveres med en kortlivet, film- og loginbunde
 billet, der fornyes under afspilning og tilbagekaldes ved afslutning.
 
 Kun serveradressen gemmes af desktop-koden; login håndteres af serverens
-HttpOnly-cookie i Electron-sessionen. Der er ingen automatisk appopdatering i 0.1.0.
-Opdater via en ny installationsfil; serverens web-UI opdateres separat.
+HttpOnly-cookie i Electron-sessionen. Fra 0.1.1 findes **Søg efter opdateringer** i
+appmenuen og topbaren (topbaren kræver den opdaterede server). Opdateringer hentes
+fra offentlige GitHub Releases via electron-updater. Kun stabile, nyere versioner
+tilbydes. Download og installation kræver hver sin bekræftelse. En igangværende film
+blokerer installationen; afslut filmen og tryk på opdateringsknappen igen.
+Downloadets SHA512 kontrolleres mod udgivelsens manifest. Installationsfilerne er
+fortsat ikke codesignet. Version 0.1.0 skal opdateres manuelt én gang.
+
+## Udgiv en opdatering
+
+1. Opdatér `desktop/package.json` og lockfilen med `npm version X.Y.Z --no-git-tag-version`.
+2. Commit og push ændringen til main.
+3. Opret og push tagget `vX.Y.Z`.
+
+Workflowet bygger Windows-installeren, kører klienttestene og publicerer en GitHub
+Release med installer, blockmap og `latest.yml`. Tag og pakkeversion skal matche.
+Et almindeligt push til main udgiver ikke en ny pc-version. Serverens web-UI
+opdateres separat. Webappens downloadknap peger på seneste stabile release.

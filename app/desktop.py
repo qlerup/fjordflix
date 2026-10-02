@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 def register(main):
     @main.app.get('/downloads/windows')
     def installer():
-        return RedirectResponse('https://github.com/qlerup/fjordflix/releases/download/desktop-v0.1.0/FjordFlix-Setup-0.1.0.exe')
+        return RedirectResponse('https://github.com/qlerup/fjordflix/releases/latest/download/FjordFlix-Setup.exe')
 
     @main.app.post('/api/desktop/movies/{mid}/play')
     def play(mid: str, data: main.Playback, request: Request, u=Depends(main.user)):

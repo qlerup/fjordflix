@@ -1,14 +1,60 @@
 {
-  "name": "fjordflix-desktop", "version": "0.1.0", "private": true,
+  "name": "fjordflix-desktop",
+  "version": "0.1.1",
+  "private": true,
   "description": "FjordFlix til Windows med original afspilning",
-  "author": "FjordFlix", "main": "main.cjs",
-  "scripts": {"start": "electron .", "dist": "electron-builder --win nsis --x64", "test": "node --test tests/*.cjs"},
-  "devDependencies": {"electron": "44.5.1", "electron-builder": "26.15.3"},
+  "author": "FjordFlix",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64",
+    "test": "node --test tests/*.cjs"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
   "build": {
-    "appId": "dk.fjordflix.desktop", "productName": "FjordFlix",
-    "files": ["main.cjs", "preload.cjs", "validation.cjs", "setup.html", "setup.js", "setup.css", "assets/**"],
-    "extraResources": [{"from": "vendor/mpv", "to": "mpv"}],
-    "win": {"target": "nsis", "icon": "assets/icon.ico", "signExecutable": false},
-    "nsis": {"oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "artifactName": "FjordFlix-Setup-${version}.${ext}"}
+    "appId": "dk.fjordflix.desktop",
+    "productName": "FjordFlix",
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "validation.cjs",
+      "setup.html",
+      "setup.js",
+      "setup.css",
+      "assets/**",
+      "updates.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/mpv",
+        "to": "mpv"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "FjordFlix-Setup.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "qlerup",
+        "repo": "fjordflix",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
   }
 }

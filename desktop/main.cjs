@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {pathToFileURL} = require('node:url');
 const {serverUrl, selection, mediaUrl} = require('./validation.cjs');
+const {createUpdates} = require('./updates.cjs');
 if (!app.isPackaged && process.env.FJORDFLIX_TEST_PROFILE) app.setPath('userData', process.env.FJORDFLIX_TEST_PROFILE);
 let win, origin = '', active, launching = false;
 const setup = pathToFileURL(path.join(__dirname, 'setup.html')).href;
@@ -97,6 +98,11 @@ app.whenReady().then(async () => {
     icon:path.join(__dirname,'assets/icon.ico'),title:'FjordFlix',
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true}});
   win.webContents.session.setPermissionRequestHandler((_w,_p,callback)=>callback(false));
+  const updates = createUpdates({app, updater:require('electron-updater').autoUpdater, dialog, window:win, playing:()=>!!active || launching});
+  ipcMain.handle('check-updates', event => {
+    if (!trusted(event) && !trusted(event,true)) throw Error('Ikke tilladt.');
+    return updates.check();
+  });
   win.webContents.setWindowOpenHandler(({url})=>{
     const target=new URL(url);
     if (['https:','http:'].includes(target.protocol) && !target.username && !target.password) shell.openExternal(target.href);
@@ -105,6 +111,7 @@ app.whenReady().then(async () => {
   win.webContents.on('will-navigate',(event,url)=> { if (url !== setup && (!origin || new URL(url).origin !== origin)) event.preventDefault(); });
   win.webContents.on('will-redirect',(event,url)=> { if (!origin || new URL(url).origin !== origin) event.preventDefault(); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'FjordFlix',submenu:[
+    {label:'Søg efter opdateringer…',click:()=>updates.check()},
     {label:'Skift server',click:()=>{ if(active || launching) return; win.loadURL(setup); }},
     {label:'Genindlæs',role:'reload'}, {type:'separator'}, {label:'Afslut',role:'quit'}
   ]},{label:'Vis',submenu:[{role:'togglefullscreen'},{role:'zoomIn'},{role:'zoomOut'},{role:'resetZoom'}]}]));

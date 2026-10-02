@@ -1,5 +1,13 @@
 const $ = (id) => document.getElementById(id);
-if (window.fjordDesktop) $('desktop-download').hidden = true;
+if (window.fjordDesktop) {
+  $('desktop-download').hidden = true;
+  if (window.fjordDesktop.checkUpdates) {
+    const update = document.createElement('button');
+    update.className = 'secondary small'; update.textContent = 'Søg efter opdateringer';
+    update.onclick = () => window.fjordDesktop.checkUpdates().catch(e => toast(e.message));
+    $('desktop-download').after(update);
+  }
+}
 let state, library = [], selected, view = 'home', authMode = 'login', hls, playback, lastSaved = 0, switching = false, playGeneration = 0, planGeneration = 0;
 const video = $('video');
 const airplaySupported = typeof video.webkitShowPlaybackTargetPicker === 'function' && !!video.canPlayType('application/vnd.apple.mpegurl');
