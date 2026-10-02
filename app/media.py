@@ -78,9 +78,9 @@ def save_config(direct, web, db):
         conn.executemany('INSERT OR REPLACE INTO media_settings VALUES (?,?)', [('media',direct),('web',web)])
         conn.execute('DELETE FROM media_grants')
 
-def issue(result, request, mid, db, *, airplay=False, duration=0):
+def issue(result, request, mid, db, *, airplay=False, duration=0, force=False):
     direct, _ = config()
-    if not direct and not airplay:
+    if not direct and not airplay and not force:
         return result
     ticket = secrets.token_urlsafe(32)
     sid = result.get('session')

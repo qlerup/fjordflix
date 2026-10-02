@@ -5,3 +5,5 @@
 .subtitle-result p{margin:8px 0 12px}
 #subtitle-search-dialog,#os-settings{max-height:88vh;overflow-y:auto}
 #subtitle-search-status{margin:18px 0}
+
+#desktop-download{display:inline-flex;align-items:center;white-space:nowrap;text-decoration:none;color:var(--text,#fff);padding:10px 14px;border-radius:8px;border:1px solid var(--line,#ffffff25);font-size:12px}#desktop-download[hidden]{display:none}@media(max-width:900px){#desktop-download{display:none}}

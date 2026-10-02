@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+if (window.fjordDesktop) $('desktop-download').hidden = true;
 let state, library = [], selected, view = 'home', authMode = 'login', hls, playback, lastSaved = 0, switching = false, playGeneration = 0, planGeneration = 0;
 const video = $('video');
 const airplaySupported = typeof video.webkitShowPlaybackTargetPicker === 'function' && !!video.canPlayType('application/vnd.apple.mpegurl');
@@ -206,11 +207,26 @@ async function openDetail(movie) {
 }
 async function updatePlan() {
   const generation = ++planGeneration;
+  if (window.fjordDesktop) {
+    badge('plan-badge', 'Direct Play');
+    $('plan-reason').textContent = 'Originalfilen afspilles på din pc med mpv. Ingen server-transcoding.';
+    $('detail-quality').value = 'original'; $('detail-quality').disabled = true;
+    return;
+  }
   try { const movie = selected; const p = await api(`/movies/${movie.id}/plan`, 'POST', await capabilities(movie, $('detail-quality').value)); if (movie !== selected || generation !== planGeneration) return; badge('plan-badge', p.mode); $('plan-reason').textContent = `${p.height}p · ${p.mbps} Mbit/s. ${p.reason}`; } catch(e) { toast(e.message); }
 }
 $('detail-quality').onchange = updatePlan;
 $('favorite-button').onclick = async () => { try { await api(`/movies/${selected.id}/favorite`, 'POST'); selected.favorite = !selected.favorite; $('favorite-button').textContent = selected.favorite ? '✓ På min liste' : '＋ Min liste'; await refresh(); } catch(e) { toast(e.message); } };
-function playFromDetail(start) { document.activeElement?.blur(); $('detail').close(); $('player-dialog').showModal(); fitPlayerViewport(); $('player-quality').value = $('detail-quality').value; startPlayback(start).catch(e => showPlayerError(e.message)); }
+function playFromDetail(start) {
+  if (window.fjordDesktop) {
+    window.fjordDesktop.play({id:selected.id,start,audio_track:FjordTracks.audio,subtitle_track:FjordTracks.subtitle})
+      .then(() => { $('detail').close(); toast('Afspiller originalfilen i FjordFlix til Windows.'); })
+      .catch(e => toast(e.message));
+    return;
+  }
+  document.activeElement?.blur(); $('detail').close(); $('player-dialog').showModal(); fitPlayerViewport(); $('player-quality').value = $('detail-quality').value; startPlayback(start).catch(e => showPlayerError(e.message));
+}
+window.fjordDesktop?.onEnded(() => refresh().catch(() => {}));
 $('play-button').onclick = () => playFromDetail(selected.position < selected.duration - 2 ? selected.position : 0);
 $('restart-button').onclick = () => playFromDetail(0);
 function showPlayerError(message) { $('player-error').textContent = message; $('player-loading').hidden = true; }

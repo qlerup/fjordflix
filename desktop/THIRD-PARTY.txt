@@ -1,0 +1,14 @@
+FjordFlix Desktop includes Electron and mpv as separate executables.
+Electron: MIT; licenses are included by electron-builder in the installation.
+mpv: GPL; see resources/mpv/LICENSE.GPL in the installation.
+
+Pinned mpv upstream binary:
+mpv-v0.41.0-dev-ga1f50f2c3-36640285359-x86_64-w64-mingw32-full.zip
+SHA256 ff60d2eab4e89956209e92285193c6513f49f0cdf376da005c45090ed9b8435e
+Upstream source and dependency build recipes:
+https://github.com/mpv-player/mpv/tree/a1f50f2c3
+https://github.com/mpv-player/mpv/actions/runs/36640285359
+https://github.com/mpv-player/mpv/blob/a1f50f2c3/.github/workflows/build.yml
+
+FjordFlix Desktop source:
+https://github.com/qlerup/fjordflix/tree/main/desktop

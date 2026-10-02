@@ -17,3 +17,6 @@ docker-compose.fjordhub-gpu.yml
 # Local, explicitly granted library write mounts; retained across app updates.
 docker-compose.fjordhub-library.yml
 .library-permissions.lock
+desktop/node_modules/
+desktop/dist/
+desktop/vendor/
