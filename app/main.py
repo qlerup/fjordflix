@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
+from app import transcoding
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -928,6 +929,18 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             subtitle_file = tracks.webvtt(source, 0 if subtitle.get('external') else subtitle['index'], DATA / 'subtitles')
         except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):
             raise HTTPException(503, 'Underteksterne kunne ikke klargøres til AirPlay. Prøv igen.')
+    filters = []
+    if subtitle_file and burn:
+        # Extracted cues use the original timeline, even after seeking.
+        filters += [f'setpts=PTS-STARTPTS+{offset}/TB', 'subtitles=filename=subtitles.vtt', 'setpts=PTS-STARTPTS']
+    if soft:
+        filters += ['setpts=PTS-STARTPTS']
+    if meta['hdr']:
+        filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']
+    filters += [f"scale=-2:{result['height']}", 'format=yuv420p']
+    hardware_inputs, filter_chain = transcoding.accelerated_filters(
+        Path(row['path']).resolve(), result['height'], ','.join(filters),
+        enabled=GPU and result['mode'] == 'Transcoding', hdr=bool(meta['hdr']), burn=bool(burn), soft=soft)
     with LOCK:
         if len(JOBS) >= int(os.getenv('MAX_TRANSCODES', 3)):
             raise HTTPException(503, 'Serverens stream-pladser er optaget. Prøv igen om lidt.')
@@ -946,19 +959,13 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             cmd += ['-c:v', 'copy']
         else:
             encoder = 'NVIDIA NVENC' if GPU else 'CPU · H.264'
-            filters = []
-            if subtitle_file and burn:
-                # Extracted cues use the original timeline, even after seeking.
-                filters += [f'setpts=PTS-STARTPTS+{offset}/TB', 'subtitles=filename=subtitles.vtt', 'setpts=PTS-STARTPTS']
-            if soft:
-                filters += ['setpts=PTS-STARTPTS']
-            if meta['hdr']:
-                filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']
-            filters += [f"scale=-2:{result['height']}", 'format=yuv420p']
+            if hardware_inputs:
+                cmd[cmd.index('-i'):cmd.index('-i')] = hardware_inputs
+                encoder = 'NVIDIA NVDEC + NVENC' + (' · HDR på CPU' if meta['hdr'] else ' · GPU-skalering')
             if bitmap:
                 cmd += ['-filter_complex', f"[0:{subtitle['index']}]scale={int(meta['width'])}:{int(meta['height'])}[sub];[0:v:0][sub]overlay=eof_action=pass:shortest=0," + ','.join(filters) + '[vout]']
             else:
-                cmd += ['-vf', ','.join(filters)]
+                cmd += ['-vf', filter_chain]
             cmd += ['-c:v', 'h264_nvenc' if GPU else 'libx264', '-preset', 'fast' if GPU else 'veryfast', '-b:v', f"{result['mbps']}M", '-maxrate', f"{result['mbps']}M", '-bufsize', f"{result['mbps'] * 2}M", '-force_key_frames', 'expr:gte(t,n_forced*2)']
             if GPU:
                 # NVENC otherwise forces I-frames without IDR boundaries. HLS then

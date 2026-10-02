@@ -135,7 +135,13 @@ document.querySelectorAll('[data-close]').forEach(button => button.onclick = () 
 async function capabilities(movie, quality) {
   const mime = movie.format.includes('webm') ? 'video/webm' : 'video/mp4';
   const codecs = {h264: 'avc1.640033', hevc:'hvc1.1.6.L153.B0', av1:'av01.0.13M.08', vp9:'vp09.00.51.08', vp8:'vp8'};
-  const codec = codecs[movie.video];
+  const details = movie.quality || {};
+  const tenBit = movie.pix_fmt === 'yuv420p10le';
+  const hevcProfile = movie.video === 'hevc' && ['yuv420p', 'yuv420p10le'].includes(movie.pix_fmt);
+  const level = Number(details.video_level) || 153;
+  const codec = hevcProfile ? `hvc1.${tenBit ? '2.4' : '1.6'}.L${level}.B0` : codecs[movie.video];
+  const frameRateParts = String(details.frame_rate || '24').split('/').map(Number);
+  const frameRate = frameRateParts[0] / (frameRateParts[1] || 1) || 24;
   let supported = !!codec && !!video.canPlayType(`${mime}; codecs="${codec}"`);
   const allowedContainer = mime === 'video/webm' || movie.format.includes('mp4');
   const audioType = movie.audio === 'aac' ? 'audio/mp4; codecs="mp4a.40.2"' : movie.audio === 'opus' ? 'audio/webm; codecs="opus"' : movie.audio === 'mp3' ? 'audio/mpeg' : null;
@@ -144,12 +150,32 @@ async function capabilities(movie, quality) {
     try { const info = await navigator.mediaCapabilities.decodingInfo({type:'file', video:{contentType:`${mime}; codecs="${codec}"`, width:movie.width, height:movie.height, bitrate:movie.bitrate || 8000000, framerate:24}}); supported = info.supported; } catch { supported = false; }
   }
   if (movie.video === 'h264' && movie.pix_fmt !== 'yuv420p') supported = false;
-  // HDR passthrough is deliberately conservative until the full output chain is known.
+  // Probe the MSE route separately: an MKV container is not directly playable,
+  // but hls.js can remux supported HEVC without re-encoding the video.
+  let videoCopy = false;
+  const mse = typeof MediaSource !== 'undefined' ? MediaSource : null;
+  const dynamicRange = details.dynamic_range;
+  const hdrAllowed = !movie.hdr || (['HDR10', 'HDR10+', 'HLG'].includes(dynamicRange)
+    && typeof matchMedia === 'function' && matchMedia('(dynamic-range: high)').matches);
+  if (hevcProfile && hdrAllowed && !airplaySupported && !video.canPlayType('application/vnd.apple.mpegurl')
+      && mse?.isTypeSupported(`video/mp4; codecs="${codec}"`) && navigator.mediaCapabilities) {
+    try {
+      const config = {contentType:`video/mp4; codecs="${codec}"`, width:movie.width, height:movie.height,
+        bitrate:movie.bitrate || 8000000, framerate:frameRate};
+      if (movie.hdr) Object.assign(config, {colorGamut:'rec2020', transferFunction:dynamicRange === 'HLG' ? 'hlg' : 'pq'});
+      const decoded = await navigator.mediaCapabilities.decodingInfo({type:'media-source', video:config});
+      videoCopy = decoded.supported && decoded.smooth;
+    } catch { videoCopy = false; }
+  }
+  // HDR direct-file playback remains conservative; the MSE route is checked above.
   if (movie.hdr) supported = false;
   // NetworkInformation estimates unrelated connections (and excludes private
   // address space). It is not a measurement of throughput to our media server.
   // Leave bandwidth unknown rather than forcing unnecessary transcoding in Auto.
-  return {quality, airplay:airplaySupported, direct:supported && allowedContainer && audioSupported, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:0, ...FjordTracks.request()};
+  const capabilityReason = movie.video === 'hevc' && !videoCopy && !supported
+    ? (movie.hdr ? 'Browseren kunne ikke bekræfte understøttelse af filmens HEVC/HDR-format.' : 'Browseren kunne ikke bekræfte flydende HEVC-afspilning.') : '';
+  return {quality, airplay:airplaySupported, direct:supported && allowedContainer && audioSupported, video_copy:videoCopy,
+    capability_reason:capabilityReason, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:0, ...FjordTracks.request()};
 }
 async function openDetail(movie) {
   if (movie?.isSeries) movie = FjordLibrary.initial(movie.episodes);
@@ -206,7 +232,7 @@ async function startPlayback(position = 0, fallback = false) {
     if (!video.canPlayType('application/vnd.apple.mpegurl')) await loadHlsLibrary();
     if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
-    if (fallback) { data.direct = false; data.h264 = false; }
+    if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; }
     const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position});
     if (generation !== playGeneration || !$('player-dialog').open) { if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
     playback = result; lastSaved = 0;
@@ -217,7 +243,12 @@ async function startPlayback(position = 0, fallback = false) {
     else if (window.Hls?.isSupported()) {
       hls = new Hls({startPosition:0, maxBufferLength:30, backBufferLength:30});
       hls.loadSource(result.url); hls.attachMedia(video);
-      hls.on(Hls.Events.ERROR, (_, info) => { if (info.fatal) showPlayerError('Streamen blev afbrudt. Vælg kvalitet igen for at genstarte.'); });
+      hls.on(Hls.Events.ERROR, (_, info) => {
+        if (!info.fatal || generation !== playGeneration) return;
+        if (!fallback && result.mode === 'Direct Stream' && data.video_copy && info.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          startPlayback(position + (video.currentTime || 0), true).catch(e => showPlayerError(e.message));
+        } else showPlayerError('Streamen blev afbrudt. Vælg kvalitet igen for at genstarte.');
+      });
     }
     else { showPlayerError('Denne browser understøtter ikke HLS. Prøv en nyere browser.'); }
     FjordTracks.attach(result).catch(e => { if (e.name !== 'AbortError' && generation === playGeneration) toast(e.message); });
