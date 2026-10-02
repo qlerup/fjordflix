@@ -172,7 +172,7 @@ def session_user(token):
                 with db() as conn:
                     conn.execute('DELETE FROM sessions WHERE user_id=?', (row['id'],))
             raise
-        return {'id':row['id'], 'name':profile['username'], 'admin':profile.get('role') == 'admin', 'hub_id': row['hub_id']}
+        return {'id':row['id'], 'name':profile['username'], 'admin':profile.get('role') == 'admin', 'hub_id': row['hub_id'], 'language':tracks.language(profile.get('language', 'da'))}
     if row['hub_id'] is not None:
         raise HTTPException(401, 'Denne bruger kræver en FjordHub-forbindelse.')
     return {'id':row['id'], 'name':row['name'], 'admin':row['admin']}
@@ -829,7 +829,7 @@ def favorite(mid: str, u=Depends(user)):
 def movie_tracks(mid: str, u=Depends(user)):
     row, meta = movie(mid)
     if meta.get('tracks', {}).get('version') == 1:
-        return tracks.displayed(meta)
+        return {**tracks.displayed(meta), 'defaults': tracks.defaults(meta, u.get('language'))}
     try:
         available = tracks.scan(row['path'])
     except (OSError, ValueError, subprocess.TimeoutExpired):
@@ -842,7 +842,7 @@ def movie_tracks(mid: str, u=Depends(user)):
         updated = json.loads(current['metadata'])
         updated['tracks'] = available
         conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(updated), mid))
-    return tracks.displayed(updated)
+    return {**tracks.displayed(updated), 'defaults': tracks.defaults(updated, u.get('language'))}
 
 
 @app.get('/api/movies/{mid}/subtitles/{index}.vtt')
@@ -905,12 +905,14 @@ def decide(meta, data):
 @app.post('/api/movies/{mid}/plan')
 def plan(mid: str, data: Playback, u=Depends(user)):
     _, meta = movie(mid)
+    data = tracks.apply_defaults(meta, data, u)
     return decide(meta, data)
 
 
 @app.post('/api/movies/{mid}/play')
 def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     row, meta = movie(mid)
+    data = tracks.apply_defaults(meta, data, u)
     if meta.get('library_source') and not Path(row['path']).is_file():
         raise HTTPException(404, 'Videofilen er ikke tilgængelig. Kontrollér at bibliotekets lager er monteret.')
     result = decide(meta, data)

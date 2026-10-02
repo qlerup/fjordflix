@@ -58,11 +58,14 @@ const FjordTracks = {
     this.fill({audio:[], subtitles:[]});
     $('play-button').disabled = $('restart-button').disabled = true;
     try {
-      const available = movie.tracks?.version === 1 ? movie.tracks : await api(`/movies/${movie.id}/tracks`);
+      // Defaults are user-specific and may have changed in FjordHub since the
+      // library was loaded. Do not reuse another user's cached selections.
+      const available = await api(`/movies/${movie.id}/tracks`);
       if (this.movie !== movie) return;
       movie.tracks = available;
       const audio = available.audio || [];
-      this.audio = (audio.find(t => t.default) || audio[0])?.index ?? null;
+      this.audio = available.defaults?.audio_track ?? (audio.find(t => t.default) || audio[0])?.index ?? null;
+      this.subtitle = available.defaults?.subtitle_track ?? null;
       this.fill(available);
       $('track-status').textContent = `${audio.length} lydspor · ${(available.subtitles || []).length} undertekstspor`;
     } catch (e) {
@@ -152,4 +155,3 @@ const FjordTracks = {
   }
 };
 if (typeof module !== 'undefined') module.exports = FjordTracks;
-

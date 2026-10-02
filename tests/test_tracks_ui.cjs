@@ -56,6 +56,7 @@ test('embedded tracks have readable Danish labels and playback choices stay in s
   t.setup();
   const audio = [{index:1,codec:'aac',language:'eng',default:true},{index:2,codec:'eac3',language:'dan',title:'Dansk lyd'}];
   const subtitles = [{index:3,codec:'subrip',language:'dan',delivery:'text'}, {index:4,codec:'hdmv_pgs_subtitle',language:'eng',delivery:'burn'}, {index:5,codec:'unknown',delivery:'unsupported'}];
+  w.api = async route => route.includes('/next/') ? {version:1,audio:[],subtitles:[]} : {version:1,audio,subtitles};
   await t.prepare({id:'movie',tracks:{version:1,audio,subtitles}});
   assert.equal(w.$('detail-audio').value,'1');
   assert.equal(w.$('detail-subtitle').value,'');
@@ -70,6 +71,14 @@ test('embedded tracks have readable Danish labels and playback choices stay in s
   w.$('player-subtitle').value='4'; await w.$('player-subtitle').onchange();
   assert.equal(restart,24);
   assert.equal(t.request().subtitle_track,4);
+  w.api = async () => ({version:1,audio,subtitles,defaults:{audio_track:2,subtitle_track:null}});
+  await t.prepare({id:'danish'});
+  assert.equal(w.$('detail-audio').value,'2');
+  assert.equal(w.$('detail-subtitle').value,'');
+  w.api = async () => ({version:1,audio,subtitles,defaults:{audio_track:1,subtitle_track:3}});
+  await t.prepare({id:'english-with-danish-subs'});
+  assert.equal(w.$('detail-subtitle').value,'3');
+  w.api = async () => ({version:1,audio:[],subtitles:[]});
   await t.prepare({id:'next',tracks:{version:1,audio:[],subtitles:[]}});
   assert.equal(t.subtitle,null);
   assert.equal(w.$('player-subtitle').disabled,true);

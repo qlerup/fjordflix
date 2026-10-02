@@ -11,6 +11,7 @@ def register(main):
     @main.app.post('/api/desktop/movies/{mid}/play')
     def play(mid: str, data: main.Playback, request: Request, u=Depends(main.user)):
         row, meta = main.movie(mid)
+        data = main.tracks.apply_defaults(meta, data, u)
         try:
             audio, subtitle = main.tracks.select(meta, data.audio_track, data.subtitle_track)
         except ValueError as error:

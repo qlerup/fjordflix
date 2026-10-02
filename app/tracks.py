@@ -11,6 +11,45 @@ BITMAP = {'hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle'}
 EXTRACTIONS = threading.BoundedSemaphore(2)
 
 
+def language(value):
+    value = str(value or '').strip().lower().replace('_', '-').split('-')[0]
+    return {'dan':'da', 'dansk':'da', 'eng':'en', 'english':'en', 'fra':'fr', 'fre':'fr',
+            'français':'fr', 'swe':'sv', 'nor':'no', 'nob':'no', 'deu':'de', 'ger':'de', 'spa':'es'}.get(value, value)
+
+
+def defaults(meta, preferred, audio_index=None):
+    available = displayed(meta)
+    audio = available.get('audio', [])
+    preferred = language(preferred)
+    matching = [t for t in audio if preferred and language(t.get('language')) == preferred]
+    chosen = next((t for t in audio if t['index'] == audio_index), None) if audio_index is not None else None
+    if chosen is None:
+        candidates = matching or audio
+        chosen = next((t for t in candidates if t.get('default')), None) or next(iter(candidates), None)
+    subtitle = None
+    if preferred and (not chosen or language(chosen.get('language')) != preferred):
+        candidates = [t for t in available.get('subtitles', []) if language(t.get('language')) == preferred and t.get('delivery') in ('text', 'burn')]
+        # Full subtitles before forced-only/SDH; prefer text when equivalent so
+        # browsers do not need a video transcode merely for subtitles.
+        candidates.sort(key=lambda t: (bool(t.get('forced')), bool(t.get('hearing_impaired')), t.get('delivery') != 'text', not t.get('default', False)))
+        subtitle = next(iter(candidates), None)
+    return {'audio_track': chosen['index'] if chosen else None, 'subtitle_track': subtitle['index'] if subtitle else None}
+
+
+def apply_defaults(meta, data, user):
+    if not user.get('language'):
+        return data
+    audio_index = data.audio_track
+    if 'audio_track' in data.model_fields_set and audio_index is None:
+        # An explicit null audio choice means the file's default track.
+        audio = displayed(meta).get('audio', [])
+        chosen = next((t for t in audio if t.get('default')), None) or next(iter(audio), None)
+        audio_index = chosen['index'] if chosen else None
+    choices = defaults(meta, user['language'], audio_index)
+    # Explicit null means "Off", not "please choose for me".
+    return data.model_copy(update={k:v for k,v in choices.items() if k not in data.model_fields_set})
+
+
 def displayed(meta):
     """Apply per-file labels without changing the original stream metadata."""
     available = meta.get('tracks', {})

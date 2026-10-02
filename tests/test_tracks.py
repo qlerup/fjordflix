@@ -65,6 +65,19 @@ def test_mkv_tracks_subtitles_and_invalid_ids(client, mkv):
     assert client.get('/api/movies/' + 'b'*32 + '/subtitles/4.vtt').status_code == 404
 
 
+def test_track_defaults_are_personalized_without_changing_metadata(client, mkv, monkeypatch):
+    mid, path, meta = mkv
+    for language, expected in [('da', 2), ('en', 1), ('da', 2)]:
+        monkeypatch.setitem(main.app.dependency_overrides, main.user,
+                            lambda language=language: {'id':'owner','name':'Owner','language':language})
+        response = client.get(f'/api/movies/{mid}/tracks')
+        assert response.status_code == 200
+        assert response.json()['defaults'] == {'audio_track':expected, 'subtitle_track':None}
+    with main.db() as conn:
+        saved = json.loads(conn.execute('SELECT metadata FROM movies WHERE id=?', (mid,)).fetchone()['metadata'])
+    assert 'defaults' not in saved['tracks']
+
+
 def test_selected_audio_is_in_real_output_and_text_does_not_transcode_video(client, mkv, monkeypatch):
     from array import array
     monkeypatch.setattr(main, 'GPU', False)

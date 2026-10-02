@@ -83,7 +83,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(main, 'MEDIA', tmp_path / 'media')
     main.MEDIA.mkdir()
     monkeypatch.setattr(main.media, 'config', lambda: ('', ''))
-    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'admin': True, 'id': 'owner'})
+    monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'admin': True, 'id': 'owner', 'name': 'Owner'})
     (tmp_path / 'posters').mkdir()
     with db() as conn:
         conn.executescript('CREATE TABLE movies(id TEXT PRIMARY KEY,title TEXT,path TEXT,metadata TEXT,created REAL); CREATE TABLE progress(user_id TEXT,movie_id TEXT,position REAL,favorite INTEGER);')

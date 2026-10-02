@@ -41,6 +41,9 @@ def test_managed_auth_roles_revocation_and_history(managed):
         assert client.get('/api/admin').status_code == 200
         assert client.post('/api/invites').status_code == 403
         uid=client.get('/api/state').json()['user']['id']
+        assert client.get('/api/state').json()['user']['language']=='da'
+        managed[0]['language']='fr';hub._cache['expires']=0
+        assert client.get('/api/state').json()['user']['language']=='fr'
         with main.db() as conn:
             assert conn.execute('SELECT password FROM users WHERE id=?',(uid,)).fetchone()[0]=='fjordhub-managed'
             # Stored progress belongs to a stable Hub ID even when names change.
