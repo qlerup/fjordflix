@@ -17,6 +17,7 @@ const assert=require('node:assert/strict');
   for(let n=0;n<100;n++){try{if((await fetch('http://127.0.0.1:18763/api/state')).ok)break;}catch{} await new Promise(r=>setTimeout(r,100));}
   electron=await _electron.launch({executablePath:path.join(__dirname,'node_modules/electron/dist/electron.exe'),args:[__dirname],env});
   const page=await electron.firstWindow(); await page.locator('#server').fill('http://127.0.0.1:18763');
+  assert.equal(await electron.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isFullScreen()),true,'app starts fullscreen');
   await page.screenshot({path:path.join(temp,'setup.png')});
   await page.locator('button').click(); await page.waitForURL('http://127.0.0.1:18763/');
   const result=await page.evaluate(async()=>{

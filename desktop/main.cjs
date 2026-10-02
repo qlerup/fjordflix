@@ -44,6 +44,7 @@ async function play(data) {
       const pipe = '\\\\.\\pipe\\fjordflix-' + crypto.randomUUID();
       const executable = path.join(app.isPackaged ? process.resourcesPath : __dirname + '/vendor', 'mpv', 'mpv.exe');
       const child = spawn(executable, ['--no-config','--load-scripts=no','--ytdl=no','--idle=yes','--force-window=yes',
+        '--fullscreen=yes','--window-dragging=no','--input-builtin-dragging=no',
         '--hwdec=auto-safe','--vo=gpu-next','--gpu-api=d3d11','--target-colorspace-hint=yes',
         '--title=FjordFlix','--osc=no','--osd-color=#FFFFFF','--osd-border-color=#101014',
         '--script='+path.join(app.isPackaged ? process.resourcesPath : __dirname, 'player.lua'),
@@ -96,6 +97,7 @@ async function play(data) {
 }
 app.whenReady().then(async () => {
   win = new BrowserWindow({width:1440,height:940,minWidth:800,minHeight:600,backgroundColor:'#101014',
+    fullscreen:true,autoHideMenuBar:true,
     show:app.isPackaged || !process.env.FJORDFLIX_TEST_PROFILE,
     icon:path.join(__dirname,'assets/icon.ico'),title:'FjordFlix',
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true}});

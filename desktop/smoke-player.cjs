@@ -6,7 +6,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'fjordflix-player-'));
  const pipe='\\\\.\\pipe\\fjordflix-test-'+process.pid;
- const child=spawn(path.join(__dirname,'vendor/mpv/mpv.exe'),['--no-config','--load-scripts=no','--osc=no','--idle=yes','--force-window=yes','--vo=gpu-next','--gpu-api=d3d11','--geometry=1280x720','--script='+path.join(__dirname,'player.lua'),'--input-ipc-server='+pipe,'--log-file='+path.join(temp,'mpv.log')],{windowsHide:true,stdio:'ignore'});
+ const child=spawn(path.join(__dirname,'vendor/mpv/mpv.exe'),['--no-config','--load-scripts=no','--osc=no','--idle=yes','--force-window=yes','--fullscreen=yes','--window-dragging=no','--input-builtin-dragging=no','--vo=gpu-next','--gpu-api=d3d11','--geometry=1280x720','--script='+path.join(__dirname,'player.lua'),'--input-ipc-server='+pipe,'--log-file='+path.join(temp,'mpv.log')],{windowsHide:true,stdio:'ignore'});
  let socket;const pending=new Map();let id=0,buffer='';
  try{
   for(let n=0;n<100;n++){
@@ -17,6 +17,10 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   socket.on('data',chunk=>{buffer+=chunk;let end;while((end=buffer.indexOf('\n'))>=0){const m=JSON.parse(buffer.slice(0,end));buffer=buffer.slice(end+1);if(pending.has(m.request_id)){pending.get(m.request_id)(m);pending.delete(m.request_id);}}});
   async function cmd(...command){const request_id=++id;const result=await Promise.race([new Promise(r=>{pending.set(request_id,r);socket.write(JSON.stringify({command,request_id})+'\n');}),delay(5000).then(()=>{throw Error('IPC timed out: '+command[0]);})]);assert.equal(result.error,'success',JSON.stringify(result));if(command[0]==='keypress')await delay(80);return result.data;}
   await cmd('loadfile','av://lavfi:testsrc=size=1280x720:rate=24');await delay(1500);
+  assert.equal(await cmd('get_property','fullscreen'),true,'player starts fullscreen');
+  assert.equal(await cmd('get_property','window-dragging'),false,'native window dragging disabled');
+  assert.equal(await cmd('get_property','input-builtin-dragging'),false,'input dragging disabled');
+  await cmd('set_property','fullscreen',false);await delay(300);
   await cmd('script-message','fjord-title','FjordFlix \u00b7 En aften i biografen');
   await cmd('set_property','pause',true);
   const sub=path.join(temp,'sample.srt');fs.writeFileSync(sub,'1\n00:00:00,000 --> 00:10:00,000\nDanske undertekster\n');

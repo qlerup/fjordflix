@@ -3,6 +3,9 @@
 Windows 10/11, x64. Installer med `FjordFlix-Setup.exe`, indtast serverens
 http(s)-adresse og log ind. Serveren skal have desktop-API'et fra samme udgivelse.
 Installationen kræver ikke en separat installation af mpv eller administratoradgang.
+Bibliotek og afspiller starter i fuldskærm. F11 skifter bibliotekets fuldskærm,
+F skifter afspillerens. Alt+F4 lukker vinduet. Afspillerens indbyggede træk af
+vinduet er slået fra, så musen kun betjener knapper, tidslinje og lydstyrke.
 
 Bibliotek og indstillinger indlæses fra serveren og har samme brugerflade som
 webappen. Originalfilen åbnes i et separat mpv-vindue med lokal hardwareafkodning,
