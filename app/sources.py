@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
+from . import catalog
 
 VIDEO_SUFFIXES = {'.mp4', '.mkv', '.mov', '.webm', '.m4v', '.avi', '.ts'}
 log = logging.getLogger(__name__)
@@ -224,7 +225,7 @@ class Sources:
                                     self.status['updated'] += 1
                                 else:
                                     mid = secrets.token_hex(16)
-                                    self.host.index_movie(path, path.stem.replace('_', ' ').replace('.', ' '), mid,
+                                    self.host.index_movie(path, catalog.file_title(path), mid,
                                                           True, source=(source['id'], fingerprint))
                                     known[str(path)] = {'id': mid, 'fingerprint': fingerprint}
                                     self.status['added'] += 1

@@ -65,14 +65,31 @@ def identify(title):
     if not match:
         match = re.search(r'(?<![a-z0-9])(\d{1,3})x(\d{1,4})(?!\d)', title, re.I)
     if not match:
-        return {'media_type': 'movie'}
+        match = re.search(r'(?<![a-z0-9])e(\d{1,4})(?![a-z0-9])', title, re.I)
+        if not match:
+            return {'media_type': 'movie'}
+        season, episode = 1, int(match[1])
+    else:
+        season, episode = int(match[1]), int(match[2])
     name, year = clean_title(title[:match.start()])
-    if not name or int(match[2]) < 1:
+    if not name or episode < 1:
         return {'media_type': 'movie'}
-    season, episode = int(match[1]), int(match[2])
     return {'media_type': 'tv', 'series_title': name, 'series_year': year or '',
             'season': season, 'episode': episode, 'episode_title': '',
             'title': f'{name} · S{season:02d}E{episode:02d}'}
+
+
+def file_title(path):
+    """Use the containing show folder for episode-only library filenames."""
+    title = path.stem.replace('_', ' ').replace('.', ' ')
+    if re.match(r'^e\d{1,4}(?![a-z0-9])', title, re.I):
+        parent = path.parent
+        season = re.fullmatch(r'(?:season|sæson|s)[ ._-]*(\d{1,3})', parent.name, re.I)
+        if season:
+            parent = parent.parent
+            title = f'S{int(season[1]):02d}' + title
+        title = parent.name.replace('_', ' ').replace('.', ' ') + ' ' + title
+    return title
 
 
 def series_key(info):

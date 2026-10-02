@@ -92,6 +92,23 @@ def scan():
     assert not main.library_sources.status['running']
 
 
+def test_episode_only_files_group_as_series(mounted, monkeypatch):
+    client, root = mounted
+    monkeypatch.setattr(main.catalog, 'enrich', lambda title, *args: main.catalog.identify(title))
+    folder = root / 'Serier' / 'Example Show'
+    folder.mkdir()
+    for filename in ['E01.mkv', 'E02.mkv']:
+        (folder / filename).write_bytes(b'episode')
+    assert client.post('/api/admin/library', json={'path': str(root / 'Serier')}).status_code == 201
+    scan()
+    items = client.get('/api/movies').json()
+    assert len(items) == 2
+    assert {item['catalog']['episode'] for item in items} == {1, 2}
+    assert all(item['catalog']['season'] == 1 for item in items)
+    assert all(item['catalog']['series_title'] == 'Example Show' for item in items)
+    assert len({item['series_key'] for item in items}) == 1
+
+
 def test_browse_multiple_sources_stream_and_remove_without_copy(mounted):
     client, root = mounted
     video = root / 'Film' / 'Film.mp4'

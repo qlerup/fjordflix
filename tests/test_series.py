@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sqlite3
+from pathlib import Path
 
 import httpx
 import pytest
@@ -11,12 +12,25 @@ from app import catalog, main, library
 @pytest.mark.parametrize('filename,season,episode', [
     ('The.Show.S02E10.1080p', 2, 10), ('The_Show_s01e02', 1, 2),
     ('The Show S00E01', 0, 1), ('The Show 2x10', 2, 10), ('The Show S02E10j', 2, 10),
+    ('The.Show.E01.1080p', 1, 1), ('The_Show_e02', 1, 2), ('The Show E103', 1, 103),
 ])
 def test_identify(filename, season, episode):
     info = catalog.identify(filename)
     assert info['media_type'] == 'tv'
     assert info['series_title'] == 'The Show'
     assert (info['season'], info['episode']) == (season, episode)
+
+
+@pytest.mark.parametrize('title', ['Movie E00', 'Movie E01abc', 'Movie E12345', 'WALLE01', 'Se7en', 'E01'])
+def test_episode_only_pattern_avoids_false_matches(title):
+    assert catalog.identify(title)['media_type'] == 'movie'
+
+
+@pytest.mark.parametrize('filename,season', [('The Show/E01.mkv', 1), ('The Show/Season 2/E01.mkv', 2)])
+def test_episode_only_filename_uses_folder(filename, season):
+    info = catalog.identify(catalog.file_title(Path(filename)))
+    assert info['series_title'] == 'The Show'
+    assert (info['season'], info['episode']) == (season, 1)
 
 
 def test_tv_offline_and_no_false_movie_match(monkeypatch, tmp_path):
