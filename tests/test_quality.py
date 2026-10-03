@@ -1,4 +1,15 @@
 from app.quality import source_quality
+from app.quality import hdr10_base
+import pytest
+
+
+@pytest.mark.parametrize('profile,compat,base,expected', [(7,None,True,True),(8,1,True,True),(8,None,True,False),(8,2,True,False),(5,0,True,False),(7,6,False,False)])
+def test_dolby_hdr10_base_requires_profile_evidence(profile, compat, base, expected):
+    source = source_quality({'side_data_list':[{'side_data_type':'DOVI configuration record',
+        'dv_profile':profile,'dv_bl_signal_compatibility_id':compat,'bl_present_flag':base}]}, {})
+    assert source['version'] == 3
+    assert hdr10_base(source) is expected
+    assert source['dv_bl_signal_compatibility_id'] == compat
 
 
 def test_dolby_vision_and_atmos_require_stream_evidence():

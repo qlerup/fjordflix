@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
 from app import transcoding, active_streams
+from app.quality import hdr10_base as compatible_hdr10_base
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
 MEDIA = Path(os.getenv('MEDIA_DIR', str(DATA / 'media')))
@@ -426,7 +427,7 @@ async def refresh_source_quality():
         rows = conn.execute('SELECT id,path,metadata FROM movies').fetchall()
     for row in rows:
         saved = json.loads(row['metadata']).get('quality', {})
-        if saved.get('version') == 2 and (saved.get('mediainfo') or not shutil.which('mediainfo')) and json.loads(row['metadata']).get('tracks', {}).get('version') == 1:
+        if saved.get('version') == 3 and (saved.get('mediainfo') or not shutil.which('mediainfo')) and json.loads(row['metadata']).get('tracks', {}).get('version') == 1:
             continue
         try:
             details = await asyncio.to_thread(probe, Path(row['path']))
@@ -898,6 +899,8 @@ class Playback(BaseModel):
     direct: bool = False
     h264: bool = False
     video_copy: bool = False
+    hdr10_base: bool = False
+    hevc_output: bool = False
     audio_copy: bool = False
     capability_reason: str = Field(default='', max_length=300)
     bandwidth: float = Field(default=0, ge=0, le=100000)
@@ -908,10 +911,13 @@ class Playback(BaseModel):
 
 def playback_capabilities():
     """Optional TV API features; older clients retain the default playback path."""
-    return {'playback_profiles': ['default', 'xbox'], 'features': ['xbox-hevc-fmp4', 'phone-login-v1']}
+    return {'playback_profiles': ['default', 'xbox'], 'features': ['xbox-hevc-fmp4', 'phone-login-v1', 'xbox-hdr10-base', 'xbox-hevc-transcode']}
 
 
 def decide(meta, data):
+    source = meta.get('quality', {})
+    if data.hdr10_base and not (data.client_profile == 'xbox' and not data.airplay and meta['video'] == 'hevc' and compatible_hdr10_base(source)):
+        raise HTTPException(400, 'Filens HDR10-basislag kunne ikke bekræftes.')
     try:
         audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
     except ValueError as exc:
@@ -928,17 +934,30 @@ def decide(meta, data):
         else:
             quality = 'original'
     preserve = quality == 'original' or (quality == '2160' and meta['height'] <= 2160)
-    if preserve and data.direct and not data.airplay and not burn and not remap_audio:
+    if preserve and data.direct and not data.hdr10_base and not data.airplay and not burn and not remap_audio:
         return {'mode': 'Direct Play', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Afspilleren understøtter originalfilen.'}
     if preserve and not burn and ((data.video_copy and not data.airplay and meta['video'] in ('h264', 'hevc')) or (data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'])):
+        if data.hdr10_base:
+            return {'mode':'Direct Stream','height':meta['height'],'mbps':round(meta['bitrate']/1e6,1), 'dynamic_range':'HDR10',
+                    'reason':'4K-videoens HDR10-basislag bevares uden videogenkodning. Dolby Vision-metadata fjernes; lyd og indpakning tilpasses.'}
         return {'mode': 'Direct Stream', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Videoen bevares. Indpakning og lyd tilpasses afspilleren.'}
-    target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' else 1080))
+    hevc = (data.client_profile == 'xbox' and data.hevc_output and not data.airplay and
+            quality in ('original', '2160') and data.quality != 'original')
+    if hevc and source.get('dynamic_range') == 'Dolby Vision' and not compatible_hdr10_base(source):
+        raise HTTPException(400, 'Denne Dolby Vision-profil har ikke et bekræftet HDR10-basislag. Serverens nuværende konvertering kan ikke levere korrekte farver fra den profil.')
+    target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' or hevc else 1080))
     mbps = limit.get(quality, 25 if target > 1080 else 8)
     reason = ('AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else
               'De valgte billedbaserede undertekster skal brændes ind i videoen.' if burn else
               data.capability_reason if preserve and data.capability_reason else
               'Valgt kvalitet eller format kræver videokonvertering.')
     if data.client_profile == 'xbox':
+        if hevc:
+            target = min(target, 2160)
+            if meta.get('width', 0) > 0:
+                target = min(target, max(2, int(3840 * meta['height'] / meta['width']) // 2 * 2))
+            return {'mode':'Transcoding','height':target,'width':int(meta.get('width',0)*target/meta['height'])//2*2,'mbps':25,'video_codec':'hevc','dynamic_range':'SDR',
+                    'reason':reason + ' Videoen konverteres til kompatibel HEVC i op til 4K; HDR konverteres til SDR.'}
         # Xbox's native H.264 fallback is Full HD, including wide cinema frames.
         # A 1080px height alone would still produce 2580px-wide 2.39:1 video.
         max_height = 1080
@@ -988,6 +1007,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         filters += [f'setpts=PTS-STARTPTS+{offset}/TB', 'subtitles=filename=subtitles.vtt', 'setpts=PTS-STARTPTS']
     if soft:
         filters += ['setpts=PTS-STARTPTS']
+    hevc_transcode = result.get('video_codec') == 'hevc'
+    video_encoder = transcoding.hevc_encoder(GPU) if hevc_transcode else ('h264_nvenc' if GPU else 'libx264')
+    if hevc_transcode and not video_encoder:
+        raise HTTPException(503, 'Serverens FFmpeg mangler en fungerende HEVC-encoder til 4K. Videoen sænkes ikke til 1080p.')
+    use_gpu = video_encoder in ('h264_nvenc', 'hevc_nvenc')
     if meta['hdr']:
         filters += transcoding.hdr_filters(result['height'] if data.client_profile == 'xbox' else None)
     if not (meta['hdr'] and data.client_profile == 'xbox'):
@@ -995,7 +1019,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     filters += ['format=yuv420p']
     hardware_inputs, filter_chain = transcoding.accelerated_filters(
         Path(row['path']).resolve(), result['height'], ','.join(filters),
-        enabled=GPU and result['mode'] == 'Transcoding', hdr=bool(meta['hdr']), burn=bool(burn), soft=soft)
+        enabled=use_gpu and result['mode'] == 'Transcoding', hdr=bool(meta['hdr']), burn=bool(burn), soft=soft,
+        encoder=video_encoder)
     with LOCK:
         if len(JOBS) >= int(os.getenv('MAX_TRANSCODES', 3)):
             raise HTTPException(503, 'Serverens stream-pladser er optaget. Prøv igen om lidt.')
@@ -1012,19 +1037,25 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         encoder = 'Remux + original lyd' if data.audio_copy else 'Remux + AAC'
         if result['mode'] == 'Direct Stream':
             cmd += ['-c:v', 'copy']
+            if data.hdr10_base:
+                cmd += ['-bsf:v', 'filter_units=remove_types=62|63', '-strict', 'strict']
         else:
-            encoder = 'NVIDIA NVENC' if GPU else 'CPU · H.264'
+            encoder = ('NVIDIA NVENC' if use_gpu else 'CPU') + (' · HEVC' if hevc_transcode else ' · H.264')
             if hardware_inputs:
                 cmd[cmd.index('-i'):cmd.index('-i')] = hardware_inputs
-                encoder = 'NVIDIA NVDEC + NVENC' + (
+                encoder = 'NVIDIA NVDEC + NVENC' + (' · HEVC' if hevc_transcode else ' · H.264') + (
                     ' · HDR på GPU' if 'tonemap_opencl=' in filter_chain else
                     ' · HDR på CPU' if meta['hdr'] else ' · GPU-skalering')
             if bitmap:
                 cmd += ['-filter_complex', f"[0:{subtitle['index']}]scale={int(meta['width'])}:{int(meta['height'])}[sub];[0:v:0][sub]overlay=eof_action=pass:shortest=0," + ','.join(filters) + '[vout]']
             else:
                 cmd += ['-vf', filter_chain]
-            cmd += ['-c:v', 'h264_nvenc' if GPU else 'libx264', '-preset', 'fast' if GPU else 'veryfast', '-b:v', f"{result['mbps']}M", '-maxrate', f"{result['mbps']}M", '-bufsize', f"{result['mbps'] * 2}M", '-force_key_frames', 'expr:gte(t,n_forced*2)']
-            if GPU:
+            cmd += ['-c:v', video_encoder, '-preset', 'fast' if use_gpu else ('ultrafast' if hevc_transcode else 'veryfast'), '-b:v', f"{result['mbps']}M", '-maxrate', f"{result['mbps']}M", '-bufsize', f"{result['mbps'] * 2}M", '-force_key_frames', 'expr:gte(t,n_forced*2)']
+            if hevc_transcode:
+                cmd += ['-profile:v', 'main', '-bf', '0']
+                if not use_gpu:
+                    cmd += ['-x265-params', 'level-idc=5.1:repeat-headers=1:pools=4:frame-threads=2']
+            if use_gpu:
                 # NVENC otherwise forces I-frames without IDR boundaries. HLS then
                 # waits for the default GOP (~10s at 24fps), stalling Chrome at its end.
                 cmd += ['-forced-idr', '1']
@@ -1034,9 +1065,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']
         if result['mode'] == 'Direct Stream':
             encoder = 'Remux + original lyd' if cmd[cmd.index('-c:a') + 1] == 'copy' else 'Remux + AAC'
+            if data.hdr10_base:
+                encoder += ' · HDR10-basislag'
         # Native Xbox HEVC expects MP4/fMP4, not the MPEG-TS used by hls.js clients.
         # Opt in per client so existing browsers/TVs keep their established muxer.
-        fmp4 = data.client_profile == 'xbox' and result['mode'] == 'Direct Stream' and meta['video'] == 'hevc'
+        fmp4 = data.client_profile == 'xbox' and (hevc_transcode or result['mode'] == 'Direct Stream' and meta['video'] == 'hevc')
         cmd += ['-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file']
         if fmp4:
             cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-tag:v', 'hvc1']

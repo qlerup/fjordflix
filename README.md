@@ -257,6 +257,16 @@ Xbox-klienter kan sende `client_profile: "xbox"` ved afspilning. HEVC Direct Str
 leveres da som HLS/fMP4 med bevaret video; nødvendig H.264-konvertering begrænses
 til 1920 × 1080 og 8 Mbit/s. `/tv-api/info` annoncerer `xbox-hevc-fmp4`.
 
+Xbox-app 0.1.9 kan vælge HEVC/fMP4-konvertering i op til 3840 × 2160 ved
+Automatisk/4K med `hevc_output: true`, når Xboxens outputdecoder bekræftes.
+Serveren afprøver HEVC NVENC og bruger ellers libx265; reel konverteringshastighed
+kan aflæses gennem stream-heartbeat. HDR konverteres til SDR ved videogenkodning.
+Et verificeret HDR10-basislag i Dolby Vision profil 7 eller profil 8 med
+kompatibilitets-ID 1 kan i stedet bevares uden videogenkodning via
+`hdr10_base: true`. Her fjernes Dolby Vision RPU/enhancement-data, og output er
+HDR10. Ubekræftede Dolby Vision-profiler afvises i det nye HEVC-forløb.
+Funktionerne annonceres som `xbox-hdr10-base` og `xbox-hevc-transcode`.
+
 **Login via telefonen:** Xbox-appen viser en QR-kode til `/tv-login`, hvor brugeren
 skriver sit FjordFlix-/FjordHub-login og vælger **Log ind på Xbox**. Koden udløber
 efter fem minutter, kan annulleres og kan kun hentes én gang af den ventende Xbox.

@@ -15,6 +15,61 @@ def hevc_meta(**extra):
             'bitrate':40000000, **extra}
 
 
+def test_hdr10_base_preserves_4k_and_rejects_unverified_dolby():
+    data = main.Playback(client_profile='xbox',quality='original',hdr10_base=True,video_copy=True,direct=True)
+    meta = hevc_meta(quality={'dynamic_range':'Dolby Vision','dv_profile':7})
+    result = main.decide(meta,data)
+    assert result['mode'] == 'Direct Stream' and result['height'] == 2160
+    assert result['dynamic_range'] == 'HDR10'
+    for profile in (5,8,None):
+        with pytest.raises(main.HTTPException):
+            main.decide(hevc_meta(quality={'dynamic_range':'Dolby Vision','dv_profile':profile}),data)
+
+
+@pytest.mark.parametrize('quality', ['auto','2160'])
+def test_xbox_hevc_conversion_keeps_4k_including_cinema_aspect(quality):
+    data = main.Playback(client_profile='xbox',quality=quality,hevc_output=True)
+    result = main.decide(hevc_meta(height=1608),data)
+    assert result['mode'] == 'Transcoding'
+    assert result['video_codec'] == 'hevc' and result['height'] == 1608
+    assert result['mbps'] == 25
+    lower = main.decide(hevc_meta(),data.model_copy(update={'quality':'1080'}))
+    assert lower['height'] == 1080 and 'video_codec' not in lower
+    with pytest.raises(main.HTTPException):
+        main.decide(hevc_meta(quality={'dynamic_range':'Dolby Vision','dv_profile':5}),data)
+
+
+def test_xbox_real_hevc_transcode_keeps_3840_width(tv_client, monkeypatch):
+    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
+        pytest.skip('FFmpeg required')
+    client, credentials, mid = tv_client
+    monkeypatch.setattr(main,'GPU',False)
+    row, _ = main.movie(mid)
+    source = Path(row['path'])
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=blue:s=3840x1608:r=5:d=1',
+        '-c:v','libx264','-preset','ultrafast','-y',str(source)],check=True,capture_output=True,timeout=30)
+    with main.db() as conn:
+        conn.execute('UPDATE movies SET metadata=? WHERE id=?',(json.dumps(main.probe(source)),mid))
+    (main.DATA/'streams').mkdir(exist_ok=True)
+    _, headers = login(client,credentials)
+    response = client.post(f'/tv-api/movies/{mid}/play',headers=headers,
+        json={'client_profile':'xbox','quality':'2160','hevc_output':True})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    try:
+        job = main.JOBS[result['session']]
+        job['process'].wait(timeout=20)
+        assert job['process'].returncode == 0, (job['folder']/'ffmpeg.log').read_text()
+        playlist = job['folder']/'index.m3u8'
+        assert 'init.mp4' in playlist.read_text()
+        probe = subprocess.run(['ffprobe','-v','error','-show_streams','-of','json',str(playlist)],check=True,capture_output=True,timeout=20)
+        video = json.loads(probe.stdout)['streams'][0]
+        assert (video['width'],video['height'],video['codec_name'],video['codec_tag_string']) == (3840,1608,'hevc','hvc1')
+        subprocess.run(['ffmpeg','-v','error','-i',str(playlist),'-f','null','-'],check=True,capture_output=True,timeout=20)
+    finally:
+        main.stop_job(result['session'])
+
+
 def test_stream_progress_is_owner_scoped_and_private(tv_client, tmp_path):
     client, credentials, mid = tv_client
     _, headers = login(client, credentials)
@@ -141,8 +196,8 @@ def test_original_file_content_type_and_ticket_scope(tv_client, extension, forma
     assert client.get(result['url'].replace(mid,'0'*32)).status_code == 403
 
 
-@pytest.mark.parametrize('profile,extension', [('default','.ts'), ('xbox','.m4s')])
-def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extension):
+@pytest.mark.parametrize('profile,extension,hdr_base', [('default','.ts',False), ('xbox','.m4s',False), ('xbox','.m4s',True)])
+def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extension, hdr_base):
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         pytest.skip('FFmpeg and ffprobe are required for real HEVC remux verification.')
     client, credentials, mid = tv_client
@@ -155,12 +210,14 @@ def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extensio
         '-tag:v','hvc1','-c:a','ac3','-y',str(source)],check=True,capture_output=True,timeout=30)
     meta = hevc_meta(width=320,height=180,duration=2,format='mp4',bitrate=1000000,
                      tracks={'audio':[{'index':1,'codec':'ac3','default':True,'channels':6}]})
+    if hdr_base:
+        meta['quality'] = {'dynamic_range':'Dolby Vision','dv_profile':7}
     with main.db() as conn:
         conn.execute('UPDATE movies SET metadata=? WHERE id=?',(json.dumps(meta),mid))
     (main.DATA/'streams').mkdir(exist_ok=True)
     _, headers = login(client,credentials)
     response = client.post(f'/tv-api/movies/{mid}/play',headers=headers,
-        json={'client_profile':profile,'quality':'original','video_copy':True,'audio_copy':True})
+        json={'client_profile':profile,'quality':'original','video_copy':True,'audio_copy':True,'hdr10_base':hdr_base})
     assert response.status_code == 200, response.text
     result = response.json()
     assert result['mode'] == 'Direct Stream'
@@ -169,6 +226,9 @@ def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extensio
         job['process'].wait(timeout=10)
         command = job['process'].args
         assert command[command.index('-c:v')+1] == 'copy'
+        if hdr_base:
+            assert command[command.index('-bsf:v')+1] == 'filter_units=remove_types=62|63'
+            assert result['dynamic_range'] == 'HDR10'
         playlist = client.get(result['url']).text
         segment_name = next(line for line in playlist.splitlines() if line.endswith(extension))
         base = result['url'].rsplit('/',1)[0]
@@ -203,6 +263,11 @@ def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extensio
         if profile == 'xbox':
             assert video['codec_tag_string'] == 'hvc1'
         assert audio['codec_name'] == 'ac3' and audio['channels'] == 6
+        if hdr_base:
+            def hashes(path):
+                decoded = subprocess.run(['ffmpeg','-v','error','-i',str(path),'-map','0:v:0','-f','framemd5','-'],check=True,capture_output=True,timeout=20)
+                return [line.rsplit(',',1)[-1].strip() for line in decoded.stdout.decode().splitlines() if line and not line.startswith('#')]
+            assert hashes(source) == hashes(job['folder']/'index.m3u8')
         subprocess.run(['ffmpeg','-v','error','-i',str(job['folder']/'index.m3u8'),
                         '-f','null','-'],check=True,capture_output=True,timeout=20)
     finally:

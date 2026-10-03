@@ -49,7 +49,7 @@ def begin(result, row, meta, user, data, audio, subtitle, *, native=False, audio
         'state': 'starting', 'client': 'Windows-app' if native else 'AirPlay' if data.airplay else 'Browser',
         'mode': mode, 'height': result.get('height', meta.get('height')),
         'mbps': result.get('mbps', round(meta.get('bitrate', 0) / 1e6, 1)),
-        'video': {'source': meta.get('video', 'unknown'), 'output': 'h264' if mode == 'Transcoding' else meta.get('video', 'unknown'), 'transcoded': mode == 'Transcoding', 'tonemapped': bool(meta.get('hdr') and mode == 'Transcoding')},
+        'video': {'source': meta.get('video', 'unknown'), 'output': result.get('video_codec', 'h264') if mode == 'Transcoding' else meta.get('video', 'unknown'), 'transcoded': mode == 'Transcoding', 'tonemapped': bool(meta.get('hdr') and mode == 'Transcoding')},
         'audio': track_summary(audio), 'audio_transcoded': bool(audio and mode != 'Direct Play' and not audio_copy),
         'subtitle': track_summary(subtitle),
         'subtitle_delivery': 'local' if native and subtitle else result.get('subtitle_delivery'),

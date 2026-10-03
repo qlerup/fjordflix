@@ -7,6 +7,21 @@ from functools import lru_cache
 log = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=2)
+def hevc_encoder(gpu):
+    # H.264 NVENC support does not imply that HEVC NVENC works on this GPU.
+    for encoder in (('hevc_nvenc', 'libx265') if gpu else ('libx265',)):
+        try:
+            check = subprocess.run(['ffmpeg','-v','error','-nostdin','-f','lavfi','-i',
+                                    'color=s=128x128:d=0.1','-c:v',encoder,'-f','null','-'],
+                                   capture_output=True,timeout=10)
+            if check.returncode == 0:
+                return encoder
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return None
+
+
 def hdr_filters(height=None):
     # Scale in linear light before the expensive float RGB tone mapper. The
     # current Xbox H.264 fallback is Full HD; processing 4K pixels wastes CPU work.
@@ -43,10 +58,10 @@ def progress(folder):
     return result
 
 
-def _works(path, inputs, filters):
+def _works(path, inputs, filters, encoder='h264_nvenc'):
     command = ['ffmpeg', '-v', 'error', '-nostdin', '-protocol_whitelist', 'file,pipe',
                *inputs, '-i', path, '-map', '0:v:0', '-an', '-sn', '-vf', filters,
-               '-frames:v', '1', '-c:v', 'h264_nvenc', '-f', 'null', '-']
+               '-frames:v', '1', '-c:v', encoder, '-f', 'null', '-']
     try:
         result = subprocess.run(command, capture_output=True, timeout=5)
         if result.returncode == 0:
@@ -58,7 +73,7 @@ def _works(path, inputs, filters):
 
 
 @lru_cache(maxsize=32)
-def _probe(path, size, modified, height, cpu_filters, hdr):
+def _probe(path, size, modified, height, cpu_filters, hdr, encoder):
     if hdr:
         # CUDA decodes to software frames for OpenCL upload. The expensive HDR
         # conversion runs on the NVIDIA GPU; CPU scaling remains after download.
@@ -67,7 +82,7 @@ def _probe(path, size, modified, height, cpu_filters, hdr):
         opencl_filters = ('format=p010,hwupload,'
                           'tonemap_opencl=tonemap=hable:desat=0:t=bt709:p=bt709:m=bt709:r=tv:format=nv12,'
                           f'hwdownload,format=nv12,scale=-2:{height},format=yuv420p')
-        if _works(path, opencl_inputs, opencl_filters):
+        if _works(path, opencl_inputs, opencl_filters, encoder):
             return opencl_inputs, opencl_filters
     # Keep the existing CPU tone mapper if OpenCL is unavailable.
     inputs = ('-hwaccel', 'cuda')
@@ -75,14 +90,14 @@ def _probe(path, size, modified, height, cpu_filters, hdr):
     if not hdr:
         inputs += ('-hwaccel_output_format', 'cuda')
         filters = f'scale_cuda=-2:{height}:format=nv12'
-    return (inputs, filters) if _works(path, inputs, filters) else ((), cpu_filters)
+    return (inputs, filters) if _works(path, inputs, filters, encoder) else ((), cpu_filters)
 
 
-def accelerated_filters(path, height, cpu_filters, *, enabled, hdr=False, burn=False, soft=False):
+def accelerated_filters(path, height, cpu_filters, *, enabled, hdr=False, burn=False, soft=False, encoder='h264_nvenc'):
     if not enabled or burn or soft:
         return (), cpu_filters
     try:
         stat = path.stat()
     except OSError:
         return (), cpu_filters
-    return _probe(str(path), stat.st_size, stat.st_mtime_ns, height, cpu_filters, hdr)
+    return _probe(str(path), stat.st_size, stat.st_mtime_ns, height, cpu_filters, hdr, encoder)

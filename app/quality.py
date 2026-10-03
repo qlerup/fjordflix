@@ -4,6 +4,13 @@ import shutil
 import subprocess
 
 
+def hdr10_base(source):
+    """Only verified Dolby profiles with an HDR10-compatible base layer."""
+    return (source.get('dynamic_range') == 'Dolby Vision' and source.get('dv_bl') is not False and
+            (source.get('dv_profile') == 7 or
+             source.get('dv_profile') == 8 and source.get('dv_bl_signal_compatibility_id') == 1))
+
+
 def source_quality(video, audio, tracks=()):
     side_data = video.get('side_data_list', [])
     transfer = video.get('color_transfer')
@@ -26,9 +33,11 @@ def source_quality(video, audio, tracks=()):
     atmos = atmos or ('JOC' in features and audio.get('codec_name') == 'eac3') or (
         first_audio.get('Format') == 'MLP FBA' and '16-ch' in features and audio.get('codec_name') == 'truehd')
     dovi = next((s for s in side_data if s.get('side_data_type') == 'DOVI configuration record'), {})
-    return {'version': 2, 'video_profile': video.get('profile'), 'video_level': video.get('level'),
+    return {'version': 3, 'video_profile': video.get('profile'), 'video_level': video.get('level'),
             'frame_rate': video.get('avg_frame_rate') or video.get('r_frame_rate'),
             'dv_profile': dovi.get('dv_profile'), 'dv_el': bool(dovi.get('el_present_flag')),
+            'dv_bl': bool(dovi['bl_present_flag']) if 'bl_present_flag' in dovi else None,
+            'dv_bl_signal_compatibility_id': dovi.get('dv_bl_signal_compatibility_id'),
             'dynamic_range': dynamic_range, 'audio_codec': audio.get('codec_name'),
             'audio_profile': profile, 'audio_channels': audio.get('channels'),
             'audio_layout': audio.get('channel_layout', ''), 'dolby_atmos': bool(atmos)}
