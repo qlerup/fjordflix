@@ -143,7 +143,7 @@ def attach_tv(app, main):
     def segment(ticket: str, sid: str, filename: str, request: Request):
         media_host(request)
         user = media.validate(ticket, main.db, main.session_user, sid=sid)
-        return main.stream_file(sid, filename, user)
+        return main.stream_file(sid, filename, user, request)
 
 
     @tv.post('/tv-api/media/heartbeat')

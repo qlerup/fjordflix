@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
@@ -82,6 +82,8 @@ def stop_job(key):
                     job['process'].kill()
                     job['process'].wait()
             job['log'].close()
+            if job['process'].stdout:
+                job['process'].stdout.close()
             shutil.rmtree(job['folder'], ignore_errors=True)
 
 
@@ -902,6 +904,7 @@ class Playback(BaseModel):
     hdr10_base: bool = False
     hevc_output: bool = False
     audio_copy: bool = False
+    audio_passthrough: bool = False
     capability_reason: str = Field(default='', max_length=300)
     bandwidth: float = Field(default=0, ge=0, le=100000)
     start: float = Field(default=0, ge=0, le=1e8)
@@ -911,10 +914,30 @@ class Playback(BaseModel):
 
 def playback_capabilities():
     """Optional TV API features; older clients retain the default playback path."""
-    return {'playback_profiles': ['default', 'xbox'], 'features': ['xbox-hevc-fmp4', 'phone-login-v1', 'xbox-hdr10-base', 'xbox-hevc-transcode']}
+    return {'playback_profiles': ['default', 'xbox'], 'features': ['xbox-hevc-fmp4', 'phone-login-v1', 'xbox-hdr10-base', 'xbox-hevc-transcode', 'xbox-matroska-audio']}
 
 
 def decide(meta, data):
+    result = video_plan(meta, data)
+    audio, _ = tracks.select(meta, data.audio_track, data.subtitle_track)
+    if data.audio_passthrough:
+        if data.client_profile != 'xbox' or data.airplay or not audio or audio['codec'] not in ('truehd', 'dts', 'ac3', 'eac3'):
+            raise HTTPException(400, 'Original HDMI-lyd kræver Xbox og et understøttet Dolby- eller DTS-spor.')
+        # Matroska carries TrueHD/DTS without the HLS audio restrictions. Remap
+        # the selected track to the first/only audio stream for Media Foundation.
+        if result['mode'] == 'Direct Play':
+            result['mode'] = 'Direct Stream'
+        result.update(transport='matroska', playlist='stream.mkv')
+        result['reason'] += ' Det valgte lydspor bevares uændret til Xboxens HDMI-lydvej.'
+    copied = result['mode'] == 'Direct Play' or data.audio_passthrough or (
+        data.audio_copy and not data.airplay and audio and audio['codec'] in ('aac', 'ac3', 'eac3'))
+    result['audio_output'] = {'codec': audio['codec'] if copied and audio else 'aac' if audio else None,
+                              'channels': audio.get('channels') if copied and audio else 2 if audio else None,
+                              'copied': bool(copied and audio)}
+    return result
+
+
+def video_plan(meta, data):
     source = meta.get('quality', {})
     if data.hdr10_base and not (data.client_profile == 'xbox' and not data.airplay and meta['video'] == 'hevc' and compatible_hdr10_base(source)):
         raise HTTPException(400, 'Filens HDR10-basislag kunne ikke bekræftes.')
@@ -1032,7 +1055,10 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         if subtitle_file:
             shutil.copyfile(subtitle_file, folder / 'subtitles.vtt')
         bitmap = burn and subtitle['delivery'] == 'burn'
-        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-progress', str(folder / 'progress.txt'), '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', str(Path(row['path']).resolve())]
+        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-progress', str(folder / 'progress.txt'), '-threads', '4', '-protocol_whitelist', 'file,pipe']
+        if offset > 0:
+            cmd += ['-ss', str(offset)]
+        cmd += ['-i', str(Path(row['path']).resolve())]
         cmd += ['-map', '[vout]' if bitmap else '0:v:0', '-map', f"0:{audio['index']}" if audio else '0:a:0?', '-sn']
         encoder = 'Remux + original lyd' if data.audio_copy else 'Remux + AAC'
         if result['mode'] == 'Direct Stream':
@@ -1059,7 +1085,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                 # NVENC otherwise forces I-frames without IDR boundaries. HLS then
                 # waits for the default GOP (~10s at 24fps), stalling Chrome at its end.
                 cmd += ['-forced-idr', '1']
-        if data.audio_copy and not data.airplay and audio and audio['codec'] in ('aac', 'ac3', 'eac3'):
+        if result['audio_output']['copied']:
             cmd += ['-c:a', 'copy']
         else:
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']
@@ -1070,13 +1096,26 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         # Native Xbox HEVC expects MP4/fMP4, not the MPEG-TS used by hls.js clients.
         # Opt in per client so existing browsers/TVs keep their established muxer.
         fmp4 = data.client_profile == 'xbox' and (hevc_transcode or result['mode'] == 'Direct Stream' and meta['video'] == 'hevc')
-        cmd += ['-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file']
-        if fmp4:
-            cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-tag:v', 'hvc1']
-        cmd += ['-hls_segment_filename', str(folder / ('segment%05d.m4s' if fmp4 else 'segment%05d.ts')), str(folder / 'index.m3u8')]
+        matroska = result.get('transport') == 'matroska'
+        cmd += ['-max_muxing_queue_size', '2048']
+        if matroska:
+            # Live, bounded streaming: no full-film temporary file. Seeking
+            # creates a new stream at the requested timestamp, as for HLS.
+            cmd += ['-f', 'matroska', '-live', '1', '-cluster_time_limit', '1000', '-flush_packets', '1', 'pipe:1']
+        else:
+            cmd += ['-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file']
+            if fmp4:
+                cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-tag:v', 'hvc1']
+            cmd += ['-hls_segment_filename', str(folder / ('segment%05d.m4s' if fmp4 else 'segment%05d.ts')), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
-        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log, cwd=folder)
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE if matroska else subprocess.DEVNULL, stderr=log, cwd=folder)
         JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time(), 'idle_timeout': media.AIRPLAY_TTL if data.airplay else 120}
+        if matroska:
+            JOBS[sid]['transport'] = 'matroska'
+    if matroska:
+        response = media.issue({**result, 'url': f'/api/streams/{sid}/stream.mkv', 'session': sid,
+                                'offset': offset, 'encoder': encoder}, request, mid, db)
+        return active_streams.begin(response, row, meta, u, data, audio, subtitle, audio_copy=True)
     for _ in range(200):
         playlist = folder / 'index.m3u8'
         # Prepare several segments before playback, so Chrome does not exhaust
@@ -1096,7 +1135,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                     stop_job(sid)
                     raise HTTPException(503, 'Tekstsporet kunne ikke klargøres. Prøv indbrændte undertekster under Lyd og tekst.')
             response = media.issue({**result, 'url': f"/api/streams/{sid}/{result.get('playlist', 'index.m3u8')}", 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db, airplay=data.airplay, duration=meta['duration'])
-            return active_streams.begin(response, row, meta, u, data, audio, subtitle, audio_copy=bool(data.audio_copy and not data.airplay and audio and audio['codec'] in ('aac', 'ac3', 'eac3')))
+            return active_streams.begin(response, row, meta, u, data, audio, subtitle, audio_copy=result['audio_output']['copied'])
         if process.poll() is not None:
             break
         time.sleep(0.1)
@@ -1105,17 +1144,30 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
 
 
 @app.get('/api/streams/{sid}/{filename}')
-def segment(sid: str, filename: str, u=Depends(user)):
+def segment(sid: str, filename: str, request: Request, u=Depends(user)):
     if media.config()[0]:
         raise HTTPException(409, 'Brug den direkte videoadresse.')
-    return stream_file(sid, filename, u)
+    return stream_file(sid, filename, u, request)
 
 
-def stream_file(sid, filename, u):
+def stream_file(sid, filename, u, request=None):
     with LOCK:
         job = JOBS.get(sid)
         if not job or job['user'] != u['id']:
             raise HTTPException(404)
+        if job.get('transport') == 'matroska':
+            if filename != 'stream.mkv':
+                raise HTTPException(404)
+            headers = {'Cache-Control': 'no-store', 'Accept-Ranges': 'none', 'X-Accel-Buffering': 'no'}
+            if request and request.method == 'HEAD':
+                return Response(media_type='video/x-matroska', headers=headers)
+            if request and request.headers.get('range') not in (None, 'bytes=0-'):
+                raise HTTPException(416, 'Spol via afspillerens tidslinje.')
+            if job.get('stream_open'):
+                raise HTTPException(409, 'Denne lyd/video-stream er allerede åbnet. Start afspilningen igen.')
+            job['stream_open'] = True
+            job['touch'] = time.time()
+            return StreamingResponse(matroska_chunks(sid, job), media_type='video/x-matroska', headers=headers)
         if not re.fullmatch(r'(index\.m3u8|master\.m3u8|subtitles\.m3u8|subtitle\d+\.vtt|init\.mp4|segment\d+\.(?:ts|m4s))', filename):
             raise HTTPException(404)
         job['touch'] = time.time()
@@ -1138,6 +1190,24 @@ def stream_file(sid, filename, u):
     return FileResponse(path, media_type=content_type)
 
 
+async def matroska_chunks(sid, job):
+    finished = False
+    try:
+        while True:
+            chunk = await asyncio.to_thread(job['process'].stdout.read1, 65536)
+            if not chunk:
+                code = await asyncio.to_thread(job['process'].wait)
+                if code:
+                    raise RuntimeError('Original lyd/video kunne ikke klargøres.')
+                finished = True
+                return
+            job['touch'] = time.time()
+            yield chunk
+    finally:
+        if not finished:
+            await asyncio.shield(asyncio.to_thread(stop_job, sid))
+
+
 @app.api_route('/media/{ticket}/movies/{mid}/file', methods=['GET', 'HEAD'])
 def direct_original(ticket: str, mid: str):
     media.validate(ticket, db, session_user, mid=mid)
@@ -1150,9 +1220,9 @@ def media_connection_probe(request: Request):
 
 
 @app.api_route('/media/{ticket}/streams/{sid}/{filename}', methods=['GET', 'HEAD'])
-def direct_segment(ticket: str, sid: str, filename: str):
+def direct_segment(ticket: str, sid: str, filename: str, request: Request):
     u = media.validate(ticket, db, session_user, sid=sid)
-    return stream_file(sid, filename, u)
+    return stream_file(sid, filename, u, request)
 
 
 class MediaTicket(BaseModel):

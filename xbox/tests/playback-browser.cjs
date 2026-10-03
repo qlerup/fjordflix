@@ -27,6 +27,10 @@ async function fixture(browser, options={}) {
   const movie={id:'hevc4k',title:'Nordlys',height:2160,width:3840,duration:7200,position:120,
     video:'hevc',audio:'aac',format:options.container||'mp4',pix_fmt:'yuv420p10le',bitrate:25000000,
     quality:{dynamic_range:'HDR10',frame_rate:'24/1'},tracks:{audio:[],subtitles:[]},catalog:{overview:'Testfilm fra eget bibliotek.'}};
+  if (options.hdAudio) {
+    movie.audio='truehd'; movie.format='matroska';
+    movie.tracks.audio=[{index:1,codec:'truehd',channels:8,default:true,language:'en'}];
+  }
   const mode=request=>!request.video_copy||['1080','720','480'].includes(request.quality)?'Transcoding':request.direct?'Direct Play':'Direct Stream';
   await page.route(origin+'/**',async route=>{
     const req=route.request(),p=new URL(req.url()).pathname;
@@ -34,7 +38,7 @@ async function fixture(browser, options={}) {
     if(req.method()==='OPTIONS') return reply({});
     calls.push({path:p,method:req.method()});
     if(p==='/tv-api/state') return reply({user:{name:'Xbox QA'}});
-    if(p==='/tv-api/info') return reply({features:options.oldServer?[]:options.legacy?['xbox-hevc-fmp4']:['xbox-hevc-fmp4','xbox-hdr10-base','xbox-hevc-transcode']});
+    if(p==='/tv-api/info') return reply({features:options.oldServer?[]:options.legacy?['xbox-hevc-fmp4']:['xbox-hevc-fmp4','xbox-hdr10-base','xbox-hevc-transcode','xbox-matroska-audio']});
     if(p==='/tv-api/movies') return reply([movie]);
     if(p.endsWith('/tracks')) return reply(movie.tracks);
     if(p.endsWith('/poster')||p.endsWith('/backdrop')) return route.fulfill({status:404,headers});
@@ -47,12 +51,18 @@ async function fixture(browser, options={}) {
       const request=req.postDataJSON();plays.push(request);
       const delivery=options.transcodeResult?'Transcoding':mode(request);
       return reply({mode:delivery,session:delivery==='Direct Play'?null:'stream-'+plays.length,
+        transport:request.audio_passthrough?'matroska':undefined,
+        audio_output:request.audio_passthrough?{codec:'truehd',channels:8,copied:true}:undefined,
         media_ticket:'ticket-'+plays.length,url:origin+'/media-'+plays.length+'.mp4',height:delivery==='Transcoding'&&!request.hevc_output?1080:2160,video_codec:request.hevc_output&&!options.transcodeResult?'hevc':'h264',offset:delivery==='Direct Play'?0:request.start});
     }
     if(p.endsWith('/heartbeat') && p.includes('/streams/')) return reply({ok:true,transcoding:{speed:0.75,encoded_seconds:12,finished:false}});
     return reply({ok:true});
   });
   await page.goto(pathToFileURL(path.resolve(__dirname,'../dist/app/index.html')).href);
+  if (options.hdAudio) await page.evaluate(()=>{
+    window.Windows={};
+    HTMLMediaElement.prototype.canPlayType=function(type){return type==='application/vnd.apple.mpegurl'?'':'probably';};
+  });
   await page.locator('.card').click();
   await page.waitForFunction(()=>document.getElementById('quality-plan').textContent.includes('p'));
   const start = async quality=>{
@@ -79,6 +89,21 @@ function assertStages(plays,quality) {
 (async()=>{
   const browser=await chromium.launch({headless:true});
   try {
+    const hd=await fixture(browser,{hdAudio:true});
+    await hd.start('original');await hd.loaded(1);
+    assert.equal(hd.plays[0].audio_passthrough,true);
+    assert.equal(hd.plays[0].video_copy,true);
+    assert.match(await hd.page.locator('#play-status').textContent(),/TRUEHD.*8 kanaler.*original/);
+    await hd.fail();
+    await hd.page.waitForFunction(()=>document.getElementById('message').textContent.includes('Lyden er ikke ændret til stereo'));
+    assert.equal(hd.plays.length,1,'HD audio rejection never silently retries AAC');
+    assert.ok(hd.calls.some(call=>call.method==='DELETE'&&call.path.includes('/streams/')));
+    await hd.close();
+    const oldHD=await fixture(browser,{hdAudio:true,legacy:true});
+    await oldHD.start('original');
+    await oldHD.page.waitForFunction(()=>document.getElementById('message').textContent.includes('Opdater FjordFlix-serveren for original'));
+    assert.equal(oldHD.plays.length,0,'old server must not silently transcode HD audio');
+    await oldHD.close();
     for(const quality of ['original','2160']) {
       const test=await fixture(browser,{legacy:true});
       await test.start(quality);await test.loaded(1);

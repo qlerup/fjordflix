@@ -49,6 +49,20 @@ test('Dolby Vision HDR10 base layers remux in 4K without copying unsupported Dol
     assert.equal(result.hdr10_base,false);assert.equal(result.video_copy,false);
   }
 });
+
+test('native Xbox requests the complete selected HD audio bitstream with the MKV server feature', () => {
+  const native=nativeDetect(2), server={features:['xbox-matroska-audio','xbox-hdr10-base']};
+  for (const codec of ['truehd','dts']) {
+    const source={...movie,format:'matroska',tracks:{audio:[{index:1,codec:'aac',default:true},{index:3,codec,channels:8}]}};
+    const result=native.detect(source,supported,'original',false,server,3);
+    assert.equal(result.audio_passthrough,true); assert.equal(result.audio_copy,true);
+    assert.equal(result.audio_track,3); assert.equal(result.video_copy,true);
+    assert.match(native.detect.diagnostics().audioTransport,/Original via MKV/);
+    assert.equal(detect(source,supported,'original',false,server,3).audio_passthrough,false,'ordinary browser does not claim native HDMI support');
+    assert.equal(native.detect(source,supported,'original',false,{features:[]},3).audio_passthrough,false);
+    assert.equal(native.detect.diagnostics().requiresOriginalAudio,true,'old server must produce an update error before playback');
+  }
+});
 test('4K conversion probes the output decoder and keeps Auto quality on a retry',()=>{
   const yes=nativeDetect(2).detect(uhd,supported,'auto',true,features);
   assert.equal(yes.hevc_output,true);assert.equal(yes.quality,'auto');assert.equal(yes.video_copy,false);

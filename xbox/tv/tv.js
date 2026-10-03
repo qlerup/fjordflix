@@ -8,6 +8,11 @@
   var server = '', token = '', images = [], imageGeneration = 0, backdropURL;
   var serverFeatures = [], fallbackStage = '', lastRequest, lastFailure = '', lastPlan;
   var runtime = null, streamProgress = null, waitingCount = 0, stalledCount = 0;
+  function audioDescription(output) {
+    if (!output || !output.codec) return '';
+    return 'Lyd: ' + output.codec.toUpperCase() + (output.channels ? ' · ' + output.channels + ' kanaler' : '') +
+      (output.copied ? ' · original' : ' · konverteret');
+  }
   function samplePlayback() {
     if (!playback) return;
     var ahead = 0, now = video.currentTime || 0;
@@ -28,8 +33,12 @@
     }).catch(function (e) { if (playback === current) playerError(e.message); });
   }
   function diagnostics() {
-    var probe = window.TVCapabilities.diagnostics(), lines = ['FjordFlix Xbox 0.1.10'];
+    var probe = window.TVCapabilities.diagnostics(), lines = ['FjordFlix Xbox 0.1.11'];
     lines.push(probe.source || '');
+    lines.push('Lydvej: ' + (probe.audioTransport || '?') + ' · MKV-format: ' + (probe.htmlMatroska || '?'));
+    var audioOutput = playback && playback.audio_output || lastPlan && lastPlan.audio_output;
+    if (audioOutput) lines.push(audioDescription(audioOutput));
+    if (audioOutput && audioOutput.copied) lines.push('Original lyd leveres til afspilleren. HDMI-formatet bekræftes på lydanlægget.');
     lines.push('HEVC-format: ' + (probe.hevcFormat ? 'inden for grænserne' : 'ikke bekræftet') + ' · Xbox decoder: ' + probe.native + ' · HTML HEVC: ' + (probe.htmlHEVC || '?'));
     lines.push('Server Xbox/fMP4: ' + (serverFeatures.indexOf('xbox-hevc-fmp4') >= 0 ? 'klar' : 'serveropdatering mangler'));
     lines.push('4K HEVC-output: ' + (probe.nativeOutput || 'ikke forespurgt') + ' · Server 4K-konvertering: ' + (serverFeatures.indexOf('xbox-hevc-transcode') >= 0 ? 'klar' : 'serveropdatering mangler'));
@@ -239,7 +248,7 @@
       if (id !== planGeneration || $('detail').hidden) return;
       lastPlan = plan; diagnostics();
       text('quality-plan', plan.mode + ' · ' + (plan.height >= 2160 || plan.width >= 3840 || plan.mode !== 'Transcoding' && selected.width >= 3840 ? '4K · ' : '') + plan.height + 'p' + (plan.dynamic_range ? ' · ' + plan.dynamic_range : ''));
-      text('quality-reason', plan.reason || '');
+      text('quality-reason', (plan.reason || '') + (plan.audio_output ? ' ' + audioDescription(plan.audio_output) : ''));
     }).catch(function (error) {
       if (id !== planGeneration || $('detail').hidden) return;
       text('quality-plan', 'Kunne ikke beregne afspilningen'); text('quality-reason', error.message);
@@ -249,6 +258,7 @@
     if (!playback) return;
     var height = video.videoHeight || playback.height, width = video.videoWidth;
     text('play-status', playback.mode + ' · ' + (height >= 2160 || width >= 3840 || playback.width >= 3840 ? '4K · ' : '') + height + 'p' + (playback.dynamic_range ? ' · ' + playback.dynamic_range : '') + (fallbackStage === 'remux' ? ' · Video bevaret; indpakning og lyd tilpasset' : fallbackStage === 'transcode' ? ' · Skiftet til kompatibel kvalitet' : ''));
+    if (playback.audio_output) text('play-status', $('play-status').textContent + ' · ' + audioDescription(playback.audio_output));
     diagnostics();
   }
   function position() { return Math.min(selected ? selected.duration : 0, (video.currentTime || 0) + (playback ? playback.offset || 0 : 0)); }
@@ -322,6 +332,9 @@
     release().then(function () {
       if (id !== generation) return null;
       var request = window.TVCapabilities(movie, video, $('quality').value, force, {features:serverFeatures}, selectedAudio); request.start = at;
+      if (window.TVCapabilities.diagnostics().requiresOriginalAudio && !request.audio_passthrough) {
+        throw new Error('Opdater FjordFlix-serveren for original TrueHD/DTS-lyd på Xbox. Lyden ændres ikke automatisk til stereo.');
+      }
       request.subtitle_track = selectedSubtitle;
       lastRequest = request;
       return api('/movies/' + movie.id + '/plan', 'POST', request).then(function (plan) {
@@ -349,7 +362,7 @@
       runtime = null; streamProgress = null; waitingCount = 0; stalledCount = 0;
       playback = result; playbackStatus(); streamHeartbeat();
       video.onloadedmetadata = function () { if (id !== generation) return; playbackStatus(); if (!result.session && at) video.currentTime = at; playVideo(); };
-      if (result.session && !video.canPlayType('application/vnd.apple.mpegurl')) {
+      if (result.session && result.transport !== 'matroska' && !video.canPlayType('application/vnd.apple.mpegurl')) {
         playerError('Denne browser mangler native HLS. Test konverteret video i Xbox-appen.'); release(); return;
       }
       video.src = result.url; video.load();
@@ -361,6 +374,10 @@
     if (!playback || $('player').hidden) return;
     var at = position();
     lastFailure = reason + (video.error ? ' (mediefejl ' + video.error.code + ')' : ''); diagnostics();
+    if (lastRequest && lastRequest.audio_passthrough) {
+      playerError(lastFailure + ' Xbox afviste afspilningen med original lyd. Kontrollér Tillad passthrough i Xboxens lydindstillinger. Vælg eventuelt filmens AC-3-spor. Lyden er ikke ændret til stereo.');
+      release(); return;
+    }
     if (!fallbackStage && lastRequest && lastRequest.video_copy && (playback.mode === 'Direct Play' || playback.mode === 'Direct Stream' && lastRequest.audio_copy)) {
       busy = false; start(at, 'remux');
     } else if (fallbackStage !== 'transcode' && playback.mode !== 'Transcoding' && $('quality').value !== 'original') {

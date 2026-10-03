@@ -1,5 +1,19 @@
 # FjordFlix til Xbox
 
+## 0.1.11: original TrueHD/DTS-lyd
+
+Kræver også den nye FjordFlix-server (`xbox-matroska-audio`). Xbox-appen leverer
+det valgte TrueHD/DTS-spor uændret gennem Matroska til systemafspilleren i stedet
+for AAC-stereo. Kompatibel HEVC/HDR10-video bevares, herunder et bekræftet HDR10-basislag.
+Spoling genstarter streamen på den ønskede position. Streamen gemmes ikke som en
+hel midlertidig film. Ved afspilningsfejl skifter appen ikke lydsporet til stereo.
+
+Afspilningsdetaljer viser det leverede codec og kanalantal. Dette bekræfter
+serverens output, ikke HDMI-signalet: Atmos/DTS-output skal kontrolleres på
+soundbaren/receiveren med Xboxens **Tillad passthrough** slået til.
+Serverens bevarelse af komprimerede lydpakker er testet med FFmpeg; fysisk
+Xbox/HDMI-afspilning af denne transport er endnu ikke verificeret.
+
 Selvstændig UWP-app med samme TV-brugerflade og token-API som FjordFlix til LG.
 Mål: Xbox One, One S, One X, Series S og Series X med opdateret systemsoftware.
 Xbox 360 og den oprindelige Xbox understøttes ikke.
@@ -8,7 +22,7 @@ Xbox 360 og den oprindelige Xbox understøttes ikke.
 
 ## Færdige filer
 
-- `dist/FjordFlix-Xbox_0.1.10.appx`: signeret installationspakke til Developer Mode.
+- `dist/FjordFlix-Xbox_0.1.11.appx`: signeret installationspakke til Developer Mode.
 - `dist/FjordFlix-Xbox.cer`: offentligt udviklercertifikat, hvis installationsværktøjet beder om det.
 - `dist/SHA256SUMS.txt`: kontrolsum for APPX-filen.
 - `dist/app/`: alle filer, der er pakket i appen.

@@ -1,6 +1,6 @@
 {
   "name": "fjordflix-xbox-app",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "scripts": {
     "build": "node scripts/build.cjs",

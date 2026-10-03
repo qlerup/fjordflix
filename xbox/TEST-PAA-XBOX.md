@@ -104,3 +104,12 @@ langsommere end realtid. Se encoder, Serverhastighed, Buffer og Tabte billeder e
 30–60 sekunders afspilning. Tryk Stop og åbn Afspilningsdetaljer; målingerne bevares.
 Rigtig 4K-konvertering og uændrede dekodede billeder efter HDR10-remux er testet lokalt;
 flydende afspilning på fysisk Xbox er ikke hardwareverificeret.
+## 0.1.11: TrueHD/Atmos og DTS
+
+Opdater serveren og installer `dist/FjordFlix-Xbox_0.1.11.appx`.
+Afspil samme film og lydspor som i Plex med kvalitet **Original**, først uden
+undertekster. Kontrollér, at afspilningsdetaljer viser original TRUEHD og otte
+kanaler for et 7.1-spor, og at soundbaren faktisk viser Dolby Atmos.
+Gentag med tekstundertekster og spoling frem/tilbage. Kontrollér også stop,
+genstart og skift til filmens AC-3-spor. Serverens markering af original lyd er
+ikke i sig selv dokumentation for HDMI-passthrough.

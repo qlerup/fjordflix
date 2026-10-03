@@ -62,6 +62,12 @@
     var defaultAudio = chosen ? chosen.index : null;
     if (audioIndex !== null && audioIndex !== undefined) available.forEach(function (track) { if (track.index === audioIndex) chosen = track; });
     var audio = chosen ? chosen.codec : movie.audio;
+    // The native Xbox Media Foundation path accepts TrueHD/DTS in Matroska.
+    // An HTML MP4 codec query does not establish HDMI passthrough support.
+    // Request the original bitstream and let the native pipeline negotiate it;
+    // a rejection must be surfaced, never retried as AAC stereo.
+    var originalAudio = !!root.Windows && features.indexOf('xbox-matroska-audio') >= 0 &&
+      ['truehd', 'dts'].indexOf(audio) >= 0;
     var audioTypes = {aac:'audio/mp4; codecs="mp4a.40.2"',ac3:'audio/mp4; codecs="ac-3"',
       eac3:'audio/mp4; codecs="ec-3"',mp3:'audio/mpeg',opus:'audio/webm; codecs="opus"',vorbis:'audio/webm; codecs="vorbis"'};
     var sound = !audio || !!audioTypes[audio] && !!video.canPlayType(audioTypes[audio]);
@@ -72,7 +78,12 @@
       fallback === 'remux' ? 'Videoen bevares; indpakning og lyd tilpasses efter en afspilningsfejl.' :
       nativeSupport === false ? 'Xbox kunne ikke bekræfte hardwareafspilning af filmens HEVC-format.' :
       !supported ? 'Afspilleren kunne ikke bekræfte filens videoformat; serveren konverterer videoen.' :
+      originalAudio ? 'Det valgte lydspor bevares uændret via MKV til Xboxens HDMI-lydvej.' :
       !sound ? 'Lydsporet konverteres til AAC.' : !container ? 'Videoen bevares, og filens indpakning tilpasses Xbox.' : '';
+    probe.audioSource = audio || 'uden lyd';
+    probe.requiresOriginalAudio = !!root.Windows && ['truehd', 'dts'].indexOf(audio) >= 0;
+    probe.audioTransport = originalAudio ? 'Original via MKV; HDMI-passthrough kræver Tillad passthrough på Xbox' : 'Standard lydvej';
+    probe.htmlMatroska = video.canPlayType('video/x-matroska') || 'ikke bekræftet';
     probe.source = [movie.width + 'x' + movie.height, movie.video, movie.pix_fmt || 'ukendt pixelformat', range, 'profil ' + (source.video_profile || '?'), 'level ' + (source.video_level || '?'), (source.frame_rate || '?') + ' fps', (movie.bitrate ? Math.round(movie.bitrate / 1000000) + ' Mbps' : 'ukendt bitrate'), format, audio || 'uden lyd'].join(' · ');
     probe.hevcFormat = !!hevcFormat;
     probe.hdr10Base = hdrBase;
@@ -80,7 +91,8 @@
       ' · HDR10-basislag: ' + (hdrBase ? 'bekræftet' : 'ikke bekræftet') + ' · kompatibilitet ' + (source.dv_bl_signal_compatibility_id === undefined || source.dv_bl_signal_compatibility_id === null ? '?' : source.dv_bl_signal_compatibility_id);
     return {client_profile:'xbox', quality:requested, direct:!!(!fallback && supported && sound && container && !useBase),
       hdr10_base:!!(useBase && hevc && !transcode), hevc_output:!!outputHEVC,
-      audio_copy:!!(!fallback && sound), audio_track:chosen && chosen.index !== defaultAudio ? chosen.index : null,
+      audio_copy:!!(originalAudio || !fallback && sound), audio_passthrough:originalAudio,
+      audio_track:chosen && chosen.index !== defaultAudio ? chosen.index : null,
       video_copy:!!(!transcode && (h264 || hevc)), h264:!!(!transcode && h264), capability_reason:reason, bandwidth:0};
   }
   detect.diagnostics = function () { return probe; };
