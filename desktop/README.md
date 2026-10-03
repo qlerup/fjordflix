@@ -15,6 +15,13 @@ lydstyrke og menuer til lydspor og undertekster. Knapper skjules under afspilnin
 og vises ved musebevægelse eller pause. Browserens afspiller ændres ikke.
 HDR-resultatet afhænger af Windows, skærm, grafikdriver og filformat.
 
+Dolby Digital, Dolby Digital Plus, TrueHD og DTS/DTS-HD forsøges sendt uændret
+via WASAPI til Windows' valgte lydudgang. Det bevarer også Atmos/DTS:X-data,
+når HDMI-forbindelsen og lydanlægget understøtter det oprindelige format.
+Vælg HDMI-lydudgangen i Windows. Hvis udgangen afviser formatet, kan mpv afkode
+lyden lokalt til PCM; det er ikke Atmos-passthrough. Serveren konverterer ikke
+desktop-lyden. Passthrough er endnu ikke verificeret med et fysisk Atmos-anlæg.
+
 - Vælg lyd og undertekster i filmvisningen før afspilning.
 - Under afspilning: mellemrum = pause, venstre/højre = ti sekunder, F = fuldskærm, J = undertekstspor,
   # = lydspor, Q = luk afspilleren og vend tilbage til biblioteket.

@@ -162,7 +162,12 @@ draw=function()
     button(a,W-344,y,86,'Lyd',function() open_menu('audio') end,'Vælg lydspor · A')
     button(a,W-246,y,140,'Undertekster',function() open_menu('sub') end,'Vælg undertekster · S')
     button(a,W-94,y,54,'@full',function() mp.commandv('cycle','fullscreen') end,'Fuldskærm · F')
-    text(a,40,H-20,'ORIGINAL KVALITET',11,muted,4,true)
+    local audio_out=prop('audio-out-params',{})
+    local audio_format=audio_out.format or ''
+    local audio_status=audio_format:match('^spdif%-') and
+        (' · '..audio_format:gsub('^spdif%-',''):upper()..' PASSTHROUGH') or
+        (audio_format~='' and (' · PCM '..tostring(audio_out['channel-count'] or '?')..' KANALER') or '')
+    text(a,40,H-20,'ORIGINAL KVALITET'..audio_status,11,muted,4,true)
     text(a,W-40,H-20,'FJORD FLIX',11,muted,6,true)
     if pending_seek or prop('paused-for-cache',false) then
         local ly=pending_seek and H-205 or H/2
