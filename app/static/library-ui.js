@@ -24,6 +24,17 @@ const FjordLibrary = {
     return [item.title, item.catalog?.series_title, item.catalog?.episode_title,
       ...(item.episodes || []).map(m => m.title)].filter(Boolean).join(' ').toLocaleLowerCase('da').includes(query);
   },
+  dynamicRangeLabel(item) {
+    const q = item.quality || {};
+    if (q.dynamic_range === 'Dolby Vision') {
+      // Keep this evidence aligned with app.quality.hdr10_base.
+      const hdr10Base = q.dv_bl !== false && (q.dv_profile === 7 ||
+        q.dv_profile === 8 && q.dv_bl_signal_compatibility_id === 1);
+      return hdr10Base ? 'Dolby Vision/HDR' : 'Dolby Vision';
+    }
+    if (['HDR10', 'HDR10+', 'HLG'].includes(q.dynamic_range)) return 'HDR';
+    return q.dynamic_range || (item.hdr ? 'HDR' : null);
+  },
   qualityLabels(item) {
     const q = item.quality || {};
     const height = Number(item.height), width = Number(item.width);
@@ -38,7 +49,7 @@ const FjordLibrary = {
     const channelLabel = channels === 1 ? 'Mono' : channels === 2 ? 'Stereo'
       : layout.startsWith('5.1') ? '5.1' : layout.startsWith('7.1') ? '7.1' : channels > 2 ? `${channels} kanaler` : '';
     if (channelLabel && !q.dolby_atmos) sound += ` ${channelLabel}`;
-    return [resolution, q.dynamic_range || (item.hdr ? 'HDR' : null), sound].filter(Boolean);
+    return [resolution, this.dynamicRangeLabel(item), sound].filter(Boolean);
   },
   qualityBadges(item) {
     const labels = this.qualityLabels(item);

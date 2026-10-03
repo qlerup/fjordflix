@@ -27,6 +27,14 @@ const path=require('node:path'),assert=require('node:assert/strict');
   assert.equal(await page.locator('#detail').evaluate(e=>e.tagName),'SECTION');
   assert.ok(await page.locator('#shell > main').isHidden());
   assert.ok(page.url().includes('#title/'));assert.equal(await page.locator('.cast-person').count(),10);
+  for (const [quality,expected] of [
+    [{dynamic_range:'Dolby Vision',dv_profile:5},'Dolby Vision'],
+    [{dynamic_range:'HDR10'},'HDR'],
+    [{dynamic_range:'Dolby Vision',dv_profile:8,dv_bl:true,dv_bl_signal_compatibility_id:1},'Dolby Vision/HDR'],
+  ]) {
+    await page.evaluate(quality=>openDetail({...library[0],hdr:true,quality}),quality);
+    assert.ok((await page.locator('#detail-meta > span').allTextContents()).includes(expected));
+  }
   await page.screenshot({path:'test-results/detail-page-desktop.png',fullPage:true});
   await page.goBack();assert.ok(await page.locator('#detail').isHidden());
   await page.goForward();await page.locator('#detail').waitFor();

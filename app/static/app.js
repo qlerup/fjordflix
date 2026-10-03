@@ -231,7 +231,7 @@ async function openDetail(movie) {
   selected = movie; $('detail-title').textContent = movie.title;
   $('subtitle-find').hidden = !state.user?.admin;
   $('detail-art').style.backgroundImage = `url('${FjordLibrary.artwork(movie, 'backdrop')}')`;
-  $('detail-meta').innerHTML = [`${movie.width} × ${movie.height}`,movie.video.toUpperCase(),movie.hdr ? 'HDR' : 'SDR',clock(movie.duration)].map(t => `<span>${escapeHtml(t)}</span>`).join('');
+  $('detail-meta').innerHTML = [`${movie.width} × ${movie.height}`,movie.video.toUpperCase(),FjordLibrary.dynamicRangeLabel(movie) || 'SDR',clock(movie.duration)].map(t => `<span>${escapeHtml(t)}</span>`).join('');
   $('detail-description').textContent = `${(movie.size / 1024**3).toFixed(2)} GB · ${(movie.bitrate/1e6).toFixed(1)} Mbit/s · ${movie.audio?.toUpperCase() || 'Uden lyd'}. En film fra dit fælles bibliotek.`;
   $('detail-quality').value = 'auto'; $('favorite-button').textContent = movie.favorite ? '✓ På min liste' : '＋ Min liste';
   const info = movie.catalog;

@@ -13,6 +13,25 @@ test('source quality badges distinguish cropped 4K, Atmos, channels and mixed se
   assert.equal(ui.qualityBadges({...episode,isSeries:true,episodes:[episode,movie]}).labels.at(-1), 'Varierer');
   assert.equal(ui.qualityBadges({...episode,isSeries:true,episodes:[episode,episode]}).labels.includes('Varierer'), false);
 });
+test('HDR tags distinguish Dolby Vision from a confirmed HDR10 base layer', () => {
+  const label = quality => ui.dynamicRangeLabel({hdr:true,quality});
+  for (const dynamic_range of ['HDR10','HDR10+','HLG']) assert.equal(label({dynamic_range}), 'HDR');
+  const dv = {dynamic_range:'Dolby Vision'};
+  assert.equal(label({...dv,dv_profile:7,dv_bl:true}), 'Dolby Vision/HDR');
+  assert.equal(label({...dv,dv_profile:7}), 'Dolby Vision/HDR');
+  assert.equal(label({...dv,dv_profile:8,dv_bl:true,dv_bl_signal_compatibility_id:1}), 'Dolby Vision/HDR');
+  assert.equal(label({...dv,dv_profile:7,dv_bl:false}), 'Dolby Vision');
+  assert.equal(label({...dv,dv_profile:5}), 'Dolby Vision');
+  for (const compatibility of [undefined,0,2,4]) {
+    assert.equal(label({...dv,dv_profile:8,dv_bl_signal_compatibility_id:compatibility}), 'Dolby Vision');
+  }
+  assert.equal(label(dv), 'Dolby Vision');
+  assert.equal(label({dynamic_range:'SDR'}), 'SDR');
+  assert.equal(ui.dynamicRangeLabel({hdr:true}), 'HDR');
+  assert.equal(ui.dynamicRangeLabel({hdr:false}), null);
+  assert.ok(ui.qualityBadges({quality:{...dv,dv_profile:7}}).labels.includes('Dolby Vision/HDR'));
+});
+
 test('one card per series, natural episode ordering, sparse seasons and duplicates', () => {
   const items = [ep('a',2,10),ep('b',1,2),ep('c',1,10),ep('d',0,1),ep('e',1,2),{id:'film',title:'Film'}];
   const cards = ui.cards(items);
