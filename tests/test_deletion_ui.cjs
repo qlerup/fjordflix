@@ -9,6 +9,7 @@ test('confirmation snapshots the whole series, cancel is harmless, errors allow 
   w.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
   w.HTMLDialogElement.prototype.close = function() { this.open = false; };
   w.$ = id => w.document.getElementById(id);
+  w.closeDetailPage = () => { w.$('detail').hidden = true; };
   w.state = {user:{admin:true}};
   w.library = [{id:'a', series_key:'flash', catalog:{series_title:'Flash',season:1,episode:1}}, {id:'b',series_key:'flash'}, {id:'c'}];
   w.selected = w.library[0];

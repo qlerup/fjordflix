@@ -64,7 +64,7 @@ def digest(token):
 
 
 media.init(db)
-catalog.init(db)
+catalog.init(db, DATA)
 
 
 def stop_job(key):
@@ -823,6 +823,25 @@ def favorite(mid: str, u=Depends(user)):
     with db() as conn:
         conn.execute('INSERT INTO progress(user_id,movie_id,position,favorite) VALUES (?,?,0,1) ON CONFLICT(user_id,movie_id) DO UPDATE SET favorite=1-favorite', (u['id'], mid))
     return {'ok': True}
+
+
+@app.get('/api/movies/{mid}/credits')
+def movie_credits(mid: str, u=Depends(user)):
+    _, meta = movie(mid)
+    try:
+        return catalog.credits(meta.get('catalog', {}))
+    except ValueError as error:
+        raise HTTPException(503, str(error))
+
+
+@app.get('/api/people/{filename}')
+def person_portrait(filename: str, u=Depends(user)):
+    if not re.fullmatch(r'[A-Za-z0-9]+\.jpg', filename):
+        raise HTTPException(404)
+    path = DATA / 'people' / filename
+    if not path.is_file():
+        raise HTTPException(404)
+    return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control':'private, max-age=86400'})
 
 
 @app.get('/api/movies/{mid}/tracks')

@@ -48,7 +48,8 @@ const server=http.createServer(async(req,res)=>{
     assert.equal(await page.locator('#series-episodes .episode-card').count(),2);
     await page.locator('#series-episodes .episode-card').nth(1).click();
     assert.equal(await page.locator('#series-episodes [aria-pressed="true"]').getAttribute('data-episode-id'),'c'.repeat(32));
-    await page.locator('#series-season').selectOption('2');
+    await page.locator('.fx-select-button[data-select-id="series-season"]').click();
+    await page.getByRole('option',{name:'Sæson 2',exact:true}).click();
     assert.equal(await page.locator('#series-episodes .episode-card').count(),1);
     assert.equal(await page.locator('#series-episodes [aria-pressed="true"]').getAttribute('data-episode-id'),'a'.repeat(32));
     await page.waitForFunction(()=>document.querySelector('#play-button').textContent==='▶ Afspil afsnit');
@@ -56,7 +57,7 @@ const server=http.createServer(async(req,res)=>{
     await page.locator('#edit-title').fill('My corrected episode');
     await page.locator('#edit-overview').fill('<img src=x onerror=alert(1)> Manual text');
     await page.locator('#library-edit-save').click();
-    await page.waitForFunction(()=>document.querySelector('#detail-title').textContent==='My corrected episode');
+    await page.waitForFunction(()=>document.querySelector('#detail-title').textContent==='The Show' && document.querySelector('#detail-description').textContent.includes('Manual text'));
     assert.equal(await page.locator('#detail-description img').count(),0);
     for(const width of [390,768,1440]){
       await page.setViewportSize({width,height:900});
@@ -64,7 +65,9 @@ const server=http.createServer(async(req,res)=>{
       assert(await page.locator('#detail').evaluate(e=>e.scrollWidth<=e.clientWidth),'Dialog overflow');
     }
     await page.screenshot({path:path.join(require('node:os').tmpdir(),'fjordflix-series-detail-qa.png'),fullPage:true});
-    await page.locator('[data-close="detail"]').click();
+    await page.locator('#detail-back').click();
+    await page.locator('#detail').waitFor({state:'hidden'});
+    await page.locator('#sidebar-back').click();
     await page.getByRole('button',{name:'Film',exact:true}).click();
     assert.equal(await page.locator('#movie-grid .movie-card').count(),1);
     admin=false;await page.reload();

@@ -8,7 +8,7 @@ let remoteHover;
 function remoteTarget(element) {
   const dropdown = element?.closest('.fx-select-button,.fx-select-option');
   if (dropdown) return ['detail-quality','player-quality','series-season'].includes(dropdown.dataset.selectId) && !dropdown.disabled ? dropdown : null;
-  const target = element?.closest('.sidebar-view,.category-link,.movie-card,[data-view],#play-button,#restart-button,#favorite-button,#player-close,[data-close="detail"],#detail-quality,#player-quality,#hero-action,#player-toggle,#player-rewind,#player-forward,#player-mute,#player-fullscreen,#timeline,#player-volume');
+  const target = element?.closest('.sidebar-view,.category-link,.movie-card,[data-view],#play-button,#restart-button,#favorite-button,#player-close,#detail-back,#detail-quality,#player-quality,#hero-action,#player-toggle,#player-rewind,#player-forward,#player-mute,#player-fullscreen,#timeline,#player-volume');
   if(!target || target.disabled) return null;
   if(target.id === 'hero-action' && !library.length) return null;
   return target;
@@ -89,7 +89,7 @@ function handleRemoteCommand(event) {
   if(event.type === 'volume') { video.volume = Math.max(0,Math.min(1,video.volume+event.delta)); }
   if(event.type === 'quality') {
     if($('player-dialog').open && !switching) remoteSelect($('player-quality'));
-    else if($('detail').open) remoteSelect($('detail-quality'));
+    else if(!$('detail').hidden) remoteSelect($('detail-quality'));
   }
   if(event.type === 'search') {
     if($('player-dialog').open) return;

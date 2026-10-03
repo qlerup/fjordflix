@@ -42,6 +42,7 @@ async function api(path, method = 'GET', data) {
 function badge(id, mode) { $(id).textContent = mode; $(id).className = `badge ${mode === 'Transcoding' ? 'transcode' : mode === 'Direct Stream' ? 'remux' : ''}`; }
 function showAuth() {
   window.FjordOnboarding?.close();
+  closeDetailPage();
   $('shell').hidden = true; $('auth').hidden = false;
   if (state.managed) authMode = 'login';
   else if (state.setup) authMode = 'setup';
@@ -90,6 +91,7 @@ async function boot() {
   userNote.hidden = !state.managed;
   userNote.textContent = 'Konti, adgangskoder og roller styres i FjordHub → Brugere. Listen viser de brugere, der har adgang til FjordFlix.';
   await refresh();
+  restoreDetailRoute();
   if (state.user.admin && window.FjordOnboarding) await window.FjordOnboarding.open();
 }
 async function refresh() { library = await api('/movies'); render(); }
@@ -232,7 +234,7 @@ async function openDetail(movie) {
   showEpisodePicker(movie);
   $('play-button').textContent = movie.position > 1 && movie.position < movie.duration - 2 ? `▶ Fortsæt fra ${clock(movie.position)}` : movie.series_key ? '▶ Afspil afsnit' : '▶ Afspil film';
   $('restart-button').hidden = !(movie.position > 1 && movie.position < movie.duration - 2);
-  if (!$('detail').open) $('detail').showModal();
+  showDetailPage(movie);
   await FjordTracks.prepare(movie);
   if (selected === movie) await updatePlan();
 }
@@ -251,11 +253,11 @@ $('favorite-button').onclick = async () => { try { await api(`/movies/${selected
 function playFromDetail(start) {
   if (window.fjordDesktop) {
     window.fjordDesktop.play({id:selected.id,start,audio_track:FjordTracks.audio,subtitle_track:FjordTracks.subtitle})
-      .then(() => { $('detail').close(); toast('Afspiller originalfilen i FjordFlix til Windows.'); })
+      .then(() => { toast('Afspiller originalfilen i FjordFlix til Windows.'); })
       .catch(e => toast(e.message));
     return;
   }
-  document.activeElement?.blur(); $('detail').close(); $('player-dialog').showModal(); fitPlayerViewport(); $('player-quality').value = $('detail-quality').value; startPlayback(start).catch(e => showPlayerError(e.message));
+  document.activeElement?.blur(); $('player-dialog').showModal(); fitPlayerViewport(); $('player-quality').value = $('detail-quality').value; startPlayback(start).catch(e => showPlayerError(e.message));
 }
 window.fjordDesktop?.onEnded(() => refresh().catch(() => {}));
 $('play-button').onclick = () => playFromDetail(selected.position < selected.duration - 2 ? selected.position : 0);

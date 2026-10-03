@@ -1,19 +1,99 @@
 """Optional TMDB enrichment. Never replace technical playback metadata."""
 import os
+import json
+import time
 import re
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+import threading
 from difflib import SequenceMatcher
 
 import httpx
 
 _db = None
+_data = None
+_credits_lock = threading.Lock()
 
 
-def init(db):
-    global _db
+def credits(info):
+    """Persist one shared cast list per TMDB title, including series episodes."""
+    with _credits_lock:
+        return _credits(info)
+
+
+def local_portraits(cast):
+    def portrait(person):
+        person = dict(person)
+        profile = person.get('profile_path')
+        person['profile_url'] = None
+        if not _data or not isinstance(profile, str) or not re.fullmatch(r'/[A-Za-z0-9]+\.jpg', profile):
+            return person
+        folder = _data / 'people'
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / profile[1:]
+            if path.exists() or download_image(profile, path, 'w185'):
+                person['profile_url'] = '/api/people/' + profile[1:]
+        except (httpx.HTTPError, OSError, ValueError):
+            pass
+        return person
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        return {'cast': list(pool.map(portrait, cast))}
+
+
+def _credits(info):
+    mid = info.get('tmdb_id')
+    kind = 'tv' if info.get('media_type') == 'tv' else 'movie'
+    if not isinstance(mid, int) or mid <= 0:
+        return {'cast': []}
+    key = f'credits:{kind}:{mid}'
+    cached = None
+    if _db:
+        with _db() as conn:
+            row = conn.execute('SELECT value FROM catalog_settings WHERE name=?', (key,)).fetchone()
+        if row:
+            cached = json.loads(row[0])
+            return local_portraits(cached['cast'])
+    token, _ = credential()
+    if not token:
+        return {'cast': cached['cast'] if cached else []}
+    params = {'language': 'da-DK'}
+    headers = {}
+    if re.fullmatch(r'[a-fA-F0-9]{32}', token):
+        params['api_key'] = token
+    else:
+        headers['Authorization'] = 'Bearer ' + token
+    endpoint = 'aggregate_credits' if kind == 'tv' else 'credits'
+    try:
+        response = httpx.get(f'https://api.themoviedb.org/3/{kind}/{mid}/{endpoint}',
+                             params=params, headers=headers, timeout=8, follow_redirects=False)
+        response.raise_for_status()
+        cast = []
+        for person in response.json().get('cast', [])[:24]:
+            profile = person.get('profile_path')
+            roles = person.get('roles', [])
+            cast.append({'name': str(person.get('name') or '')[:200],
+                         'character': str(person.get('character') or ', '.join(r.get('character', '') for r in roles))[:300],
+                         'profile_path': profile
+                         if isinstance(profile, str) and re.fullmatch(r'/[A-Za-z0-9]+\.jpg', profile) else None})
+    except (httpx.HTTPError, ValueError):
+        if cached:
+            return {'cast': cached['cast']}
+        raise ValueError('Skuespillere kunne ikke hentes fra TMDB lige nu.') from None
+    if _db:
+        with _db() as conn:
+            conn.execute('INSERT OR REPLACE INTO catalog_settings VALUES (?,?)',
+                         (key, json.dumps({'fetched': time.time(), 'cast': cast})))
+    return local_portraits(cast)
+
+
+def init(db, data_dir=None):
+    global _db, _data
     with db() as conn:
         conn.execute('CREATE TABLE IF NOT EXISTS catalog_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)')
     _db = db
+    _data = Path(data_dir) if data_dir is not None else None
 
 
 def credential():
@@ -229,6 +309,11 @@ def enrich(title, mid, data_dir, tmdb_id=None):
         # External metadata is optional; malformed provider data must not reject video uploads.
         return {**identify(title), 'status': 'error'}
     if result['status'] == 'matched':
+        try:
+            credits(result)
+        except (httpx.HTTPError, OSError, ValueError):
+            # Optional credits must never prevent indexing or playback.
+            pass
         images = [('poster_path', '', 'w500'), ('backdrop_path', '-backdrop', 'w1280')]
         if result.get('media_type') == 'tv':
             images.append(('episode_path', '-episode', 'w300'))

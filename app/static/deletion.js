@@ -30,7 +30,7 @@ function setupLibraryDeletion() {
     $('delete-submit').setAttribute('aria-busy', 'true');
     try {
       const result = await api(`/movies/${pending.mid}`, 'DELETE', {ids: pending.ids});
-      dialog.close(); $('detail').close(); selected = null;
+      dialog.close(); closeDetailPage(); selected = null;
       library = library.filter(item => !result.deleted.includes(item.id)); render();
       toast(result.deleted.length === 1 ? 'Slettet fra biblioteket.' : `${result.deleted.length} afsnit er slettet.`);
       if (result.cleanup_pending) toast('Fjernet fra biblioteket, men nogle filer kunne ikke ryddes fra disken. Kontakt administratoren.');

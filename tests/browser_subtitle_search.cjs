@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  let downloaded=false,configured=false,searches=0;
- const movie={id:'a'.repeat(32),title:'Scary Movie',width:3840,height:2160,video:'hevc',audio:'aac',duration:61,size:500000000,bitrate:60000000,position:0,catalog:{media_type:'movie'},tracks:{version:1,audio:[],subtitles:[]}};
+ const movie={id:'a'.repeat(32),title:'Scary Movie',width:3840,height:2160,format:'matroska',video:'hevc',audio:'aac',duration:61,size:500000000,bitrate:60000000,position:0,catalog:{media_type:'movie'},tracks:{version:1,audio:[],subtitles:[]}};
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());
   if(url.pathname==='/')return route.fulfill({path:path.resolve('app/static/index.html'),contentType:'text/html'});
@@ -32,12 +32,13 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  try {
   await page.goto('http://fjordflix.test/');
   await page.locator('#admin-open').click();
-  await page.getByRole('button',{name:'Undertekster · OpenSubtitles',exact:true}).click();
+  await page.locator('[data-settings-tab="subtitles"]').click();
+  await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('ikke tilsluttet'));
   await page.locator('#os-key').fill('test-key');await page.locator('#os-username').fill('tester');await page.locator('#os-password').fill('test-password');
   await page.locator('#os-save').click();await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('Tilsluttet som'));
   assert.equal(await page.locator('#os-password').inputValue(),'');
   await page.screenshot({path:'test-results/subtitle-settings.png'});
-  await page.locator('#os-close').click();await page.locator('#movie-grid .movie-card').first().click();
+  await page.locator('[data-close="admin-dialog"]').click();await page.locator('#movie-grid .movie-card').first().click();
   await page.locator('#subtitle-find').click();assert.equal(searches,0);
   await page.locator('#subtitle-search-submit').click();await page.getByRole('button',{name:'Hent SRT',exact:true}).waitFor();
   await page.screenshot({path:'test-results/subtitle-search-desktop.png'});

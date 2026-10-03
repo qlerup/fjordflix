@@ -85,7 +85,7 @@ function setupLibraryUI() {
       const result = await api(`/movies/${mid}/metadata/refresh`, 'POST', {
         ...(query ? {search_title:query} : {}), ...(tmdbId !== null ? {tmdb_id:tmdbId} : {})});
       await refresh();
-      if (selected?.id === mid && $('detail').open) {
+      if (selected?.id === mid && !$('detail').hidden) {
         await openDetail(library.find(m => m.id === mid));
       }
       toast(result.message);
@@ -193,7 +193,7 @@ function setupLibraryUI() {
     $('library-edit-form').reset(); $('library-edit-error').textContent = '';
     $('library-edit-lookup-status').textContent = ''; $('library-edit-matches').replaceChildren();
     fillEditor();
-    $('detail').close(); $('library-editor').showModal();
+    $('library-editor').showModal();
   };
   const editorDraft = () => {
     const tv = $('edit-kind').value === 'tv';

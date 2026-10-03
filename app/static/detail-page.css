@@ -1,0 +1,28 @@
+#detail{position:relative;isolation:isolate;min-height:calc(100vh - 90px);padding:30px clamp(22px,4vw,64px) 70px;overflow:hidden;background:#101014}
+.has-library-sidebar #detail{margin-left:var(--sidebar-width)}
+#detail-art{position:absolute;inset:0 0 auto;height:660px;background-size:cover;background-position:center 25%;opacity:.24;z-index:-2;filter:blur(12px)}
+#detail-art:after{content:'';position:absolute;inset:0;background:linear-gradient(0deg,#101014,transparent 90%),linear-gradient(90deg,#101014aa,transparent)}
+.detail-back{display:inline-flex;align-items:center;gap:9px;background:transparent;color:#c8c6d0;padding:10px 0;margin-bottom:30px}
+.detail-layout{display:grid;grid-template-columns:clamp(180px,22vw,290px) minmax(0,1fr);gap:clamp(28px,4vw,64px);max-width:1350px;margin:auto}
+#detail-poster{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:10px;box-shadow:0 15px 50px #0008;background:#24242d}
+#detail .detail-body{padding:8px 0 0;min-width:0;display:flex;flex-direction:column;align-items:stretch}
+#detail-title{font-size:clamp(28px,3.2vw,48px);line-height:1.12;letter-spacing:-1.4px;margin:17px 0 20px;outline:none}
+#detail .meta{gap:8px;margin-bottom:20px}#detail .meta span{font-size:12px}
+#detail-description{font-size:15px;line-height:1.8;max-width:850px;color:#cfccd6;margin:24px 0}
+#detail .hero-actions{order:-1;margin:0 0 20px;gap:10px}
+#detail-kind{order:-5}#detail-title{order:-4}#detail-meta{order:-3}
+#detail .play-plan{font-size:12px;margin:8px 0 20px;padding:14px 0;border-top:1px solid var(--line)}
+#detail .track-options{gap:16px}#detail .quality-label{max-width:560px}#detail label{font-size:12px;color:#bbb8c5}
+#detail .fine{font-size:11px}#detail-extras{max-width:1350px;margin:45px auto 0}
+#detail #detail-tools{order:1;margin:16px 0 0;border-top:1px solid var(--line);padding-top:16px}
+#detail #detail-tools:has(>button:not([hidden])){display:flex}#detail #detail-tools:not(:has(>button:not([hidden]))){display:none}
+#detail-episode{order:-2;margin:0 0 18px;color:#b6b2c0}
+#detail .detail-body>p.fine{margin:6px 0 12px}#detail .track-options{margin:0 0 4px}#detail .quality-label{margin:6px 0 0}#detail .custom-select{margin-bottom:8px}#detail .play-plan{margin-bottom:12px}
+#detail #episode-picker{margin:0 0 40px;padding:0 0 32px;border-bottom:1px solid var(--line)}
+#detail-cast{display:flex;gap:24px;overflow-x:auto;padding:6px 0 18px;scrollbar-width:thin}
+.cast-person{flex:0 0 130px;text-align:center}.cast-portrait{position:relative;display:grid;place-items:center;width:130px;height:130px;border-radius:50%;overflow:hidden;background:#292933;color:#9994a7;font-size:38px}
+.cast-portrait img{position:absolute;width:100%;height:100%;object-fit:cover;object-position:center 25%}.cast-person h3{font-size:13px;margin:14px 0 5px;line-height:1.4}.cast-person p{font-size:12px;color:var(--muted);margin:0;line-height:1.5}
+.cast-heading{font-size:21px;letter-spacing:-.4px}.on-detail-page #shell>footer{display:none}
+@media(max-width:760px){.detail-layout{grid-template-columns:110px minmax(0,1fr);gap:20px}#detail .detail-body{display:contents}#detail-poster{grid-column:1;grid-row:1/4}#detail-kind,#detail-title,#detail-meta{grid-column:2;margin:0}#detail-title{font-size:26px}#detail .detail-body> :not(#detail-kind):not(#detail-title):not(#detail-meta){grid-column:1/-1}#detail .hero-actions{margin-top:12px}#detail{padding:20px 20px 45px}.detail-back{margin-bottom:24px}#detail-extras{margin-top:35px}.cast-person{flex-basis:100px}.cast-portrait{width:100px;height:100px}.on-detail-page .library-categories{display:none}.on-detail-page #shell{margin-left:0!important}}
+
+@media(max-width:760px){.has-library-sidebar #detail,.on-detail-page.has-library-sidebar #shell>header{margin-left:0}}

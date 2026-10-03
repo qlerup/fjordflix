@@ -43,6 +43,7 @@ function setupCategories() {
     <button id="sidebar-back" class="sidebar-view" type="button" hidden aria-label="Tilbage til bibliotek"><span aria-hidden="true">←</span> Tilbage</button>
     <section id="sidebar-genres"><h2 id="categories-title">Genrer</h2><nav id="categories-links" aria-label="Genrer"></nav></section>
     <div class="sidebar-foot">Din biograf.<br>På dine præmisser.</div></aside>`);
+  $('shell').prepend($('library-categories'));
   document.querySelectorAll('[data-side-view]').forEach(button => {
     button.onclick = () => document.querySelector(`header [data-view="${button.dataset.sideView}"]`)?.click();
   });
