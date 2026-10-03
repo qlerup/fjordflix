@@ -18,7 +18,11 @@ const path=require('node:path'),assert=require('node:assert/strict');
   return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
  });
  try {
-  await page.goto('http://fjordflix.test');await page.locator('#movie-grid .movie-card').first().click();
+  await page.goto('http://fjordflix.test');
+  await page.locator('#movie-grid .movie-card').first().waitFor();
+  // Reproduce an older cached categories script's DOM structure.
+  await page.evaluate(()=>document.querySelector('.library').prepend(document.getElementById('library-categories')));
+  await page.locator('#movie-grid .movie-card').first().click();
   await page.locator('.cast-person').first().waitFor();await page.waitForFunction(()=>document.getElementById('plan-badge').textContent==='Direct Play');
   assert.equal(await page.locator('#detail').evaluate(e=>e.tagName),'SECTION');
   assert.ok(await page.locator('#shell > main').isHidden());

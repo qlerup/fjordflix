@@ -34,6 +34,12 @@ const assert=require('node:assert/strict');
   const png=await electron.evaluate(async ({BrowserWindow}) => (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
   fs.writeFileSync(path.join(temp,'library.png'),Buffer.from(png,'base64'));
   assert.equal(await page.evaluate(()=>typeof window.require),'undefined');
+  await page.locator('#movie-grid .movie-card').first().click();
+  assert.ok(await page.locator('#library-categories').isVisible(),'Windows detail page keeps sidebar visible');
+  assert.equal(await page.locator('#library-categories').evaluate(el=>el.parentElement.id),'shell');
+  const sidebar=await page.locator('#library-categories').boundingBox(),detail=await page.locator('#detail').boundingBox();
+  assert.equal(sidebar.x,0);assert.ok(detail.x>=sidebar.width,'Windows detail content stays beside navigation');
+  if(process.env.FJORDFLIX_UI_ONLY){console.log('PASS: actual Electron title page keeps sidebar fixed and visible');return;}
   await page.evaluate(()=>window.fjordDesktop.play({id:'a'.repeat(32),start:3,audio_track:0,subtitle_track:null}));
   let progress=0;
   for(let n=0;n<25;n++){

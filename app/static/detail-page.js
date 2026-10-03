@@ -13,6 +13,11 @@ function showDetailPage(movie) {
   const page = $('detail'), wasHidden = page.hidden;
   if (wasHidden) { detailScroll = window.scrollY; detailFocus = document.activeElement; }
   page.hidden = false;
+  // Keep navigation outside the content that is hidden, also after an upgrade
+  // from a cached layout that placed it inside the library section.
+  const sidebar = $('library-categories');
+  if (sidebar.parentElement !== $('shell')) $('shell').prepend(sidebar);
+  sidebar.hidden = false;
   document.querySelector('#shell > main').hidden = true;
   document.body.classList.add('on-detail-page');
   const hash = '#title/' + movie.id;
