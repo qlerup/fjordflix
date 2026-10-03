@@ -15,6 +15,27 @@ def hevc_meta(**extra):
             'bitrate':40000000, **extra}
 
 
+def test_stream_progress_is_owner_scoped_and_private(tv_client, tmp_path):
+    client, credentials, mid = tv_client
+    _, headers = login(client, credentials)
+    with main.db() as conn:
+        uid = conn.execute('SELECT id FROM users WHERE name=?', (credentials['name'],)).fetchone()[0]
+    sid = 'diagnostic-test'
+    (tmp_path / 'progress.txt').write_text('out_time_us=6000000\nspeed=0.75x\nprogress=continue\n')
+    main.JOBS[sid] = {'user':uid, 'folder':tmp_path, 'touch':0}
+    try:
+        assert client.post(f'/tv-api/streams/{sid}/heartbeat').status_code == 401
+        response = client.post(f'/tv-api/streams/{sid}/heartbeat',headers=headers)
+        assert response.status_code == 200
+        assert response.json() == {'ok':True,'transcoding':{'finished':False,'speed':0.75,'encoded_seconds':6}}
+        assert str(tmp_path) not in response.text
+        with pytest.raises(main.HTTPException) as foreign:
+            main.heartbeat(sid, {'id':'someone-else'})
+        assert foreign.value.status_code == 404
+    finally:
+        main.JOBS.pop(sid, None)
+
+
 @pytest.mark.parametrize('quality', ['auto', 'original', '2160'])
 def test_xbox_transcode_is_full_hd_but_hevc_copy_preserves_4k(quality):
     data = main.Playback(client_profile='xbox', quality=quality)
@@ -84,6 +105,9 @@ def test_xbox_wide_4k_fallback_encodes_actual_full_hd_frames(tv_client, monkeypa
     try:
         job = main.JOBS[result['session']]
         job['process'].wait(timeout=15)
+        measured = client.post(f'/tv-api/streams/{result["session"]}/heartbeat',headers=headers).json()['transcoding']
+        assert measured['finished'] and measured['encoded_seconds'] > 0
+        assert measured['speed'] > 0
         inspected = subprocess.run(['ffprobe','-v','error','-show_streams','-of','json',
                                     str(job['folder']/'index.m3u8')],check=True,capture_output=True,timeout=20)
         video = next(s for s in json.loads(inspected.stdout)['streams'] if s['codec_type']=='video')

@@ -989,8 +989,10 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     if soft:
         filters += ['setpts=PTS-STARTPTS']
     if meta['hdr']:
-        filters += ['zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']
-    filters += [f"scale=-2:{result['height']}", 'format=yuv420p']
+        filters += transcoding.hdr_filters(result['height'] if data.client_profile == 'xbox' else None)
+    if not (meta['hdr'] and data.client_profile == 'xbox'):
+        filters += [f"scale=-2:{result['height']}"]
+    filters += ['format=yuv420p']
     hardware_inputs, filter_chain = transcoding.accelerated_filters(
         Path(row['path']).resolve(), result['height'], ','.join(filters),
         enabled=GPU and result['mode'] == 'Transcoding', hdr=bool(meta['hdr']), burn=bool(burn), soft=soft)
@@ -1005,7 +1007,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         if subtitle_file:
             shutil.copyfile(subtitle_file, folder / 'subtitles.vtt')
         bitmap = burn and subtitle['delivery'] == 'burn'
-        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', str(Path(row['path']).resolve())]
+        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-progress', str(folder / 'progress.txt'), '-threads', '4', '-protocol_whitelist', 'file,pipe', '-ss', str(offset), '-i', str(Path(row['path']).resolve())]
         cmd += ['-map', '[vout]' if bitmap else '0:v:0', '-map', f"0:{audio['index']}" if audio else '0:a:0?', '-sn']
         encoder = 'Remux + original lyd' if data.audio_copy else 'Remux + AAC'
         if result['mode'] == 'Direct Stream':
@@ -1143,7 +1145,8 @@ def heartbeat(sid: str, u=Depends(user)):
         if not job or job['user'] != u['id']:
             raise HTTPException(404)
         job['touch'] = time.time()
-    return {'ok': True}
+        folder = job['folder']
+    return {'ok': True, 'transcoding': transcoding.progress(folder)}
 
 
 @app.delete('/api/streams/{sid}')

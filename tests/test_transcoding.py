@@ -1,7 +1,40 @@
 from types import SimpleNamespace
 import subprocess
+import json
+import shutil
 import pytest
 from app import transcoding
+
+
+def test_progress_ignores_partial_records_and_nonfinite_values(tmp_path):
+    path = tmp_path / 'progress.txt'
+    path.write_text('out_time_us=6000000\nspeed=1.25x\nprogress=continue\nout_time_us=9000000\nspeed=0.5x\n')
+    assert transcoding.progress(tmp_path) == {'finished':False, 'encoded_seconds':6, 'speed':1.25}
+    path.write_text('out_time_us=9000000\nspeed=0.5x\nprogress=continue\n')
+    assert transcoding.progress(tmp_path)['speed'] == 0.5
+    path.write_text('out_time_us=N/A\nspeed=nanx\nprogress=end\n')
+    assert transcoding.progress(tmp_path) == {'finished':True}
+    path.write_text('speed=3x\n')
+    assert transcoding.progress(tmp_path) == {}
+
+
+def test_scaled_hdr_pipeline_outputs_decodable_sdr_with_expected_dimensions(tmp_path):
+    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
+        pytest.skip('Real FFmpeg is required')
+    target = tmp_path / 'sdr.mp4'
+    filters = ['setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc',
+               *transcoding.hdr_filters(90), 'format=yuv420p']
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',
+                    'color=c=blue:s=320x180:r=24:d=0.5,format=yuv420p10le',
+                    '-vf',','.join(filters),'-c:v','libx264','-y',str(target)],
+                   check=True,capture_output=True,timeout=20)
+    result = subprocess.run(['ffprobe','-v','error','-show_streams','-of','json',str(target)],
+                            check=True,capture_output=True,timeout=20)
+    video = json.loads(result.stdout)['streams'][0]
+    assert (video['width'], video['height'], video['pix_fmt']) == (160,90,'yuv420p')
+    assert video['color_transfer'] == video['color_primaries'] == video['color_space'] == 'bt709'
+    subprocess.run(['ffmpeg','-v','error','-i',str(target),'-f','null','-'],
+                   check=True,capture_output=True,timeout=20)
 
 
 @pytest.fixture
