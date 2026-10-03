@@ -28,6 +28,14 @@ const path=require('node:path'),assert=require('node:assert/strict');
   await page.goForward();await page.locator('#detail').waitFor();
   await page.reload();await page.locator('#detail').waitFor();
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-results/detail-page-mobile.png',fullPage:true});
+  for(const width of [390,700,1440]){
+    await page.setViewportSize({width,height:844});
+    assert.ok(await page.locator('#library-categories').isVisible(),'sidebar stays visible on detail page');
+    const sidebar=await page.locator('#library-categories').boundingBox(),detail=await page.locator('#detail').boundingBox();
+    assert.equal(sidebar.x,0,'sidebar remains anchored to the left');
+    assert.ok(detail.x>=sidebar.width,'detail content leaves room for sidebar');
+  }
+  await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no mobile overflow');
   await page.locator('#detail-back').click();assert.ok(await page.locator('#detail').isHidden());
   await page.evaluate(() => {
