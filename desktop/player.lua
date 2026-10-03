@@ -7,6 +7,19 @@ local areas, menu, scroll, focus = {}, nil, 0, 0
 local title, last_move, drag = 'FjordFlix', mp.get_time(), nil
 local white, muted, red, panel = 'FFFFFF', 'B7B5BC', '5640F4', '1D1919'
 local draw
+local pending_seek, preview_file, preview_target, requested_target
+local preview_serial, preview_request_time = 0, 0
+local function clear_preview()
+    preview_file=nil; mp.commandv('overlay-remove',42)
+end
+local function request_preview(target)
+    target=math.floor(target+0.5)
+    if target==requested_target then return end
+    if mp.get_time()-preview_request_time<0.25 then return end
+    preview_request_time=mp.get_time(); requested_target=target; preview_serial=preview_serial+1
+    clear_preview()
+    mp.commandv('script-message','fjord-preview-request',tostring(preview_serial),tostring(target))
+end
 local function prop(n, fallback) return mp.get_property_native(n, fallback) end
 local function clamp(v, a, b) return math.max(a, math.min(b, v)) end
 local function clock(s)
@@ -78,18 +91,25 @@ local function track_items(kind)
     end
     return rows
 end
-local function seek(x)
+local function seek_to(target)
     local duration=prop('duration',0)
-    if duration>0 then mp.commandv('seek',clamp((x-40)/(W-80),0,1)*duration,'absolute+exact') end
+    if duration<=0 then return end
+    pending_seek=clamp(target,0,math.max(0,duration-0.1))
+    last_move=mp.get_time()
+    request_preview(pending_seek)
+    draw()
+    local ok=mp.commandv('seek',pending_seek,'absolute+exact')
+    if not ok then pending_seek=nil; clear_preview(); draw() end
 end
+local function seek(x) seek_to(clamp((x-40)/(W-80),0,1)*prop('duration',0)) end
 local function volume(x) mp.set_property_number('volume',clamp((x-294)/100,0,1)*100) end
 draw=function()
     local sw,sh=mp.get_osd_size(); if not sw or sw<1 or sh<1 then return end
     H=720; W=math.max(640,sw/sh*H)
     local px,py=mp.get_mouse_pos(); mx=px/sw*W; my=py/sh*H
-    local visible=menu or drag or focus>0 or prop('pause',false) or mp.get_time()-last_move<3
+    local visible=pending_seek or menu or drag or focus>0 or prop('pause',false) or mp.get_time()-last_move<3
     areas={}
-    if not visible then overlay:remove(); return end
+    if not visible then overlay:remove(); mp.commandv('overlay-remove',42); return end
     local a=assdraw.ass_new()
     -- Soft scrims keep controls legible without framing the film in a toolbar.
     for i=0,47 do
@@ -99,7 +119,8 @@ draw=function()
     button(a,32,28,48,'@back',function() mp.commandv('quit') end,'Tilbage til bibliotek')
     text(a,100,36,'FJORD FLIX',12,muted,4,true)
     text(a,100,64,title,24,white,4,true,math.max(15,math.floor((W-180)/14)))
-    local pos,duration=prop('time-pos',0),prop('duration',0)
+    local pos,duration=pending_seek or prop('time-pos',0),prop('duration',0)
+    if drag=='seek' then pos=clamp((mx-40)/(W-80),0,1)*duration end
     text(a,40,H-139,clock(pos),15,white)
     text(a,W-40,H-139,duration>0 and ('−'..clock(duration-pos)) or 'Indlæser…',15,muted,6)
     local sy=H-115
@@ -112,6 +133,17 @@ draw=function()
     box(a,40+(W-80)*progress-6,sy-4,13,13,white,'00',6)
     local timeline=area(40,sy-14,W-80,32,function() seek(mx) end,'Spol')
     timeline.kind='seek'
+    local preview_at=pending_seek or ((hit(timeline) or drag=='seek') and duration>0 and clamp((mx-40)/(W-80),0,1)*duration or nil)
+    if preview_at then request_preview(preview_at) end
+    if preview_at and preview_file and math.abs(preview_target-preview_at)<=0.55 and not menu then
+        -- Bitmap overlays sit above ASS controls, so reserve their own area.
+        local pw=pending_seek and math.min(W-100,(H-310)*16/9) or 240
+        local ph=pw*9/16
+        local px=pending_seek and (W-pw)/2 or clamp(mx-pw/2,40,W-40-pw)
+        local py=pending_seek and (H-180-ph)/2 or sy-ph-64
+        mp.command_native({name='overlay-add',id=42,x=math.floor(px*sw/W),y=math.floor(py*sh/H),
+            file=preview_file,offset=0,fmt='bgra',w=640,h=360,stride=2560,dw=math.floor(pw*sw/W),dh=math.floor(ph*sh/H)})
+    else mp.commandv('overlay-remove',42) end
     if hit(timeline) and duration>0 then
         local tx=clamp(mx,75,W-75)
         box(a,tx-40,sy-54,80,32,panel,'00',8)
@@ -119,8 +151,8 @@ draw=function()
     end
     local y=H-86
     button(a,40,y,52,prop('pause',false) and '@play' or '@pause',function() mp.commandv('cycle','pause') end,'Afspil / pause · Mellemrum',true)
-    button(a,104,y,54,'−10',function() mp.commandv('seek',-10,'relative+exact') end,'10 sekunder tilbage · ←')
-    button(a,168,y,54,'+10',function() mp.commandv('seek',10,'relative+exact') end,'10 sekunder frem · →')
+    button(a,104,y,54,'−10',function() seek_to((pending_seek or prop('time-pos',0))-10) end,'10 sekunder tilbage · ←')
+    button(a,168,y,54,'+10',function() seek_to((pending_seek or prop('time-pos',0))+10) end,'10 sekunder frem · →')
     if W>850 then
         button(a,236,y,48,prop('mute',false) and '@mute' or '@volume',function() mp.commandv('cycle','mute') end,'Lyd til / fra · M')
         local v=clamp(prop('volume',100),0,100)
@@ -132,9 +164,10 @@ draw=function()
     button(a,W-94,y,54,'@full',function() mp.commandv('cycle','fullscreen') end,'Fuldskærm · F')
     text(a,40,H-20,'ORIGINAL KVALITET',11,muted,4,true)
     text(a,W-40,H-20,'FJORD FLIX',11,muted,6,true)
-    if prop('paused-for-cache',false) then
-        box(a,W/2-100,H/2-28,200,56,panel,'20',14)
-        text(a,W/2,H/2,'Indlæser'..string.rep('·',math.floor(mp.get_time()*2)%4),20,white,5)
+    if pending_seek or prop('paused-for-cache',false) then
+        local ly=pending_seek and H-205 or H/2
+        box(a,W/2-125,ly-28,250,56,panel,'20',14)
+        text(a,W/2,ly,(pending_seek and 'Gør klar · '..clock(pending_seek) or 'Indlæser')..string.rep('·',math.floor(mp.get_time()*2)%4),20,white,5)
     end
     if menu then
         local rows=track_items(menu)
@@ -171,7 +204,7 @@ mp.add_forced_key_binding('MBTN_LEFT','fjord-click',function(e)
     if e.event=='up' then if drag=='seek' then seek(mx) end; drag=nil; wake(); return end
     if e.event~='down' and e.event~='press' then return end
     wake()
-    for _,b in ipairs(areas) do if hit(b) then drag=b.kind; b.fn(); wake(); return end end
+    for _,b in ipairs(areas) do if hit(b) then drag=b.kind; if b.kind~='seek' then b.fn() end; wake(); return end end
     if menu then menu=nil; focus=0 else mp.commandv('cycle','pause') end; wake()
 end,{complex=true})
 mp.add_forced_key_binding('MBTN_LEFT_DBL','fjord-double',function() if not menu and my<H-180 then mp.commandv('cycle','fullscreen') end end)
@@ -185,7 +218,7 @@ for key,delta in pairs({UP=-1,DOWN=1}) do
         if menu then
             if (delta>0 and focus>=#areas) or (delta<0 and focus<=2 and scroll>0) then scroll=scroll+delta
             else focus=clamp(focus+delta,1,#areas) end
-        else mp.commandv('seek',-delta*60,'relative') end
+        else seek_to((pending_seek or prop('time-pos',0))-delta*60) end
         wake()
     end,{repeatable=true})
 end
@@ -193,7 +226,7 @@ for key,delta in pairs({LEFT=-1,RIGHT=1}) do
     mp.add_forced_key_binding(key,'fjord-seek-'..key,function()
         if not menu then
             if areas[focus] and areas[focus].kind=='volume' then mp.set_property_number('volume',clamp(prop('volume',100)+delta*5,0,100))
-            else mp.commandv('seek',delta*10,'relative+exact') end
+            else seek_to((pending_seek or prop('time-pos',0))+delta*10) end
         end
         wake()
     end,{repeatable=true})
@@ -207,5 +240,15 @@ mp.add_forced_key_binding('TAB','fjord-tab',function() wake(); focus=focus%math.
 mp.add_forced_key_binding('Shift+TAB','fjord-backtab',function() wake(); focus=(focus-2)%math.max(1,#areas)+1; draw() end)
 mp.add_forced_key_binding('ENTER','fjord-enter',function() if areas[focus] then areas[focus].fn() end; wake() end)
 mp.register_script_message('fjord-title',function(value) title=value; wake() end)
+mp.register_script_message('fjord-preview-ready',function(serial,target,file)
+    if tonumber(serial)~=preview_serial then return end
+    preview_file=file; preview_target=tonumber(target); draw()
+end)
+mp.register_event('playback-restart',function()
+    if pending_seek and not prop('seeking',false) and math.abs(prop('time-pos',0)-pending_seek)<2 then
+        pending_seek=nil; clear_preview(); wake()
+    end
+end)
+mp.register_event('end-file',function() pending_seek=nil; requested_target=nil; preview_serial=preview_serial+1; clear_preview() end)
 for _,name in ipairs({'pause','time-pos','duration','track-list','aid','sid','volume','mute','fullscreen','osd-dimensions','paused-for-cache'}) do mp.observe_property(name,'native',draw) end
 mp.add_periodic_timer(0.2,draw)

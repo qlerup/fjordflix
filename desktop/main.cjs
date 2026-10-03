@@ -25,7 +25,7 @@ async function api(route, data) {
 }
 async function finish(run) {
   if (run.finished) return;
-  run.finished = true; clearInterval(run.timer); clearTimeout(run.statusTimer); run.socket?.destroy();
+  run.finished = true; run.previews?.dispose(); clearInterval(run.timer); clearTimeout(run.statusTimer); run.socket?.destroy();
   if (run.playbackId) await api(`/playbacks/${run.playbackId}/stop`, {}).catch(()=>{});
   if (active === run) active = null;
   if (Number.isFinite(run.position)) await api(`/movies/${run.id}/progress`, {position:run.position}).catch(()=>{});
@@ -72,6 +72,7 @@ async function play(data) {
       });
       run.socket = socket;
       const command = command => { if (!socket.destroyed) socket.write(JSON.stringify({command})+'\n'); };
+      run.previews = require('./previews.cjs').createPreviews({executable,url,send:command});
       socket.on('error', () => child.kill());
       let buffer = '';
       socket.on('data', chunk => {
@@ -81,6 +82,7 @@ async function play(data) {
         while ((end=buffer.indexOf('\n'))>=0) {
           const line=buffer.slice(0,end); buffer=buffer.slice(end+1);
           let message; try { message=JSON.parse(line); } catch { continue; }
+          if (message.event === 'client-message' && message.args?.[0] === 'fjord-preview-request') run.previews.request(message.args[1],message.args[2]);
           if (message.event === 'property-change' && message.name === 'time-pos' && Number.isFinite(message.data)) run.position=message.data;
           if (message.event === 'property-change' && ['pause','paused-for-cache','aid','sid'].includes(message.name)) {
             run.status[message.name]=message.data;

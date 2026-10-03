@@ -6,15 +6,15 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'fjordflix-player-'));
  const pipe='\\\\.\\pipe\\fjordflix-test-'+process.pid;
- const child=spawn(path.join(__dirname,'vendor/mpv/mpv.exe'),['--no-config','--load-scripts=no','--osc=no','--idle=yes','--force-window=yes','--fullscreen=yes','--window-dragging=no','--input-builtin-dragging=no','--vo=gpu-next','--gpu-api=d3d11','--geometry=1280x720','--script='+path.join(__dirname,'player.lua'),'--input-ipc-server='+pipe,'--log-file='+path.join(temp,'mpv.log')],{windowsHide:true,stdio:'ignore'});
- let socket;const pending=new Map();let id=0,buffer='';
+ const child=spawn(path.join(__dirname,'vendor/mpv/mpv.exe'),['--no-config','--input-vo-keyboard=no','--input-terminal=no','--load-scripts=no','--osc=no','--idle=yes','--force-window=yes','--fullscreen=yes','--window-dragging=no','--input-builtin-dragging=no','--vo=gpu-next','--gpu-api=d3d11','--geometry=1280x720','--script='+path.join(__dirname,'player.lua'),'--input-ipc-server='+pipe,'--log-file='+path.join(temp,'mpv.log')],{windowsHide:true,stdio:'ignore'});
+ let socket,previewRequest;const pending=new Map();let id=0,buffer='';
  try{
   for(let n=0;n<100;n++){
    socket=await new Promise(resolve=>{const s=net.connect(pipe);s.once('connect',()=>resolve(s));s.once('error',()=>{s.destroy();resolve(null);});});
    if(socket)break;await delay(100);
   }
   assert.ok(socket,'mpv IPC startup');
-  socket.on('data',chunk=>{buffer+=chunk;let end;while((end=buffer.indexOf('\n'))>=0){const m=JSON.parse(buffer.slice(0,end));buffer=buffer.slice(end+1);if(pending.has(m.request_id)){pending.get(m.request_id)(m);pending.delete(m.request_id);}}});
+  socket.on('data',chunk=>{buffer+=chunk;let end;while((end=buffer.indexOf('\n'))>=0){const m=JSON.parse(buffer.slice(0,end));buffer=buffer.slice(end+1);if(m.event==='client-message'&&m.args?.[0]==='fjord-preview-request')previewRequest=m.args;if(pending.has(m.request_id)){pending.get(m.request_id)(m);pending.delete(m.request_id);}}});
   async function cmd(...command){const request_id=++id;const result=await Promise.race([new Promise(r=>{pending.set(request_id,r);socket.write(JSON.stringify({command,request_id})+'\n');}),delay(5000).then(()=>{throw Error('IPC timed out: '+command[0]);})]);assert.equal(result.error,'success',JSON.stringify(result));if(command[0]==='keypress')await delay(80);return result.data;}
   await cmd('loadfile','av://lavfi:testsrc=size=1280x720:rate=24');await delay(1500);
   assert.equal(await cmd('get_property','fullscreen'),true,'player starts fullscreen');
@@ -60,11 +60,18 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   await cmd('mouse',Math.round(66*dims.h/720),Math.round(656*dims.h/720),0,'single');await delay(200);
   assert.equal(await cmd('get_property','pause'),false,'mouse play button');
   await cmd('set_property','pause',true);
+  // Exercise the real bitmap overlay protocol, independently of decoder latency.
+  const pixels=Buffer.alloc(640*360*4);for(let i=0;i<pixels.length;i+=4){pixels[i]=80;pixels[i+1]=130;pixels[i+2]=210;pixels[i+3]=255;}
+  const preview=path.join(temp,'preview.bgra');fs.writeFileSync(preview,pixels);
+  await cmd('mouse',Math.round(dims.w/2),Math.round(605*dims.h/720));await delay(500);
+  assert.ok(previewRequest,'native Lua preview request reaches IPC client');
+  await cmd('script-message','fjord-preview-ready',previewRequest[1],previewRequest[2],preview);await delay(300);
+  await cmd('screenshot-to-file',path.join(temp,'preview.png'),'window');
   await cmd('set_property','geometry','640x480');await delay(400);
   await cmd('keypress','s');await delay(200);
   await cmd('screenshot-to-file',path.join(temp,'small.png'),'window');
   const log=fs.readFileSync(path.join(temp,'mpv.log'),'utf8');
-  assert.ok(!/Lua error|stack traceback|Error loading.*player/i.test(log),log);
+  assert.ok(!/Lua error|stack traceback|Error loading.*player|invalid.*overlay|error.*overlay-add/i.test(log),log);
   console.log('PASS: native rendering, subtitle selection/off, scrolling, empty audio, pause, auto-hide. Screenshots: '+temp);
  }finally{socket?.destroy();child.kill();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

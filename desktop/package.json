@@ -22,6 +22,7 @@
       "preload.cjs",
       "validation.cjs",
       "subtitle-options.cjs",
+      "previews.cjs",
       "setup.html",
       "setup.js",
       "setup.css",
