@@ -70,11 +70,17 @@
     } catch(e) { if (selected?.id === target.id) $('track-status').textContent = e.message; }
     finally { downloading = false; button.disabled = false; button.textContent = 'Hent undertekster'; }
   };
-  $('subtitle-find').onclick = () => {
-    movie = selected; ++generation;
+  $('subtitle-find').onclick = async () => {
+    movie = selected; const run = ++generation;
     $('subtitle-search-title').textContent = `Find undertekster · ${movie.title}`;
     $('subtitle-results').replaceChildren(); $('subtitle-search-status').textContent = 'Vælg sprog og søg. Downloads bruger den aktive udbyders kvote.';
     $('subtitle-language').value = 'da'; $('subtitle-search-dialog').showModal();
+    $('subtitle-language').disabled = $('subtitle-search-submit').disabled = true;
+    try {
+      const config = await api('/admin/subtitles');
+      if (run === generation) $('subtitle-language').value = config.language;
+    } catch(e) { if (run === generation) $('subtitle-search-status').textContent = e.message; }
+    finally { if (run === generation) $('subtitle-language').disabled = $('subtitle-search-submit').disabled = false; }
   };
   $('subtitle-search-close').onclick = () => $('subtitle-search-dialog').close();
   $('subtitle-search-dialog').addEventListener('close',()=>{++generation;});

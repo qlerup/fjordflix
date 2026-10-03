@@ -392,6 +392,11 @@ Begge forbindelser kan gemmes, men søgning og download bruger kun den valgte.
 Gemte nøgler sendes ikke tilbage til browseren; blanke felter bevarer dem.
 Adgangen administreres pr. FjordFlix-server, ligesom den eksisterende OpenSubtitles-opsætning.
 
+Opsætningsguiden lader dig vælge ønsket undertekstsprog og et valgfrit
+fallback-sprog. Valgene bruges ved automatisk hentning og **Hent undertekster**;
+**Find undertekster** åbner med det foretrukne sprog valgt. De kan senere ændres
+under **Indstillinger → Undertekster**.
+
 Aktivér **Hent automatisk til nye film og afsnit**. Det gælder både upload og
 import fra biblioteksmapper. Standardrækkefølgen er dansk, derefter engelsk;
 begge sprog og fravalg af fallback kan indstilles. Automatikken kræver et TMDB-match,

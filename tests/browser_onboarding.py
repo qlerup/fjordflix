@@ -68,11 +68,11 @@ try:
         page.locator('#onboarding-os-key').fill('qa-key')
         page.locator('#onboarding-os-user').fill('qa-user')
         page.locator('#onboarding-os-password').fill('wrong-password')
-        page.locator('#onboarding-os-form button').click()
+        page.locator('#onboarding-os-form button[type=submit]').click()
         expect(page.locator('#onboarding-error')).to_contain_text('afviste')
         expect(page.locator('#onboarding-skip')).to_be_enabled()
         page.locator('#onboarding-os-password').fill('accepted-test-password')
-        page.locator('#onboarding-os-form button').click()
+        page.locator('#onboarding-os-form button[type=submit]').click()
         expect(dialog).not_to_be_visible()
         expect(page.locator('#onboarding-os-password')).to_have_value('')
         with page.expect_response(lambda response: response.url.endswith("/api/admin/onboarding")):
@@ -90,9 +90,17 @@ try:
         page.get_by_role('option', name='SubDL', exact=True).click()
         expect(page.locator('#onboarding-os-fields')).not_to_be_visible()
         page.locator('#onboarding-os-key').fill('subdl-test-key')
-        page.locator('#onboarding-os-form button').click()
+        page.locator('.fx-select-button[data-select-id="onboarding-subtitle-language"]').click()
+        page.get_by_role('option', name='Tysk', exact=True).click()
+        page.locator('.fx-select-button[data-select-id="onboarding-subtitle-fallback"]').click()
+        page.get_by_role('option', name='Ingen fallback', exact=True).click()
+        assert dialog.evaluate('(d) => d.scrollWidth <= d.clientWidth + 1')
+        page.screenshot(path=str(out / 'onboarding-subtitle-language-mobile.png'))
+        page.locator('#onboarding-os-form button[type=submit]').click()
         expect(dialog).not_to_be_visible()
         assert main.subtitle_manager.status()['provider'] == 'subdl'
+        assert main.subtitle_manager.status()['language'] == 'de'
+        assert main.subtitle_manager.status()['fallback_language'] == ''
         expect(page.locator('#onboarding-os-key')).to_have_value('')
         with main.db() as conn:
             conn.execute('DELETE FROM catalog_settings')

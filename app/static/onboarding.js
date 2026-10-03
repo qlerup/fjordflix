@@ -10,8 +10,18 @@
     const option = document.createElement('option'); option.value = value; option.textContent = label; provider.append(option);
   }
   el('onboarding-os-guide').before(provider);
+  for (const [id,source,caption] of [
+    ['onboarding-subtitle-language','subtitle-primary-language','Ønsket undertekstsprog'],
+    ['onboarding-subtitle-fallback','subtitle-fallback-language','Hvis sproget ikke findes']
+  ]) {
+    const label = document.createElement('label'); label.textContent = caption;
+    const select = document.createElement('select'); select.id = id;
+    for (const option of el(source).options) select.append(option.cloneNode(true));
+    select.value = id.endsWith('fallback') ? 'en' : 'da';
+    label.append(select); el('onboarding-os-form').insertBefore(label,el('onboarding-os-form').querySelector('p'));
+  }
   const subdlGuide = document.createElement('p'); subdlGuide.hidden = true;
-  subdlGuide.innerHTML = 'Opret en konto og API-nøgle på <a href="https://subdl.com" target="_blank" rel="noopener noreferrer">SubDL</a>, og indsæt nøglen her. Automatisk hentning og sprog kan vælges under Indstillinger → Undertekster.';
+  subdlGuide.innerHTML = 'Opret en konto og API-nøgle på <a href="https://subdl.com" target="_blank" rel="noopener noreferrer">SubDL</a>, og indsæt nøglen her. Vælg det ønskede undertekstsprog nedenfor. Automatisk hentning til nye film kan slås til under Indstillinger → Undertekster.';
   provider.after(subdlGuide);
   provider.onchange = () => {
     clearSecrets(); const subdl = provider.value === 'subdl';
@@ -65,6 +75,7 @@
     event.preventDefault();
     run(async () => {
       await api('/admin/subtitles','PUT',{provider:provider.value,api_key:el('onboarding-os-key').value.trim(),
+        language:el('onboarding-subtitle-language').value,fallback_language:el('onboarding-subtitle-fallback').value,
         username:provider.value==='opensubtitles' ? el('onboarding-os-user').value.trim() : '',
         password:provider.value==='opensubtitles' ? el('onboarding-os-password').value : ''});
       clearSecrets();

@@ -168,6 +168,16 @@ def test_fetch_from_existing_movie_works_without_automatic_import(client, provid
     assert client.post('/api/movies/'+'c'*32+'/subtitle-fetch').status_code==404
 
 
+def test_saved_language_controls_fetch_and_can_disable_fallback(client, providers):
+    _, requests, data = providers
+    configure(client,language='de',fallback_language='')
+    data['subtitles'][0]['language']='German'
+    result = client.post(f'/api/movies/{MID}/subtitle-fetch').json()
+    assert result['status']=='downloaded' and result['language']=='de'
+    searches = [r for r in requests if r.url.path.endswith('/subtitles')]
+    assert [r.url.params['languages'] for r in searches]==['DE']
+
+
 def test_subdl_broadened_search_does_not_download_another_title(client, providers):
     manager, requests, data = providers
     configure(client,automatic=True)
