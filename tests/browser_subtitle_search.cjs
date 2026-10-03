@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  const browser=await chromium.launch({headless:true});
  const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
- let downloaded=false,configured=false,searches=0;
+ let downloaded=false,configured=false,searches=0,provider='opensubtitles',automatic=false;
  const movie={id:'a'.repeat(32),title:'Scary Movie',width:3840,height:2160,format:'matroska',video:'hevc',audio:'aac',duration:61,size:500000000,bitrate:60000000,position:0,catalog:{media_type:'movie'},tracks:{version:1,audio:[],subtitles:[]}};
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());
@@ -15,12 +15,12 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   else if(url.pathname==='/api/movies')data=[movie];
   else if(url.pathname.endsWith('/plan'))data={mode:'Direct Play',height:2160,mbps:60,reason:'Test'};
   else if(url.pathname==='/api/admin')data={gpu:false,free_gb:100,streams:0,max_streams:3,users:[]};
-  else if(url.pathname==='/api/admin/opensubtitles'){
-   if(req.method()==='PUT'){assert.equal(req.postDataJSON().api_key,'test-key');configured=true;}
-   data={configured,username:configured?'tester':''};
+  else if(url.pathname==='/api/admin/subtitles'){
+   if(req.method()==='PUT'){assert.equal(req.postDataJSON().api_key,'test-key');configured=true;provider=req.postDataJSON().provider;automatic=req.postDataJSON().automatic;}
+   data={configured,provider,automatic,language:'da',fallback_language:'en',providers:{opensubtitles:{configured},subdl:{configured}}};
   } else if(url.pathname.endsWith('/subtitle-search')){
    searches++;assert.equal(url.searchParams.get('language'),'da');
-   data={results:[{choice:'choice',release:'BluRay test <script>bad()</script>',hash_match:true}],message:'Check timing'};
+   data={provider,results:[{choice:'choice',release:'BluRay test <script>bad()</script>',hash_match:true}],message:'Check timing'};
   } else if(url.pathname.endsWith('/subtitle-download')){
    assert.equal(req.postDataJSON().choice,'choice');downloaded=true;
    movie.tracks.subtitles=[{index:1000000123,codec:'subrip',language:'da',title:'OpenSubtitles',delivery:'text',external:true}];
@@ -35,8 +35,18 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.locator('[data-settings-tab="subtitles"]').click();
   await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('ikke tilsluttet'));
   await page.locator('#os-key').fill('test-key');await page.locator('#os-username').fill('tester');await page.locator('#os-password').fill('test-password');
-  await page.locator('#os-save').click();await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('Tilsluttet som'));
+  await page.locator('#os-save').click();await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('OpenSubtitles er aktiv'));
   assert.equal(await page.locator('#os-password').inputValue(),'');
+  await page.locator('.fx-select-button[data-select-id="subtitle-provider"]').click();
+  await page.getByRole('option',{name:'SubDL',exact:true}).click();
+  assert.equal(await page.locator('#os-login-fields').isVisible(),false);
+  await page.locator('#os-key').fill('test-key');await page.locator('#subtitle-automatic').check();
+  await page.locator('#os-save').click();await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('SubDL er aktiv'));
+  assert.equal(provider,'subdl');assert.equal(automatic,true);assert.equal(await page.locator('#os-key').inputValue(),'');
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.locator('#admin-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+  await page.screenshot({path:'test-results/subdl-settings-mobile.png'});
+  await page.setViewportSize({width:1280,height:900});
   await page.screenshot({path:'test-results/subtitle-settings.png'});
   await page.locator('[data-close="admin-dialog"]').click();await page.locator('#movie-grid .movie-card').first().click();
   await page.locator('#subtitle-find').click();assert.equal(searches,0);

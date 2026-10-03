@@ -75,17 +75,23 @@
 <p class="fine">Videoadressen kræver fungerende direkte HTTPS-adgang til serveren. DNS-posten skal være DNS-only. Et tomt felt slår opdelingen fra. Gemte ændringer afslutter eksisterende videobilletter.</p>
 <p id="media-settings-error" class="error" role="alert"></p><button class="primary" type="submit">Gem og genindlæs</button></form></section><section id="metadata-settings-dialog" data-settings-panel="metadata" hidden><span class="eyebrow">FILMOPLYSNINGER</span><h2>TMDB API-nøgle</h2><p class="muted">Hent automatisk titel, beskrivelse og billeder efter upload. Nøglen gemmes på serveren og gælder alle brugere.</p><p id="metadata-status" role="status"></p><form id="metadata-settings-form"><label>API-nøgle eller API Read Access Token<input id="metadata-token" type="password" autocomplete="off" maxlength="4096" spellcheck="false" required placeholder="Indsæt din nøgle fra TMDB"></label><p class="fine">En gemt nøgle vises aldrig igen. Indsæt en ny for at erstatte den. Gem kræver ikke genstart og tester ikke forbindelsen.</p><p id="metadata-error" class="error" role="alert"></p><button id="metadata-save" class="primary full">Gem API-nøgle</button></form><button id="metadata-disable" class="text-button">Fjern nøgle og slå opslag fra</button><p class="fine"><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">Hent nøgle hos TMDB</a>. Gratis til ikke-kommerciel brug efter TMDB's vilkår.</p></section><section id="os-settings" data-settings-panel="subtitles" hidden>
 
-<span class="eyebrow">UNDERTEKSTER</span><h2 id="os-title">OpenSubtitles</h2>
+<span class="eyebrow">UNDERTEKSTER</span><h2 id="os-title">Hent undertekster</h2>
 <p class="muted">Find SRT-undertekster og gem dem på din server. Hver undertekst hentes kun én gang og kan bruges af alle dine afspillere.</p>
 <p id="os-status" role="status"></p>
 <form id="os-form">
-<label>API-nøgle<input id="os-key" type="password" maxlength="256" autocomplete="off" required></label>
-<label>OpenSubtitles-brugernavn<input id="os-username" maxlength="200" autocomplete="off" required></label>
-<label>Adgangskode<input id="os-password" type="password" maxlength="512" autocomplete="new-password" required></label>
+<label>Udbyder<select id="subtitle-provider"><option value="opensubtitles">OpenSubtitles</option><option value="subdl">SubDL</option></select></label>
+<p class="fine">Kun den gemte udbyder bruges til søgning og hentning. Du kan skifte uden at miste gemte undertekster.</p>
+<label>API-nøgle<input id="os-key" type="password" maxlength="256" autocomplete="off"></label>
+<div id="os-login-fields"><label>OpenSubtitles-brugernavn<input id="os-username" maxlength="200" autocomplete="off"></label>
+<label>Adgangskode<input id="os-password" type="password" maxlength="512" autocomplete="new-password"></label></div>
+<label class="check-label"><input id="subtitle-automatic" type="checkbox">Hent automatisk til nye film og afsnit</label>
+<label>Foretrukket sprog<select id="subtitle-primary-language"><option value="da">Dansk</option><option value="en">Engelsk</option><option value="sv">Svensk</option><option value="no">Norsk</option><option value="de">Tysk</option><option value="fr">Fransk</option><option value="es">Spansk</option></select></label>
+<label>Hvis intet findes<select id="subtitle-fallback-language"><option value="">Ingen fallback</option><option value="en">Prøv engelsk</option><option value="da">Prøv dansk</option><option value="sv">Prøv svensk</option><option value="no">Prøv norsk</option><option value="de">Prøv tysk</option><option value="fr">Prøv fransk</option><option value="es">Prøv spansk</option></select></label>
+<p class="fine">Automatikken kræver matchede filmdata og springer eksisterende tekstspor på det valgte sprog over. Den vælger en udgave hos den aktive udbyder; kontrollér timing ved afspilning. Tidligere importerede film ændres ikke.</p>
 <p class="fine">Oplysningerne gemmes på serveren. Gemt API-nøgle og adgangskode vises aldrig igen. Gem tester forbindelsen.</p>
 <p id="os-error" class="error" role="status"></p><button id="os-save" class="primary" type="submit">Gem og test forbindelse</button>
 </form><button id="os-disconnect" class="text-button">Fjern forbindelsen</button>
-<p class="fine">Opret konto og API-nøgle under API Consumers på <a href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">OpenSubtitles.com</a>. Downloadkvoten afhænger af din konto. Allerede hentede undertekster bevares, hvis forbindelsen fjernes.</p>
+<p class="fine" id="subtitle-provider-help">Opret en API-nøgle hos <a href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">OpenSubtitles</a> eller <a href="https://subdl.com" target="_blank" rel="noopener noreferrer">SubDL</a>. SubDL kræver kun API-nøglen. Kvoten afhænger af din konto. Lad felterne være tomme for at beholde gemte oplysninger.</p>
 </section><section data-settings-panel="users" hidden><span class="eyebrow">ADGANG</span><h2>Brugere</h2><div id="users-list"></div><button id="create-invite" class="secondary">＋ Opret invitation</button><div id="invite-result" hidden><p class="muted">Kan bruges én gang og udløber efter syv dage. Del koden med din nye bruger.</p><input id="invite-code" readonly aria-label="Ny invitationskode"><button id="copy-invite" class="text-button">Kopiér kode</button></div></section><section data-settings-panel="server" hidden><span class="eyebrow">STATUS</span><h2>Server</h2><div id="server-stats" class="stats"></div></section></div></div></dialog>
 
 <dialog id="player-dialog" aria-label="Filmafspiller">
@@ -116,10 +122,10 @@
 
 <dialog id="subtitle-search-dialog" class="compact wide" aria-labelledby="subtitle-search-title">
 <button id="subtitle-search-close" class="close" aria-label="Luk undertekstsøgning">✕</button>
-<span class="eyebrow">OPENSUBTITLES</span><h2 id="subtitle-search-title">Find undertekster</h2>
+<span class="eyebrow">UNDERTEKSTER</span><h2 id="subtitle-search-title">Find undertekster</h2>
 <form id="subtitle-search-form"><label>Sprog<select id="subtitle-language"><option value="da">Dansk</option><option value="en">Engelsk</option><option value="sv">Svensk</option><option value="no">Norsk</option><option value="de">Tysk</option><option value="fr">Fransk</option><option value="es">Spansk</option></select></label><button id="subtitle-search-submit" class="primary" type="submit">Søg undertekster</button></form>
 <p id="subtitle-search-status" class="muted" role="status"></p><div id="subtitle-results"></div>
-<p class="fine">Undertekster fra <a href="https://www.opensubtitles.com" target="_blank" rel="noopener noreferrer">OpenSubtitles.com</a>. Kontrollér timing efter download — især for samples og alternative filmudgaver.</p>
+<p class="fine">Undertekster hentes fra den valgte udbyder under Indstillinger → Undertekster. Kontrollér timing efter download — især for samples og alternative filmudgaver.</p>
 </dialog>
 
 <dialog id="onboarding-dialog" aria-labelledby="onboarding-title">
@@ -130,10 +136,10 @@
       <p class="fine">TMDB anbefaler at oprette API-adgang fra en computer. <a href="https://developer.themoviedb.org/docs/getting-started" target="_blank" rel="noopener noreferrer">Se TMDB’s vejledning ↗</a></p>
       <form id="onboarding-tmdb-form"><label>API-nøgle eller Read Access Token<input id="onboarding-tmdb-token" type="password" autocomplete="off" maxlength="4096" required></label><p class="fine">Nøglen gemmes på serveren og bruges til nye film. Gem tester ikke forbindelsen.</p><button class="primary" type="submit">Gem og fortsæt →</button></form>
     </section>
-    <section data-onboarding-step="subtitles" aria-labelledby="onboarding-os-title" hidden><span class="eyebrow">TRIN 2 AF 2 · OPENSUBTITLES</span><h3 id="onboarding-os-title">Find undertekster til filmaftenen</h3><p class="muted">Søg og hent undertekster fra OpenSubtitles direkte i afspilleren. Downloadkvoten afhænger af din konto.</p>
-      <ol class="onboarding-guide"><li><a href="https://www.opensubtitles.com" target="_blank" rel="noopener noreferrer">Åbn OpenSubtitles.com ↗</a> og vælg Register for at oprette en konto. Bekræft din email, hvis du bliver bedt om det.</li><li>Log ind, åbn <a href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">API Consumers ↗</a>, og opret en API-nøgle til din brug af FjordFlix.</li><li>Indsæt API-nøglen sammen med dit OpenSubtitles-brugernavn og din adgangskode.</li></ol>
+    <section data-onboarding-step="subtitles" aria-labelledby="onboarding-os-title" hidden><span class="eyebrow">TRIN 2 AF 2 · UNDERTEKSTER</span><h3 id="onboarding-os-title">Find undertekster til filmaftenen</h3><p class="muted">Vælg SubDL eller OpenSubtitles til at hente undertekster. Downloadkvoten afhænger af din konto.</p>
+      <div id="onboarding-os-guide"><ol class="onboarding-guide"><li><a href="https://www.opensubtitles.com" target="_blank" rel="noopener noreferrer">Åbn OpenSubtitles.com ↗</a> og vælg Register for at oprette en konto. Bekræft din email, hvis du bliver bedt om det.</li><li>Log ind, åbn <a href="https://www.opensubtitles.com/consumers" target="_blank" rel="noopener noreferrer">API Consumers ↗</a>, og opret en API-nøgle til din brug af FjordFlix.</li><li>Indsæt API-nøglen sammen med dit OpenSubtitles-brugernavn og din adgangskode.</li></ol>
       <p class="fine"><a href="https://opensubtitles.tawk.help/article/getting-started" target="_blank" rel="noopener noreferrer">Se OpenSubtitles’ vejledning ↗</a>. Brug din konto på OpenSubtitles.com.</p>
-      <form id="onboarding-os-form"><label>API-nøgle<input id="onboarding-os-key" type="password" autocomplete="off" maxlength="512" required></label><div class="onboarding-fields"><label>Brugernavn<input id="onboarding-os-user" autocomplete="off" maxlength="200" required></label><label>Adgangskode<input id="onboarding-os-password" type="password" autocomplete="off" maxlength="512" required></label></div><p class="fine">Gem tester login hos OpenSubtitles. Oplysningerne vises aldrig igen.</p><button class="primary" type="submit">Gem og afslut →</button></form>
+      </div><form id="onboarding-os-form"><label>API-nøgle<input id="onboarding-os-key" type="password" autocomplete="off" maxlength="512" required></label><div id="onboarding-os-fields" class="onboarding-fields"><label>Brugernavn<input id="onboarding-os-user" autocomplete="off" maxlength="200" required></label><label>Adgangskode<input id="onboarding-os-password" type="password" autocomplete="off" maxlength="512" required></label></div><p class="fine">Gem tester forbindelsen til den valgte udbyder. Oplysningerne vises aldrig igen.</p><button class="primary" type="submit">Gem og afslut →</button></form>
     </section>
     <p id="onboarding-error" class="error" role="alert"></p><p id="onboarding-status" class="fine" role="status"></p>
   </div>

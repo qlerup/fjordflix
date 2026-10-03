@@ -366,7 +366,7 @@ genererede poster og bevarer uploadede film og filer fra tilføjede mediemapper.
 ### Første administrators opsætning
 
 Den første administrator, der åbner FjordFlix, får en valgfri modal med to trin:
-TMDB til covers og filmdata samt OpenSubtitles til undertekster. Begge trin har
+TMDB til covers og filmdata samt SubDL eller OpenSubtitles til undertekster. Begge trin har
 vejledning og links til konto og API-opsætning. Gemte forbindelser genkendes,
 og guiden springer allerede konfigurerede trin over. Almindelige brugere og
 andre administratorer får ikke den automatiske guide.
@@ -376,7 +376,29 @@ Valgene gemmes på serveren og huskes efter login og genstart. Afbrudt opsætnin
 fortsætter fra det næste udestående trin. Opsætningerne kan altid ændres under
 **Indstillinger → Filmdata / Undertekster**. Guiden vises også én gang på
 opgraderede installationer, hvis en af forbindelserne endnu ikke er konfigureret.
-TMDB-nøglen gemmes uden netværkstest; OpenSubtitles-login testes inden lagring.
+TMDB-nøglen gemmes uden netværkstest; undertekstudbyderens forbindelse testes inden lagring.
+
+### Automatisk hentning af undertekster
+
+Under **Indstillinger → Undertekster** vælges én aktiv udbyder: **SubDL**
+(egen API-nøgle) eller **OpenSubtitles** (API-nøgle, brugernavn og adgangskode).
+Begge forbindelser kan gemmes, men søgning og download bruger kun den valgte.
+Gemte nøgler sendes ikke tilbage til browseren; blanke felter bevarer dem.
+Adgangen administreres pr. FjordFlix-server, ligesom den eksisterende OpenSubtitles-opsætning.
+
+Aktivér **Hent automatisk til nye film og afsnit**. Det gælder både upload og
+import fra biblioteksmapper. Standardrækkefølgen er dansk, derefter engelsk;
+begge sprog og fravalg af fallback kan indstilles. Automatikken kræver et TMDB-match,
+vælger ét fuldt undertekstspor og springer eksisterende tekstspor på sproget over.
+Gemte SRT-filer genbruges af web-, Windows- og TV-afspillerne, også efter udbyderskift.
+Titel/ID-match garanterer ikke timing for en bestemt filmudgave; brug **Find
+undertekster** til at vælge en anden udgave. Automatisk hentning er som udgangspunkt
+slået fra ved opgradering. Den efterbehandler ikke det eksisterende bibliotek og
+gentager ikke mislykkede downloads automatisk. Importen fortsætter ved udbyderfejl.
+
+SubDL bruger den officielle [søge- og download-API](https://subdl.com/api-doc).
+Kvoter afhænger af udbyder og konto. Integrationen er testet med simulerede
+API-svar, herunder kvotefejl, episoder, SRT/ZIP, caching og udbyderskift.
 
 Test: `python -m pytest tests/test_onboarding.py tests/test_catalog_settings.py tests/test_opensubtitles.py tests/test_hub.py -q`. Den isolerede
 `python tests/browser_onboarding.py` kræver Playwright/Chromium og tester modal,

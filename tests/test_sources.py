@@ -34,6 +34,7 @@ def mounted(monkeypatch, tmp_path):
     with db() as conn:
         conn.executescript('''
             CREATE TABLE movies(id TEXT PRIMARY KEY,title TEXT,path TEXT,metadata TEXT,created REAL);
+            CREATE TABLE catalog_settings(name TEXT PRIMARY KEY,value TEXT);
             CREATE TABLE progress(user_id TEXT,movie_id TEXT,position REAL,favorite INTEGER);
             CREATE TABLE media_grants(token TEXT,movie TEXT);
         ''')

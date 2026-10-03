@@ -68,6 +68,7 @@ const FjordTracks = {
       this.subtitle = available.defaults?.subtitle_track ?? null;
       this.fill(available);
       $('track-status').textContent = `${audio.length} lydspor · ${(available.subtitles || []).length} undertekstspor`;
+      if (movie.subtitle_fetch?.message) $('track-status').textContent += ' · ' + movie.subtitle_fetch.message;
     } catch (e) {
       if (this.movie === movie) $('track-status').textContent = e.message;
     } finally {

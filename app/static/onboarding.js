@@ -3,6 +3,22 @@
   const el = id => document.getElementById(id);
   const dialog = el('onboarding-dialog');
   let current = 'tmdb', busy = false;
+  const provider = document.createElement('select');
+  provider.id = 'onboarding-subtitle-provider';
+  provider.setAttribute('aria-label','Undertekstudbyder');
+  for (const [value,label] of [['opensubtitles','OpenSubtitles'],['subdl','SubDL']]) {
+    const option = document.createElement('option'); option.value = value; option.textContent = label; provider.append(option);
+  }
+  el('onboarding-os-guide').before(provider);
+  const subdlGuide = document.createElement('p'); subdlGuide.hidden = true;
+  subdlGuide.innerHTML = 'Opret en konto og API-nøgle på <a href="https://subdl.com" target="_blank" rel="noopener noreferrer">SubDL</a>, og indsæt nøglen her. Automatisk hentning og sprog kan vælges under Indstillinger → Undertekster.';
+  provider.after(subdlGuide);
+  provider.onchange = () => {
+    clearSecrets(); const subdl = provider.value === 'subdl';
+    el('onboarding-os-guide').hidden = el('onboarding-os-fields').hidden = subdl;
+    el('onboarding-os-user').disabled = el('onboarding-os-password').disabled = subdl;
+    subdlGuide.hidden = !subdl;
+  };
   const clearSecrets = () => {
     for (const id of ['onboarding-tmdb-token','onboarding-os-key','onboarding-os-password']) el(id).value = '';
   };
@@ -48,11 +64,12 @@
   el('onboarding-os-form').onsubmit = event => {
     event.preventDefault();
     run(async () => {
-      await api('/admin/opensubtitles','PUT',{api_key:el('onboarding-os-key').value.trim(),
-        username:el('onboarding-os-user').value.trim(),password:el('onboarding-os-password').value});
+      await api('/admin/subtitles','PUT',{provider:provider.value,api_key:el('onboarding-os-key').value.trim(),
+        username:provider.value==='opensubtitles' ? el('onboarding-os-user').value.trim() : '',
+        password:provider.value==='opensubtitles' ? el('onboarding-os-password').value : ''});
       clearSecrets();
       await choose('subtitles','done');
-    }, 'Tester forbindelsen til OpenSubtitles…');
+    }, 'Tester forbindelsen til undertekstudbyderen…');
   };
   el('onboarding-skip').onclick = () => run(() => choose(current,'skip'),'Gemmer dit valg…');
   el('onboarding-skip-all').onclick = () => run(() => choose('all','skip'),'Gemmer dit valg…');

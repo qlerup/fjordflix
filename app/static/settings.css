@@ -89,3 +89,5 @@
   .settings-header h2 { margin: 5px 0; font-size: 24px; }
   .settings-nav { padding-block: 6px; }
 }
+#os-form .check-label { display: flex; align-items: center; gap: 10px; margin: 18px 0; }
+#os-form .check-label input[type=checkbox] { width: 20px; height: 20px; margin: 0; flex: 0 0 20px; accent-color: #ed3157; }

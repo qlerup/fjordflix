@@ -465,6 +465,7 @@ def index_movie(path, title, mid, enrich=False, source=None):
         conn.execute('INSERT INTO movies VALUES (?,?,?,?,?)', (mid, title[:160], str(path), json.dumps(meta), time.time()))
         if source:
             conn.execute('INSERT INTO library_files VALUES (?,?,?)', (mid, *source))
+    subtitle_manager.automatic(mid)
     return mid
 
 

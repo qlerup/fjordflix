@@ -24,6 +24,7 @@ def provider_login(value):
 
 
 main.subtitle_provider.login = provider_login
+main.subtitle_manager.providers['subdl'].request_api = lambda *a, **kw: {'status': True}
 server = uvicorn.Server(uvicorn.Config(main.app, host='127.0.0.1', port=0, log_level='error'))
 thread = threading.Thread(target=server.run, daemon=True)
 thread.start()
@@ -61,7 +62,8 @@ try:
         page.locator('#onboarding-tmdb-form button').click()
         expect(page.locator('[data-onboarding-step="subtitles"]')).to_be_visible()
         expect(page.locator('#onboarding-tmdb-token')).to_have_value('')
-        page.reload()
+        with page.expect_response(lambda response: response.url.endswith("/api/admin/onboarding")):
+            page.reload()
         expect(page.locator('[data-onboarding-step="subtitles"]')).to_be_visible()
         page.locator('#onboarding-os-key').fill('qa-key')
         page.locator('#onboarding-os-user').fill('qa-user')
@@ -73,19 +75,36 @@ try:
         page.locator('#onboarding-os-form button').click()
         expect(dialog).not_to_be_visible()
         expect(page.locator('#onboarding-os-password')).to_have_value('')
-        page.reload()
+        with page.expect_response(lambda response: response.url.endswith("/api/admin/onboarding")):
+            page.reload()
         expect(page.locator('#shell')).to_be_visible()
         expect(dialog).not_to_be_visible()
         # Reset only the disposable database to exercise independent skip behavior.
         with main.db() as conn:
             conn.execute('DELETE FROM catalog_settings')
-        page.reload()
+        with page.expect_response(lambda response: response.url.endswith("/api/admin/onboarding")):
+            page.reload()
+        expect(dialog).to_be_visible()
+        page.locator('#onboarding-skip').click()
+        page.locator('.fx-select-button[data-select-id="onboarding-subtitle-provider"]').click()
+        page.get_by_role('option', name='SubDL', exact=True).click()
+        expect(page.locator('#onboarding-os-fields')).not_to_be_visible()
+        page.locator('#onboarding-os-key').fill('subdl-test-key')
+        page.locator('#onboarding-os-form button').click()
+        expect(dialog).not_to_be_visible()
+        assert main.subtitle_manager.status()['provider'] == 'subdl'
+        expect(page.locator('#onboarding-os-key')).to_have_value('')
+        with main.db() as conn:
+            conn.execute('DELETE FROM catalog_settings')
+        with page.expect_response(lambda response: response.url.endswith("/api/admin/onboarding")):
+            page.reload()
         expect(dialog).to_be_visible()
         page.locator('#onboarding-skip').click()
         expect(page.locator('[data-onboarding-step="subtitles"]')).to_be_visible()
         page.keyboard.press('Escape')
         expect(dialog).not_to_be_visible()
-        page.reload()
+        with page.expect_response(lambda response: response.url.endswith("/api/admin/onboarding")):
+            page.reload()
         expect(page.locator('#shell')).to_be_visible()
         expect(dialog).not_to_be_visible()
         assert not errors, errors

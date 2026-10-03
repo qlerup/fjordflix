@@ -16,7 +16,7 @@ class Choice(BaseModel):
 def register(main):
     def configured():
         return {'tmdb': catalog.status()['configured'],
-                'subtitles': main.subtitle_provider.status()['configured']}
+                'subtitles': main.subtitle_manager.status()['configured']}
 
     def update(user, choice=None):
         ready = configured()

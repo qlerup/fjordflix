@@ -50,7 +50,7 @@ def normalize_srt(raw):
 
 
 def subtitle_path(data, mid, index):
-    if not re.fullmatch(r'[a-f0-9]{32}', mid) or not isinstance(index, int) or not OFFSET < index <= OFFSET * 2:
+    if not re.fullmatch(r'[a-f0-9]{32}', mid) or not isinstance(index, int) or not OFFSET < index <= 2**49:
         raise ValueError('Ugyldigt undertekstspor.')
     return Path(data) / 'subtitles' / 'downloaded' / f'{mid}-{index}.srt'
 
@@ -66,6 +66,15 @@ class Download(BaseModel):
 
 
 class OpenSubtitles:
+    name = 'OpenSubtitles'
+
+    def track_index(self, entry):
+        return OFFSET + entry['file_id']
+
+    def content(self, entry):
+        result = self.authenticated('/download','POST',{'file_id':entry['file_id'],'sub_format':'srt'})
+        return self.fetch_file(result.get('link','')), result.get('remaining')
+
     def __init__(self, main):
         self.main = main
         self.lock = threading.RLock()
@@ -194,16 +203,15 @@ class OpenSubtitles:
             if not entry or entry['mid'] != mid or entry['expires'] < time.time():
                 raise ValueError('Søgeresultatet er udløbet. Søg efter undertekster igen.')
             _, meta = self.main.movie(mid)
-            if len(meta.get('external_subtitles', [])) >= 100 and not any(t['index'] == OFFSET + entry['file_id'] for t in meta.get('external_subtitles', [])):
+            index = self.track_index(entry)
+            if len(meta.get('external_subtitles', [])) >= 100 and not any(t['index'] == index for t in meta.get('external_subtitles', [])):
                 raise ValueError('Denne film har allerede 100 hentede undertekstspor.')
-            index = OFFSET + entry['file_id']
             path = subtitle_path(self.main.DATA,mid,index)
             if any(t['index']==index for t in meta.get('external_subtitles',[])) and path.is_file():
                 return {'index':index,'cached':True}
-            result = self.authenticated('/download','POST',{'file_id':entry['file_id'],'sub_format':'srt'})
-            content = self.fetch_file(result.get('link',''))
+            content, remaining = self.content(entry)
             track = {'index':index,'codec':'subrip','delivery':'text','language':entry['language'],
-                     'title':'OpenSubtitles · '+entry['release'], 'external':True,
+                     'title':self.name+' · '+entry['release'], 'external':True,
                      'forced':entry['forced'],'hearing_impaired':entry['hearing_impaired'],'default':False}
             path.parent.mkdir(parents=True,exist_ok=True)
             temporary = path.with_suffix('.'+secrets.token_hex(8)+'.tmp')
@@ -219,11 +227,14 @@ class OpenSubtitles:
                     conn.execute('UPDATE movies SET metadata=? WHERE id=?',(json.dumps(current),mid))
             finally:
                 temporary.unlink(missing_ok=True)
-            return {'index':index,'cached':False,'remaining':result.get('remaining')}
+            return {'index':index,'cached':False,'remaining':remaining}
 
 
 def register(main):
     service = OpenSubtitles(main)
+    from app.subtitle_providers import Providers
+    manager = Providers(main, service)
+    main.subtitle_manager = manager
     def call(fn,*args):
         try: return fn(*args)
         except ValueError as exc: raise HTTPException(400,str(exc)) from None
@@ -233,18 +244,17 @@ def register(main):
     def status(u=Depends(main.admin)): return service.status()
 
     @main.app.put('/api/admin/opensubtitles')
-    def settings(data: Credentials,u=Depends(main.admin)): return call(service.save,data.model_dump())
+    def settings(data: Credentials,u=Depends(main.admin)): return call(manager.legacy_save,data.model_dump())
 
     @main.app.delete('/api/admin/opensubtitles')
     def disconnect(u=Depends(main.admin)):
-        with service.lock, main.db() as conn:
-            conn.execute("DELETE FROM catalog_settings WHERE name='opensubtitles'")
-            service.session = None; service.choices.clear()
+        manager.disconnect('opensubtitles')
         return service.status()
 
     @main.app.get('/api/movies/{mid}/subtitle-search')
-    def search(mid: str,language: str='da',u=Depends(main.admin)): return call(service.search,mid,language)
+    def search(mid: str,language: str='da',u=Depends(main.admin)): return call(manager.search,mid,language)
 
     @main.app.post('/api/movies/{mid}/subtitle-download')
-    def download(mid: str,data: Download,u=Depends(main.admin)): return call(service.download,mid,data.choice)
+    def download(mid: str,data: Download,u=Depends(main.admin)): return call(manager.download,mid,data.choice)
+    manager.register(call)
     return service
