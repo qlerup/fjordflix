@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 if (window.fjordDesktop) {
+  document.documentElement.classList.add('fjord-desktop');
   $('desktop-download').hidden = true;
   if (window.fjordDesktop.checkUpdates) {
     const update = document.createElement('button');
