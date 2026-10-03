@@ -1058,6 +1058,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-progress', str(folder / 'progress.txt'), '-threads', '4', '-protocol_whitelist', 'file,pipe']
         if offset > 0:
             cmd += ['-ss', str(offset)]
+            if result['mode'] == 'Direct Stream':
+                # Copied video starts at the preceding keyframe. Keep the same
+                # preroll for encoded audio instead of trimming only the audio
+                # to the requested time (which can leave seconds of silence).
+                cmd += ['-noaccurate_seek']
         cmd += ['-i', str(Path(row['path']).resolve())]
         cmd += ['-map', '[vout]' if bitmap else '0:v:0', '-map', f"0:{audio['index']}" if audio else '0:a:0?', '-sn']
         encoder = 'Remux + original lyd' if data.audio_copy else 'Remux + AAC'
