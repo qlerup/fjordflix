@@ -150,6 +150,22 @@ def test_settings_permissions_and_validation(client, providers, monkeypatch):
     assert client.get('/api/admin/subtitles').status_code==403
     assert client.put('/api/admin/subtitles',json={'provider':'subdl'}).status_code==403
     assert client.delete('/api/admin/subtitles').status_code==403
+    assert client.post(f'/api/movies/{MID}/subtitle-fetch').status_code==403
+
+
+def test_fetch_from_existing_movie_works_without_automatic_import(client, providers):
+    _, requests, _ = providers
+    endpoint = f'/api/movies/{MID}/subtitle-fetch'
+    assert client.post(endpoint).status_code==400
+    configure(client,automatic=False)
+    result = client.post(endpoint)
+    assert result.status_code==200 and result.json()['status']=='downloaded'
+    index = result.json()['index']
+    count = len(requests)
+    again = client.post(endpoint).json()
+    assert again['status']=='available' and again['index']==index
+    assert len(requests)==count
+    assert client.post('/api/movies/'+'c'*32+'/subtitle-fetch').status_code==404
 
 
 def test_subdl_broadened_search_does_not_download_another_title(client, providers):

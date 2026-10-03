@@ -30,7 +30,7 @@ function showDetailPage(movie) {
   episode.textContent = movie.series_key ? `${FjordLibrary.code(movie)} · ${movie.catalog.episode_title || 'Afsnit ' + movie.catalog.episode}` : '';
   let tools = $('detail-tools');
   if (!tools) { tools = document.createElement('div'); tools.id = 'detail-tools'; tools.className = 'hero-actions'; document.querySelector('#detail .detail-body').append(tools); }
-  for (const id of ['subtitle-find','library-edit','metadata-refresh','library-delete','library-delete-series']) if ($(id)) tools.append($(id));
+  for (const id of ['subtitle-fetch','subtitle-find','library-edit','metadata-refresh','library-delete','library-delete-series']) if ($(id)) tools.append($(id));
   $('detail-kind').textContent = movie.series_key ? 'SERIE · FRA DIT BIBLIOTEK' : 'FILM · FRA DIT BIBLIOTEK';
   // Keep episode browsing and the cast rail outside the narrow information column.
   $('detail-extras').prepend($('episode-picker'));

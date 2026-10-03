@@ -46,6 +46,30 @@
     catch(e) { $('os-error').textContent = e.message; }
   };
   let movie = null, generation = 0, downloading = false;
+  $('subtitle-fetch').onclick = async () => {
+    if (downloading || !selected) return;
+    const target = selected, button = $('subtitle-fetch');
+    downloading = true; button.disabled = true; button.textContent = 'Henter undertekster…';
+    $('track-status').textContent = 'Søger med dine gemte sprogindstillinger…';
+    try {
+      const result = await api(`/movies/${target.id}/subtitle-fetch`,'POST');
+      target.subtitle_fetch = result;
+      const messages = {
+        downloaded:'Underteksten er hentet, gemt og valgt. Kontrollér timing ved afspilning.',
+        available:'Filmen har allerede et passende tekstspor. Det er nu valgt.',
+        not_found:'Ingen undertekster fundet på dine valgte sprog. Prøv Find undertekster for at søge manuelt.'
+      };
+      if (result.index !== undefined) {
+        target.tracks = await api(`/movies/${target.id}/tracks`);
+        if (selected?.id === target.id) {
+          selected.tracks = target.tracks; FjordTracks.movie = selected;
+          FjordTracks.subtitle = result.index; FjordTracks.fill(target.tracks); await updatePlan();
+        }
+      }
+      if (selected?.id === target.id) $('track-status').textContent = result.message || messages[result.status] || 'Hentningen er afsluttet.';
+    } catch(e) { if (selected?.id === target.id) $('track-status').textContent = e.message; }
+    finally { downloading = false; button.disabled = false; button.textContent = 'Hent undertekster'; }
+  };
   $('subtitle-find').onclick = () => {
     movie = selected; ++generation;
     $('subtitle-search-title').textContent = `Find undertekster · ${movie.title}`;

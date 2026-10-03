@@ -84,11 +84,15 @@ class Providers:
         with self.lock:
             return self.providers[self.config()['provider']].download(mid,choice)
 
-    def automatic(self, mid):
+    def automatic(self, mid, manual=False):
         with self.lock:
             config = self.config()
             service = self.providers[config['provider']]
-            if not config['automatic'] or not service.status()['configured']: return
+            if manual:
+                self.main.movie(mid)
+                if not service.status()['configured']:
+                    raise ValueError('Tilslut en undertekstudbyder under Indstillinger → Undertekster først.')
+            elif not config['automatic'] or not service.status()['configured']: return
             state = {'provider':config['provider'],'checked_at':time.time(),'status':'not_found'}
             try:
                 _, meta = self.main.movie(mid)
@@ -100,9 +104,10 @@ class Providers:
                     for language in dict.fromkeys([config['language'],config['fallback_language']]):
                         if not language: continue
                         available = tracks.displayed(meta).get('subtitles',[])
-                        if any(tracks.language(t.get('language'))==tracks.language(language)
-                               and t.get('delivery')=='text' and not t.get('forced') for t in available):
-                            state.update(status='available',language=language)
+                        existing = next((t for t in available if tracks.language(t.get('language'))==tracks.language(language)
+                                         and t.get('delivery')=='text' and not t.get('forced')),None)
+                        if existing:
+                            state.update(status='available',language=language,index=existing['index'])
                             break
                         found = service.search(mid,language)['results']
                         candidates = [item for item in found if not item.get('forced')]
@@ -120,8 +125,12 @@ class Providers:
                 if row:
                     meta = json.loads(row['metadata']); meta['subtitle_fetch'] = state
                     conn.execute('UPDATE movies SET metadata=? WHERE id=?',(json.dumps(meta),mid))
+            return state
 
     def register(self, call):
+        @self.main.app.post('/api/movies/{mid}/subtitle-fetch')
+        def fetch(mid: str,u=Depends(self.main.admin)): return call(self.automatic,mid,True)
+
         @self.main.app.get('/api/admin/subtitles')
         def status(u=Depends(self.main.admin)): return self.status()
 

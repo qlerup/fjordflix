@@ -18,6 +18,10 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   else if(url.pathname==='/api/admin/subtitles'){
    if(req.method()==='PUT'){assert.equal(req.postDataJSON().api_key,'test-key');configured=true;provider=req.postDataJSON().provider;automatic=req.postDataJSON().automatic;}
    data={configured,provider,automatic,language:'da',fallback_language:'en',providers:{opensubtitles:{configured},subdl:{configured}}};
+  } else if(url.pathname.endsWith('/subtitle-fetch')){
+   assert.equal(req.method(),'POST');
+   movie.tracks.subtitles=[{index:2000000123,codec:'subrip',language:'da',title:'SubDL',delivery:'text',external:true}];
+   data={status:'downloaded',index:2000000123,language:'da',provider};
   } else if(url.pathname.endsWith('/subtitle-search')){
    searches++;assert.equal(url.searchParams.get('language'),'da');
    data={provider,results:[{choice:'choice',release:'BluRay test <script>bad()</script>',hash_match:true}],message:'Check timing'};
@@ -49,6 +53,10 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.setViewportSize({width:1280,height:900});
   await page.screenshot({path:'test-results/subtitle-settings.png'});
   await page.locator('[data-close="admin-dialog"]').click();await page.locator('#movie-grid .movie-card').first().click();
+  await page.locator('#subtitle-fetch').click();
+  await page.waitForFunction(()=>document.getElementById('track-status').textContent.includes('hentet, gemt og valgt'));
+  assert.equal(await page.locator('#detail-subtitle').inputValue(),'2000000123');
+  assert.equal(searches,0,'one-click fetch does not open the manual search dialog');
   await page.locator('#subtitle-find').click();assert.equal(searches,0);
   await page.locator('#subtitle-search-submit').click();await page.getByRole('button',{name:'Hent SRT',exact:true}).waitFor();
   await page.screenshot({path:'test-results/subtitle-search-desktop.png'});

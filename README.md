@@ -380,6 +380,12 @@ TMDB-nøglen gemmes uden netværkstest; undertekstudbyderens forbindelse testes 
 
 ### Automatisk hentning af undertekster
 
+På den enkelte film eller det enkelte afsnit kan administratoren vælge **Hent
+undertekster** ved siden af filmdata-handlingerne. Den bruger den gemte udbyder
+og sprogrækkefølge, også når automatisk hentning ved import er slået fra. Et
+eksisterende passende tekstspor genbruges og vælges; **Find undertekster** giver
+fortsat mulighed for selv at vælge en anden udgave.
+
 Under **Indstillinger → Undertekster** vælges én aktiv udbyder: **SubDL**
 (egen API-nøgle) eller **OpenSubtitles** (API-nøgle, brugernavn og adgangskode).
 Begge forbindelser kan gemmes, men søgning og download bruger kun den valgte.
