@@ -246,7 +246,7 @@ mp.register_script_message('fjord-preview-ready',function(serial,target,file)
 end)
 mp.register_event('playback-restart',function()
     if pending_seek and not prop('seeking',false) and math.abs(prop('time-pos',0)-pending_seek)<2 then
-        pending_seek=nil; clear_preview(); wake()
+        pending_seek=nil; requested_target=nil; clear_preview(); wake()
     end
 end)
 mp.register_event('end-file',function() pending_seek=nil; requested_target=nil; preview_serial=preview_serial+1; clear_preview() end)
