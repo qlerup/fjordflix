@@ -7,10 +7,11 @@ import re
 from urllib.parse import urlparse
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from app import media
+from app import media, tv_pairing
 
 def attach_tv(app, main):
     tv = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    tv_pairing.attach_pairing(tv, main, page_app=app)
     tv.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['GET', 'HEAD', 'POST', 'DELETE'],
                       allow_headers=['Authorization', 'Content-Type', 'Range'],
                       expose_headers=['Content-Length', 'Content-Range', 'Accept-Ranges'])
@@ -40,7 +41,7 @@ def attach_tv(app, main):
 
     @tv.get('/tv-api/info')
     def info():
-        return {'app': 'fjordflix-tv', 'version': 1}
+        return {'app': 'fjordflix-tv', 'version': 1, **main.playback_capabilities()}
 
 
     @tv.post('/tv-api/login')

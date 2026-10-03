@@ -57,6 +57,16 @@ function setupLibraryUI() {
   const seriesTab = document.createElement('button');
   seriesTab.className = 'nav-button'; seriesTab.dataset.view = 'series'; seriesTab.textContent = 'Serier';
   document.querySelector('[data-view="all"]').after(seriesTab);
+  const navIcons = {
+    home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
+    all: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4"/>',
+    series: '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="m8 3 4 4 4-4m-6 9 5 3-5 3Z"/>',
+    favorites: '<path d="M6 3h12v18l-6-4-6 4Z"/>'
+  };
+  document.querySelectorAll('header [data-view]').forEach(button => {
+    button.insertAdjacentHTML('afterbegin', `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">${navIcons[button.dataset.view]}</svg>`);
+    if (button.classList.contains('active')) button.setAttribute('aria-current', 'page');
+  });
   $('search').placeholder = 'Søg i film og serier';
   $('search').setAttribute('aria-label', 'Søg i film og serier');
   $('upload-open').textContent = '＋ Upload film / afsnit';

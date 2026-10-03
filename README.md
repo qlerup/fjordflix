@@ -253,6 +253,17 @@ automatisk baggrundsopdatering, der overskriver manuelle oplysninger.
 
 ### LG webOS og andre TV-klienter
 
+Xbox-klienter kan sende `client_profile: "xbox"` ved afspilning. HEVC Direct Stream
+leveres da som HLS/fMP4 med bevaret video; nødvendig H.264-konvertering begrænses
+til 1920 × 1080 og 8 Mbit/s. `/tv-api/info` annoncerer `xbox-hevc-fmp4`.
+
+**Login via telefonen:** Xbox-appen viser en QR-kode til `/tv-login`, hvor brugeren
+skriver sit FjordFlix-/FjordHub-login og vælger **Log ind på Xbox**. Koden udløber
+efter fem minutter, kan annulleres og kan kun hentes én gang af den ventende Xbox.
+Telefonen modtager ingen Xbox-token. Funktionen annonceres som `phone-login-v1`;
+proxyen skal videresende `/tv-login`, `/static/*` og `/tv-api/*` til webserveren.
+Den nye serverkode kræver også Xbox-app 0.1.7 for dette loginforløb.
+
 Serveren har et indbygget token-API til selvstændige TV-apps. Det følger med ved
 normal opdatering via FjordHub; TV-appens kildekode og installationsfil ligger
 ikke i dette repository.
@@ -285,6 +296,7 @@ genoprettes med den normale FjordHub-konfiguration. Bevar øvrige Compose-filer,
 data- og mediemapper, GPU-indstillinger og mediegatewayens TV-rute.
 
 Test: `python -m pytest tests/test_tv.py tests/test_media_delivery.py tests/test_hub.py -q`.
+Xbox og telefonlogin: `python -m pytest tests/test_xbox_playback.py tests/test_tv_pairing.py -q`.
 Tests dækker token-login, cookieadskillelse, CORS, sessionsudløb, FjordHub-revokering,
 filmposition, favoritter og videobillettens rettigheder. Fysisk TV-afspilning skal
 desuden afprøves med den separate klient.

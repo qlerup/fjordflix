@@ -21,7 +21,7 @@ test('series combine genres across episodes and count only once', () => {
 });
 
 test('persistent sidebar filters without closing and remembers film and series selections', () => {
-  const dom = new JSDOM('<section class="library"><div class="library-heading"><h2 id="library-title">Serier</h2></div><div id="movie-grid"></div></section>', {runScripts:'outside-only'});
+  const dom = new JSDOM('<div id="shell"><section class="library"><div class="library-heading"><h2 id="library-title">Serier</h2></div><div id="movie-grid"></div></section></div>', {runScripts:'outside-only'});
   const w = dom.window;
   w.$ = id => w.document.getElementById(id);
   w.view = 'series';

@@ -18,7 +18,74 @@
 #proxmox-inventory{margin:24px 0;padding:20px;border:1px solid var(--line);border-radius:10px;background:#111116}#proxmox-inventory details{margin-top:18px;font-size:13px}#proxmox-inventory summary{cursor:pointer}.proxmox-actions{display:flex;flex-direction:column;gap:6px;max-width:45%}.proxmox-actions button{overflow-wrap:anywhere}.source-row strong{display:block}
 #source-status{overflow-wrap:anywhere}.settings-nav button:focus-visible,.source-directory:focus-visible{outline:2px solid #fff;outline-offset:-2px}
 #proxmox-commands{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;padding:14px;background:#09090d;border-radius:6px;font-size:12px;color:#d5ccd8}
-@media(max-width:500px){#proxmox-inventory .source-row{align-items:flex-start;flex-direction:column;gap:10px}.proxmox-actions{max-width:100%}.proxmox-actions button{white-space:normal}}
-@media(max-width:700px){#admin-dialog.settings-dialog{width:96vw;height:94dvh;max-height:94dvh}.settings-header{padding:20px 22px 14px}.settings-header h2{font-size:24px}.settings-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:calc(100% - 115px)}.settings-nav{flex-direction:row;padding:10px;gap:5px;border-right:0;border-bottom:1px solid var(--line);width:auto;order:0}.settings-nav button{padding:12px;font-size:12px}.settings-nav button.active{box-shadow:inset 0 -2px var(--red)}.settings-content{padding:24px 20px}.settings-content section>h2{font-size:23px}.settings-content .stats{grid-template-columns:1fr}.source-picker{padding:14px}}
-
 #library-write-commands{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;padding:14px;background:#09090d;border-radius:6px;font-size:12px;color:#d5ccd8}
+
+/* Settings occupies the phone viewport; only its content and tab strip scroll. */
+@media (max-width: 800px) {
+  #admin-dialog.settings-dialog {
+    inset: 0; width: 100%; max-width: none; height: 100dvh; max-height: 100dvh;
+    margin: 0; padding: 0; border: 0; border-radius: 0; overflow: hidden;
+  }
+  #admin-dialog.settings-dialog[open] { display: grid; grid-template-rows: auto minmax(0,1fr); }
+  #admin-dialog > .close {
+    top: calc(12px + env(safe-area-inset-top)); right: max(16px,env(safe-area-inset-right));
+    width: 44px; height: 44px;
+  }
+  .settings-header {
+    padding: calc(22px + env(safe-area-inset-top)) max(72px,env(safe-area-inset-right)) 20px max(20px,env(safe-area-inset-left));
+  }
+  .settings-header h2 { margin: 7px 0; font-size: 27px; letter-spacing: -.8px; }
+  .settings-header p { font-size: 13px; line-height: 1.5; }
+  .settings-layout { height: auto; min-height: 0; grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); }
+  .settings-nav {
+    position: static; order: 0; display: flex; flex-direction: row; flex-wrap: nowrap;
+    width: 100%; min-width: 0; height: auto; gap: 6px;
+    padding: 10px max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left));
+    border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto;
+    overscroll-behavior-x: contain; scroll-padding-inline: 16px; scrollbar-width: thin;
+  }
+  .settings-nav button { min-height: 44px; padding: 12px 16px; font-size: 13px; white-space: nowrap; border-radius: 10px; }
+  .settings-nav button.active { background: #ec344e1c; color: #ff9bab; box-shadow: inset 0 0 0 1px #ec344e45; }
+  .settings-content {
+    min-height: 0; padding: 26px max(20px,env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
+    overflow: auto; overscroll-behavior-y: contain; scroll-padding-block: 20px;
+  }
+  .settings-content section { min-width: 0; overflow-wrap: anywhere; }
+  .settings-content section > h2 { font-size: 24px; line-height: 1.2; margin: 10px 0 16px; letter-spacing: -.6px; }
+  .settings-content p { font-size: 14px; line-height: 1.65; }
+  .settings-content label { font-size: 13px; line-height: 1.5; }
+  .settings-content input:not([type=checkbox]), .settings-content select { min-width: 0; max-width: 100%; font-size: 16px; }
+  .settings-content button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .settings-content form > .primary, #create-invite { width: 100%; min-height: 48px; }
+  .settings-content .text-button { text-align: left; line-height: 1.5; }
+  .settings-actions { gap: 8px; margin: 20px 0; }
+  .settings-actions > button { flex: 1 1 160px; min-width: 0; }
+  .source-row { flex-direction: column; align-items: stretch; gap: 12px; padding: 20px 0; }
+  .source-row > div { width: 100%; }
+  .source-row strong, .source-path { font-size: 14px; line-height: 1.6; }
+  .source-row > .settings-actions { margin: 0; }
+  .source-row > .settings-actions > button { flex-basis: 110px; }
+  .source-empty { padding: 24px 18px; }
+  .source-picker, #proxmox-inventory { margin: 24px 0; padding: 16px; border-radius: 12px; }
+  .source-picker h3, #proxmox-inventory h3 { font-size: 18px; line-height: 1.4; }
+  #source-directories { max-height: 32dvh; gap: 6px; overscroll-behavior: contain; }
+  .source-directory { min-height: 48px; padding: 12px; font-size: 14px; line-height: 1.45; }
+  .proxmox-actions { max-width: none; width: 100%; gap: 8px; }
+  .source-help summary, #proxmox-inventory summary { padding: 12px 0; min-height: 44px; line-height: 1.5; }
+  #proxmox-commands, #library-write-commands { padding: 12px; font-size: 12px; line-height: 1.6; }
+  #admin-dialog #os-settings { max-height: none; overflow: visible; }
+  .settings-content .user-row { align-items: flex-start; flex-direction: column; gap: 6px; padding: 16px 0; font-size: 15px; }
+  .settings-content .user-row span { font-size: 12px; }
+  #invite-result { margin-top: 22px; }
+  #invite-code { min-height: 48px; }
+  .settings-content .stats { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 22px 0; }
+  .settings-content .stats > div { min-width: 0; padding: 16px 14px; line-height: 1.6; font-size: 12px; overflow-wrap: anywhere; }
+  .settings-content .stats strong { font-size: 20px; line-height: 1.25; }
+}
+
+@media (max-width: 800px) and (max-height: 500px) {
+  .settings-header { padding-top: calc(12px + env(safe-area-inset-top)); padding-bottom: 12px; }
+  .settings-header > .eyebrow, .settings-header p { display: none; }
+  .settings-header h2 { margin: 5px 0; font-size: 24px; }
+  .settings-nav { padding-block: 6px; }
+}

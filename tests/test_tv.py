@@ -50,7 +50,10 @@ def login(client, credentials):
 
 def test_login_cookie_isolation_cors_and_logout(tv_client):
     client, credentials, _ = tv_client
-    assert client.get('/tv-api/info').json() == {'app':'fjordflix-tv', 'version':1}
+    info = client.get('/tv-api/info').json()
+    assert info['app'] == 'fjordflix-tv' and info['version'] == 1
+    assert info['playback_profiles'] == ['default', 'xbox']
+    assert 'xbox-hevc-fmp4' in info['features']
     preflight = client.options('/tv-api/login', headers={'Origin':'null',
         'Access-Control-Request-Method':'POST', 'Access-Control-Request-Headers':'authorization,content-type'})
     assert preflight.status_code == 200

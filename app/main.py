@@ -13,6 +13,7 @@ import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from argon2 import PasswordHasher
@@ -804,7 +805,14 @@ def original_file(mid):
     row, meta = movie(mid)
     if not Path(row['path']).is_file():
         raise HTTPException(404, 'Videofilen er ikke tilgængelig. Kontrollér at bibliotekets lager er monteret.')
-    return FileResponse(row['path'], media_type='video/webm' if 'webm' in meta['format'] else 'video/mp4')
+    formats = set(meta['format'].split(','))
+    # ffprobe reports both MKV and WebM as "matroska,webm"; uploaded filenames
+    # retain their extension, which distinguishes those two container types.
+    if formats & {'matroska', 'mkv'}:
+        content_type = 'video/webm' if Path(row['path']).suffix.lower() == '.webm' else 'video/x-matroska'
+    else:
+        content_type = 'video/webm' if 'webm' in formats else 'video/mp4'
+    return FileResponse(row['path'], media_type=content_type)
 
 
 class Progress(BaseModel):
@@ -883,6 +891,7 @@ def movie_subtitles(mid: str, index: int, u=Depends(user)):
 
 
 class Playback(BaseModel):
+    client_profile: Literal['default', 'xbox'] = 'default'
     airplay: bool = False
     burn_subtitles: bool = False
     quality: str = 'auto'
@@ -895,6 +904,11 @@ class Playback(BaseModel):
     start: float = Field(default=0, ge=0, le=1e8)
     audio_track: int | None = Field(default=None, ge=0, strict=True)
     subtitle_track: int | None = Field(default=None, ge=0, strict=True)
+
+
+def playback_capabilities():
+    """Optional TV API features; older clients retain the default playback path."""
+    return {'playback_profiles': ['default', 'xbox'], 'features': ['xbox-hevc-fmp4', 'phone-login-v1']}
 
 
 def decide(meta, data):
@@ -920,7 +934,21 @@ def decide(meta, data):
         return {'mode': 'Direct Stream', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Videoen bevares. Indpakning og lyd tilpasses afspilleren.'}
     target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' else 1080))
     mbps = limit.get(quality, 25 if target > 1080 else 8)
-    return {'mode': 'Transcoding', 'height': target, 'mbps': mbps, 'reason': 'AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else (data.capability_reason if preserve and data.capability_reason else 'Valgt kvalitet eller format kræver videokonvertering.')}
+    reason = ('AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else
+              'De valgte billedbaserede undertekster skal brændes ind i videoen.' if burn else
+              data.capability_reason if preserve and data.capability_reason else
+              'Valgt kvalitet eller format kræver videokonvertering.')
+    if data.client_profile == 'xbox':
+        # Xbox's native H.264 fallback is Full HD, including wide cinema frames.
+        # A 1080px height alone would still produce 2580px-wide 2.39:1 video.
+        max_height = 1080
+        if meta.get('width', 0) > 0:
+            max_height = min(max_height, max(2, int(1920 * meta['height'] / meta['width']) // 2 * 2))
+        target = min(target, max_height)
+        mbps = min(mbps, 8)
+        if meta['height'] > max_height:
+            reason += ' Xbox bruger højst 1080p (1920 × 1080) ved H.264-konvertering. Original 4K kræver kompatibel Direct Play eller Direct Stream.'
+    return {'mode': 'Transcoding', 'height': target, 'mbps': mbps, 'reason': reason}
 
 
 @app.post('/api/movies/{mid}/plan')
@@ -1004,7 +1032,13 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             cmd += ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']
         if result['mode'] == 'Direct Stream':
             encoder = 'Remux + original lyd' if cmd[cmd.index('-c:a') + 1] == 'copy' else 'Remux + AAC'
-        cmd += ['-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file', '-hls_segment_filename', str(folder / 'segment%05d.ts'), str(folder / 'index.m3u8')]
+        # Native Xbox HEVC expects MP4/fMP4, not the MPEG-TS used by hls.js clients.
+        # Opt in per client so existing browsers/TVs keep their established muxer.
+        fmp4 = data.client_profile == 'xbox' and result['mode'] == 'Direct Stream' and meta['video'] == 'hevc'
+        cmd += ['-max_muxing_queue_size', '2048', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file']
+        if fmp4:
+            cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-tag:v', 'hvc1']
+        cmd += ['-hls_segment_filename', str(folder / ('segment%05d.m4s' if fmp4 else 'segment%05d.ts')), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log, cwd=folder)
         JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time(), 'idle_timeout': media.AIRPLAY_TTL if data.airplay else 120}
@@ -1047,7 +1081,7 @@ def stream_file(sid, filename, u):
         job = JOBS.get(sid)
         if not job or job['user'] != u['id']:
             raise HTTPException(404)
-        if not re.fullmatch(r'(index\.m3u8|master\.m3u8|subtitles\.m3u8|subtitle\d+\.vtt|segment\d+\.ts)', filename):
+        if not re.fullmatch(r'(index\.m3u8|master\.m3u8|subtitles\.m3u8|subtitle\d+\.vtt|init\.mp4|segment\d+\.(?:ts|m4s))', filename):
             raise HTTPException(404)
         job['touch'] = time.time()
         path = job['folder'] / filename
@@ -1064,7 +1098,9 @@ def stream_file(sid, filename, u):
             return Response(text, media_type='text/vtt')
     if not path.exists():
         raise HTTPException(404)
-    return FileResponse(path, media_type='application/vnd.apple.mpegurl' if filename.endswith('m3u8') else 'video/mp2t')
+    content_type = ('application/vnd.apple.mpegurl' if filename.endswith('.m3u8') else
+                    'video/mp4' if filename.endswith(('.mp4', '.m4s')) else 'video/mp2t')
+    return FileResponse(path, media_type=content_type)
 
 
 @app.api_route('/media/{ticket}/movies/{mid}/file', methods=['GET', 'HEAD'])

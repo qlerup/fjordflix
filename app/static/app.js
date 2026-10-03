@@ -145,7 +145,16 @@ function fillGrid(id, movies) {
 setupLibraryUI();
 setupCategories();
 FjordTracks.setup();
-document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { view = button.dataset.view; document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b === button)); render(); });
+document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => {
+  closeDetailPage();
+  view = button.dataset.view;
+  document.querySelectorAll('[data-view]').forEach(b => {
+    b.classList.toggle('active', b === button);
+    if (b === button) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  render();
+  if (window.matchMedia('(max-width: 800px)').matches) window.scrollTo(0, 0);
+});
 $('search').oninput = render;
 function updateWindowButton(fullscreen) {
   const button = $('logout');

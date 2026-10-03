@@ -10,4 +10,27 @@
 .stream-details{display:grid;grid-template-columns:1fr 1fr;gap:16px 22px;margin:0}.stream-details dt{font-size:11px;color:#a8a5b4;margin-bottom:5px}.stream-details dd{font-size:12px;line-height:1.6;margin:0;color:#eeecf3;overflow-wrap:anywhere}
 .stream-empty{border:1px dashed var(--line);padding:42px 22px;text-align:center;border-radius:12px;color:var(--muted)}
 @media(max-width:850px){.stream-card{grid-template-columns:76px minmax(0,1fr);gap:16px;padding:16px}.stream-details{grid-template-columns:1fr}.stream-body h3{font-size:18px}}
-@media(max-width:450px){.stream-card{grid-template-columns:52px minmax(0,1fr);gap:12px;padding:12px}.stream-heading{gap:8px}.stream-body h3{font-size:17px}}
+@media (max-width: 800px) {
+  .active-streams-list { gap: 16px; margin-top: 22px; }
+  .stream-card { grid-template-columns: 64px minmax(0,1fr); gap: 12px 14px; padding: 16px; border-radius: 12px; }
+  .stream-art { grid-column: 1; grid-row: 1 / span 2; }
+  .stream-body { display: contents; }
+  .stream-body > * { grid-column: 1 / -1; min-width: 0; }
+  .stream-heading { grid-column: 2; align-self: start; align-items: flex-start; gap: 8px; }
+  .stream-user { width: 100%; font-size: 12px; line-height: 1.5; }
+  .stream-mode { font-size: 11px; padding: 5px 8px; }
+  .stream-body h3 { grid-column: 2; align-self: start; margin: 0; font-size: 18px; line-height: 1.35; letter-spacing: -.3px; }
+  .stream-progress { margin-top: 6px; }
+  .settings-content .stream-position { font-size: 12px; margin: -4px 0 0; line-height: 1.5; }
+  .stream-details { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .stream-details > div { min-width: 0; }
+  .stream-details dt { font-size: 12px; margin-bottom: 5px; }
+  .stream-details dd { font-size: 13px; line-height: 1.55; }
+  .stream-body > .fine { margin: 0; }
+  .stream-empty { padding: 32px 18px; font-size: 14px; line-height: 1.6; }
+}
+@media (max-width: 400px) {
+  .stream-card { grid-template-columns: 56px minmax(0,1fr); padding: 14px; gap: 12px; }
+  .stream-body h3 { font-size: 17px; }
+  .stream-details { grid-template-columns: minmax(0,1fr); gap: 14px; }
+}
