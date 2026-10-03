@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FjordFlix Xbox</title><link rel="stylesheet" href="tv.css">
+</head>
+<body>
+  <header><img src="logo.svg" alt="FjordFlix"><span>DIT EGET BIOGRAFLÆRRED</span><button id="server">Skift server</button></header>
+  <main>
+    <section id="login" class="welcome">
+      <div class="login-intro"><p class="eyebrow">VELKOMMEN HJEM</p><h1>Der er en god<br>film i vente.</h1>
+      <p id="login-description">Log ind på din FjordFlix-server.</p><p id="address" class="muted"></p></div>
+      <form id="login-form">
+        <button id="phone-login" type="button">Log ind via telefonen</button>
+        <p class="login-divider">eller log ind på Xbox</p>
+        <label for="server-address">IP-adresse eller domæne</label><input id="server-address" placeholder="film.gleruphub.dk" required>
+        <label for="username">Brugernavn</label><input id="username" autocomplete="username" maxlength="128" required>
+        <label for="password">Adgangskode</label><input id="password" type="password" autocomplete="current-password" required>
+        <label class="https-option" for="login-https"><input id="login-https" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span><span>Login med HTTPS</span></label>
+        <button id="login-submit" class="primary" type="submit">Log ind</button>
+      </form>
+      <div id="phone-panel" hidden aria-labelledby="phone-title">
+        <h2 id="phone-title">Log ind via telefonen</h2>
+        <p class="muted">Scan QR-koden med telefonens kamera, og log ind dér.</p>
+        <div class="phone-pairing">
+          <img id="phone-qr" alt="QR-kode til login via telefonen" hidden>
+          <div class="phone-instructions"><p id="phone-code-label">Kontrollér, at telefonen viser denne kode:</p><strong id="phone-code"></strong>
+            <p id="phone-expires" class="muted"></p><p id="phone-address-label" class="muted">Du kan også åbne adressen på telefonen og skrive koden:</p><p id="phone-address"></p></div>
+        </div>
+        <p id="phone-status" role="status" aria-live="polite"></p>
+        <div class="phone-actions"><button id="phone-retry" class="primary" type="button" hidden>Lav en ny QR-kode</button><button id="phone-cancel" type="button">Tilbage til login</button></div>
+      </div>
+    </section>
+    <section id="library" hidden>
+      <nav aria-label="Bibliotek"><button data-filter="all" class="active">Alle titler</button><button data-filter="movies">Film</button><button data-filter="series">Serieafsnit</button><button data-filter="continue">Fortsæt</button><button data-filter="favorites">Min liste</button><button id="refresh">Opdater</button><button id="logout">Log ud</button></nav>
+      <div class="library-heading"><div><p class="eyebrow">FJORDFLIX · XBOX</p><h1>Find din næste film.</h1></div><input id="search" type="search" placeholder="Søg i dit bibliotek" aria-label="Søg i dit bibliotek"></div>
+      <p id="count" class="muted" aria-live="polite"></p><div id="grid" class="grid"></div>
+      <div class="pagination"><button id="previous">Forrige side</button><span id="page-number"></span><button id="next">Næste side</button></div>
+    </section>
+    <section id="detail" class="overlay" role="dialog" aria-modal="true" aria-labelledby="detail-title" hidden>
+      <div class="detail-art" id="detail-art"></div><div class="detail-content"><button id="detail-back">← Bibliotek</button><p class="eyebrow">FRA DIT BIBLIOTEK</p><h1 id="detail-title"></h1><p id="detail-meta" class="muted"></p><p id="description"></p>
+      <div class="actions"><button id="play" class="primary">▶ Afspil</button><button id="restart">Start forfra</button><button id="favorite">＋ Min liste</button></div>
+      <p id="audio-label">Lydspor</p><div id="audio-options" class="quality-options" role="group" aria-labelledby="audio-label"></div>
+      <p id="subtitle-label">Undertekster</p>
+      <div id="subtitle-dropdown" class="subtitle-dropdown">
+        <button id="subtitle-toggle" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="subtitle-options" aria-labelledby="subtitle-label subtitle-value"><span id="subtitle-value">Fra</span><span aria-hidden="true"> ▾</span></button>
+        <div id="subtitle-options" role="listbox" aria-labelledby="subtitle-label" hidden></div>
+      </div>
+      <p id="subtitle-hint" class="muted"></p>
+      <p id="quality-label">Afspilningskvalitet</p><input id="quality" type="hidden" value="auto">
+      <div id="quality-options" class="quality-options" role="group" aria-labelledby="quality-label"><button data-quality="auto" aria-pressed="true" class="active">Automatisk</button><button id="quality-original" data-quality="original" aria-pressed="false">Original</button><button id="quality-4k" data-quality="2160" aria-pressed="false">4K</button><button data-quality="1080" aria-pressed="false">1080p</button><button data-quality="720" aria-pressed="false">720p</button></div>
+      <p id="quality-hint" class="muted"></p>
+      <p id="quality-plan" class="quality-plan" role="status" aria-live="polite">Undersøger afspilning…</p><p id="quality-reason" class="muted"></p>
+      <button id="diagnostics-toggle" type="button" aria-expanded="false" aria-controls="playback-diagnostics">Afspilningsdetaljer</button>
+      <pre id="playback-diagnostics" hidden></pre>
+      <p class="muted">4K-badget viser kildefilen. Afspilleren viser den faktiske videoopløsning. Tekstundertekster vises separat; billedbaserede undertekster kræver indbrænding og transcoding.</p></div>
+    </section>
+    <section id="player" class="overlay player" role="dialog" aria-modal="true" aria-label="Videoafspiller" hidden>
+      <video id="video" playsinline></video><div id="player-controls"><p id="player-title"></p><p id="play-status" aria-live="polite"></p><p id="timeline"></p><button id="stop">← Luk afspiller</button><button id="rewind">−30 sek.</button><button id="toggle">Pause / afspil</button><button id="forward">+30 sek.</button></div>
+    </section>
+    <p id="message" role="alert" hidden></p>
+  </main>
+  <footer>D-PAD / STICK Flyt fokus <span>A Vælg</span><span>B Tilbage</span><span>X Pause / afspil</span><span>LB / RB Spol</span></footer>
+  <script src="xbox-platform.js"></script><script src="server-url.js"></script><script src="navigation.js"></script><script src="capabilities.js"></script><script src="qrcode.js"></script><script src="phone-page.js"></script><script src="local-phone-server.js"></script><script src="phone-login.js"></script><script src="tv.js"></script>
+</body></html>

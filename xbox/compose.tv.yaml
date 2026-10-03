@@ -1,0 +1,9 @@
+# Add this override LAST, together with the same Compose files/project as usual.
+# TV_APP_DIR is the absolute path to this folder ON THE SERVER.
+services:
+  app:
+    volumes:
+      - "${TV_APP_DIR:?Set TV_APP_DIR to the Xbox app folder on the server}:/opt/fjordflix-tv:ro"
+    environment:
+      PYTHONPATH: /app:/opt/fjordflix-tv
+    command: ["uvicorn", "fjordflix_tv:app", "--host", "0.0.0.0", "--port", "8080"]

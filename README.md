@@ -274,6 +274,19 @@ Telefonen modtager ingen Xbox-token. Funktionen annonceres som `phone-login-v1`;
 proxyen skal videresende `/tv-login`, `/static/*` og `/tv-api/*` til webserveren.
 Den nye serverkode kræver også Xbox-app 0.1.7 for dette loginforløb.
 
+Fra Xbox-app 0.1.10 åbner **Log ind via telefonen** i stedet en midlertidig
+HTTP-side på Xboxens lokale IP og port. Telefonen kan indtaste serveradresse,
+brugernavn og adgangskode, uden at serveradressen først skrives på Xbox.
+Begge enheder skal være på samme lokalnetværk. Siden har en tilfældig engangsadresse
+og lukker efter login, annullering, suspend eller fem minutter. Den bruger det
+eksisterende `/tv-api/login`; adgangskoden gemmes ikke. Serverparringen ovenfor
+bevares til browser-simulatoren.
+
+Xbox-kildekoden ligger i [xbox/](xbox/README.md). På Windows: `cd xbox`, `npm ci`,
+`npm run build`, `npm test`, `npm run test:browser` og `npm run test:phone`.
+`npm run package` opretter og signerer en lokal Developer Mode-APPX.
+Byggefiler, SDK, udviklercertifikater og private nøgler versionsstyres ikke.
+
 Serveren har et indbygget token-API til selvstændige TV-apps. Det følger med ved
 normal opdatering via FjordHub; TV-appens kildekode og installationsfil ligger
 ikke i dette repository.
