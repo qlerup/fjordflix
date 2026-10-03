@@ -11,6 +11,18 @@ if (!app.isPackaged && process.env.FJORDFLIX_TEST_PROFILE) app.setPath('userData
 let win, origin = '', active, launching = false;
 const setup = pathToFileURL(path.join(__dirname, 'setup.html')).href;
 const configPath = () => path.join(app.getPath('userData'), 'server.json');
+const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json');
+function previousFullscreen() {
+  try {
+    const state = JSON.parse(fs.readFileSync(windowStatePath(),'utf8'));
+    return typeof state.fullscreen === 'boolean' ? state.fullscreen : true;
+  } catch { return true; }
+}
+function saveWindowState() {
+  if (!win || win.isDestroyed()) return;
+  try { fs.writeFileSync(windowStatePath(),JSON.stringify({fullscreen:win.isFullScreen()})); }
+  catch (error) { console.warn('Window preference could not be saved:',error.code); }
+}
 function trusted(event, local = false) {
   const frame = event.senderFrame;
   return event.sender === win.webContents && frame === win.webContents.mainFrame &&
@@ -112,10 +124,11 @@ async function play(data) {
 }
 app.whenReady().then(async () => {
   win = new BrowserWindow({width:1440,height:940,minWidth:800,minHeight:600,backgroundColor:'#101014',
-    fullscreen:true,autoHideMenuBar:true,
+    fullscreen:previousFullscreen(),autoHideMenuBar:true,
     show:app.isPackaged || !process.env.FJORDFLIX_TEST_PROFILE,
     icon:path.join(__dirname,'assets/icon.ico'),title:'FjordFlix',
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true}});
+  win.on('close',saveWindowState);
   win.webContents.session.setPermissionRequestHandler((_w,_p,callback)=>callback(false));
   const updates = createUpdates({app, updater:require('electron-updater').autoUpdater, dialog, window:win, playing:()=>!!active || launching});
   ipcMain.handle('check-updates', event => {
@@ -133,7 +146,7 @@ app.whenReady().then(async () => {
     return win.isFullScreen();
   });
   for (const event of ['enter-full-screen', 'leave-full-screen']) {
-    win.on(event, () => win.webContents.send('fullscreen-changed', win.isFullScreen()));
+    win.on(event, () => { saveWindowState(); win.webContents.send('fullscreen-changed', win.isFullScreen()); });
   }
   win.webContents.setWindowOpenHandler(({url})=>{
     const target=new URL(url);
