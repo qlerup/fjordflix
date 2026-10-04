@@ -32,7 +32,7 @@ at vælge den, hvis du vil bevare FjordFlix og dens gemte serverforbindelse.
 1. Åbn **Home / My games & apps** i Device Portal.
 2. Vælg **Add**, eller værktøjet til at installere en app-pakke. Navnet kan variere
    med Xbox-systemversionen.
-3. Vælg filen **`dist/FjordFlix-Xbox_0.1.8.appx`** fra denne projektmappe.
+3. Vælg filen **`dist/FjordFlix-Xbox_0.1.12.appx`** fra denne projektmappe.
 4. Fortsæt og installér. Pakken har ingen separate framework-afhængigheder.
    Hvis værktøjet specifikt beder om udgivercertifikatet, er den offentlige fil
    **`dist/FjordFlix-Xbox.cer`**. Den er ikke en app-afhængighed.

@@ -19,7 +19,7 @@ if (!$SdkToolsPath) {
 }
 $makeAppx = Join-Path $SdkToolsPath 'makeappx.exe'
 $signTool = Join-Path $SdkToolsPath 'signtool.exe'
-$output = Join-Path $projectRoot 'dist/FjordFlix-Xbox_0.1.11.appx'
+$output = Join-Path $projectRoot 'dist/FjordFlix-Xbox_0.1.12.appx'
 & $makeAppx pack /d (Join-Path $projectRoot 'dist/app') /p $output /o
 if ($LASTEXITCODE -ne 0) { throw 'APPX-validering eller pakning mislykkedes.' }
 $signingDir = Join-Path $projectRoot '.signing'
@@ -42,6 +42,6 @@ if (!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -n
     throw 'Den signerede pakke kunne ikke verificeres.'
 }
 Get-FileHash -LiteralPath $output -Algorithm SHA256 | ForEach-Object {
-    "$($_.Hash)  FjordFlix-Xbox_0.1.11.appx" | Set-Content -LiteralPath (Join-Path $projectRoot 'dist/SHA256SUMS.txt')
+    "$($_.Hash)  FjordFlix-Xbox_0.1.12.appx" | Set-Content -LiteralPath (Join-Path $projectRoot 'dist/SHA256SUMS.txt')
 }
 Write-Output 'APPX valideret og signeret. Certifikatet er selvsigneret til Developer Mode, ikke Microsoft Store.'
