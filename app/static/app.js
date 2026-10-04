@@ -199,7 +199,8 @@ async function capabilities(movie, quality) {
   let videoCopy = false;
   const mse = typeof MediaSource !== 'undefined' ? MediaSource : null;
   const dynamicRange = details.dynamic_range;
-  const hdrAllowed = !movie.hdr || (['HDR10', 'HDR10+', 'HLG'].includes(dynamicRange)
+  const hdr10Base = FjordLibrary.hdr10Base(movie);
+  const hdrAllowed = !movie.hdr || ((['HDR10', 'HDR10+', 'HLG'].includes(dynamicRange) || hdr10Base)
     && typeof matchMedia === 'function' && matchMedia('(dynamic-range: high)').matches);
   if (hevcProfile && hdrAllowed && !airplaySupported && !video.canPlayType('application/vnd.apple.mpegurl')
       && mse?.isTypeSupported(`video/mp4; codecs="${codec}"`) && navigator.mediaCapabilities) {
@@ -219,6 +220,7 @@ async function capabilities(movie, quality) {
   const capabilityReason = movie.video === 'hevc' && !videoCopy && !supported
     ? (movie.hdr ? 'Browseren kunne ikke bekræfte understøttelse af filmens HEVC/HDR-format.' : 'Browseren kunne ikke bekræfte flydende HEVC-afspilning.') : '';
   return {quality, airplay:airplaySupported, direct:supported && allowedContainer && audioSupported, video_copy:videoCopy,
+    hdr10_base:videoCopy && hdr10Base,
     capability_reason:capabilityReason, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:0, ...FjordTracks.request()};
 }
 async function openDetail(movie) {
@@ -298,12 +300,13 @@ async function startPlayback(position = 0, fallback = false) {
     if (!video.canPlayType('application/vnd.apple.mpegurl')) await loadHlsLibrary();
     if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
-    if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; }
+    if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; data.hdr10_base = false; }
     const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position});
     if (generation !== playGeneration || !$('player-dialog').open) { if(result.playback_id) await api(`/playbacks/${result.playback_id}/stop`, 'POST'); if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
     playback = result; lastSaved = 0;
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
     $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
+    result.infoText = $('playback-info').textContent;
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (!result.session || video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else if (window.Hls?.isSupported()) {
@@ -342,7 +345,17 @@ async function closePlayer() { ++playGeneration; if(document.fullscreenElement &
 $('player-close').onclick = closePlayer;
 $('player-dialog').addEventListener('cancel', event => { event.preventDefault(); closePlayer(); });
 setInterval(() => {
-  if(playback?.session) api(`/streams/${playback.session}/heartbeat`, 'POST').catch(() => {});
+  const current = playback;
+  if(current?.session) api(`/streams/${current.session}/heartbeat`, 'POST').then(status => {
+    if (playback !== current || current.mode !== 'Transcoding') return;
+    const progress = status.transcoding;
+    const speed = progress?.speed;
+    const detail = progress?.finished ? 'Konvertering færdig' : Number.isFinite(speed)
+      ? `Konvertering: ${speed.toFixed(2)}×${speed < 1 ? ' · Under afspilningshastighed; kan give buffering' : ''}` : '';
+    $('playback-info').textContent = current.infoText + (detail ? ` · ${detail}` : '');
+  }).catch(() => {});
+}, 10000);
+setInterval(() => {
   if(playback?.media_ticket) api('/media/heartbeat', 'POST', {ticket:playback.media_ticket}).catch(e => showPlayerError(e.message));
 }, 30000);
 window.addEventListener('pagehide', () => { if(playback && selected) { fetch(`/api/movies/${selected.id}/progress`, {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify({position:position()}),keepalive:true}); if(playback.session && !airplayActive()) fetch(`/api/streams/${playback.session}`, {method:'DELETE',keepalive:true}); } });

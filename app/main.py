@@ -940,7 +940,7 @@ def decide(meta, data):
 
 def video_plan(meta, data):
     source = meta.get('quality', {})
-    if data.hdr10_base and not (data.client_profile == 'xbox' and not data.airplay and meta['video'] == 'hevc' and compatible_hdr10_base(source)):
+    if data.hdr10_base and not (data.video_copy and not data.airplay and meta['video'] == 'hevc' and compatible_hdr10_base(source)):
         raise HTTPException(400, 'Filens HDR10-basislag kunne ikke bekræftes.')
     try:
         audio, subtitle = tracks.select(meta, data.audio_track, data.subtitle_track)
@@ -1037,8 +1037,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         raise HTTPException(503, 'Serverens FFmpeg mangler en fungerende HEVC-encoder til 4K. Videoen sænkes ikke til 1080p.')
     use_gpu = video_encoder in ('h264_nvenc', 'hevc_nvenc')
     if meta['hdr']:
-        filters += transcoding.hdr_filters(result['height'] if data.client_profile == 'xbox' else None)
-    if not (meta['hdr'] and data.client_profile == 'xbox'):
+        filters += transcoding.hdr_filters(result['height'])
+    else:
         filters += [f"scale=-2:{result['height']}"]
     filters += ['format=yuv420p']
     hardware_inputs, filter_chain = transcoding.accelerated_filters(
@@ -1099,9 +1099,10 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             encoder = 'Remux + original lyd' if cmd[cmd.index('-c:a') + 1] == 'copy' else 'Remux + AAC'
             if data.hdr10_base:
                 encoder += ' · HDR10-basislag'
-        # Native Xbox HEVC expects MP4/fMP4, not the MPEG-TS used by hls.js clients.
-        # Opt in per client so existing browsers/TVs keep their established muxer.
-        fmp4 = data.client_profile == 'xbox' and (hevc_transcode or result['mode'] == 'Direct Stream' and meta['video'] == 'hevc')
+        # HDR10 base-layer remux and native Xbox HEVC use explicit hvc1/fMP4.
+        # Other browsers/TVs keep their established muxer.
+        fmp4 = (data.client_profile == 'xbox' and (hevc_transcode or result['mode'] == 'Direct Stream' and meta['video'] == 'hevc')
+                or data.hdr10_base and result['mode'] == 'Direct Stream')
         matroska = result.get('transport') == 'matroska'
         cmd += ['-max_muxing_queue_size', '2048']
         if matroska:

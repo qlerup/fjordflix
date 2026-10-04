@@ -24,7 +24,7 @@ def hevc_encoder(gpu):
 
 def hdr_filters(height=None):
     # Scale in linear light before the expensive float RGB tone mapper. The
-    # current Xbox H.264 fallback is Full HD; processing 4K pixels wastes CPU work.
+    # requested output may be 720p/1080p; processing 4K pixels wastes CPU work.
     size = f':w=-2:h={height}' if height else ''
     return [f'zscale=t=linear:npl=100{size}', 'format=gbrpf32le', 'zscale=p=bt709',
             'tonemap=tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv']

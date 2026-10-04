@@ -24,12 +24,16 @@ const FjordLibrary = {
     return [item.title, item.catalog?.series_title, item.catalog?.episode_title,
       ...(item.episodes || []).map(m => m.title)].filter(Boolean).join(' ').toLocaleLowerCase('da').includes(query);
   },
+  hdr10Base(item) {
+    const q = item.quality || {};
+    return q.dynamic_range === 'Dolby Vision' && q.dv_bl !== false &&
+      (q.dv_profile === 7 || q.dv_profile === 8 && q.dv_bl_signal_compatibility_id === 1);
+  },
   dynamicRangeLabel(item) {
     const q = item.quality || {};
     if (q.dynamic_range === 'Dolby Vision') {
       // Keep this evidence aligned with app.quality.hdr10_base.
-      const hdr10Base = q.dv_bl !== false && (q.dv_profile === 7 ||
-        q.dv_profile === 8 && q.dv_bl_signal_compatibility_id === 1);
+      const hdr10Base = this.hdr10Base(item);
       return hdr10Base ? 'Dolby Vision/HDR' : 'Dolby Vision';
     }
     if (['HDR10', 'HDR10+', 'HLG'].includes(q.dynamic_range)) return 'HDR';

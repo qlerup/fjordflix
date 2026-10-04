@@ -15,8 +15,9 @@ def hevc_meta(**extra):
             'bitrate':40000000, **extra}
 
 
-def test_hdr10_base_preserves_4k_and_rejects_unverified_dolby():
-    data = main.Playback(client_profile='xbox',quality='original',hdr10_base=True,video_copy=True,direct=True)
+@pytest.mark.parametrize('profile', ['default', 'xbox'])
+def test_hdr10_base_preserves_4k_and_rejects_unverified_dolby(profile):
+    data = main.Playback(client_profile=profile,quality='original',hdr10_base=True,video_copy=True,direct=True)
     meta = hevc_meta(quality={'dynamic_range':'Dolby Vision','dv_profile':7})
     result = main.decide(meta,data)
     assert result['mode'] == 'Direct Stream' and result['height'] == 2160
@@ -196,7 +197,7 @@ def test_original_file_content_type_and_ticket_scope(tv_client, extension, forma
     assert client.get(result['url'].replace(mid,'0'*32)).status_code == 403
 
 
-@pytest.mark.parametrize('profile,extension,hdr_base', [('default','.ts',False), ('xbox','.m4s',False), ('xbox','.m4s',True)])
+@pytest.mark.parametrize('profile,extension,hdr_base', [('default','.ts',False), ('default','.m4s',True), ('xbox','.m4s',False), ('xbox','.m4s',True)])
 def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extension, hdr_base):
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         pytest.skip('FFmpeg and ffprobe are required for real HEVC remux verification.')
@@ -217,7 +218,7 @@ def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extensio
     (main.DATA/'streams').mkdir(exist_ok=True)
     _, headers = login(client,credentials)
     response = client.post(f'/tv-api/movies/{mid}/play',headers=headers,
-        json={'client_profile':profile,'quality':'original','video_copy':True,'audio_copy':True,'hdr10_base':hdr_base})
+        json={'client_profile':profile,'quality':'original','video_copy':True,'audio_copy':profile == 'xbox','hdr10_base':hdr_base})
     assert response.status_code == 200, response.text
     result = response.json()
     assert result['mode'] == 'Direct Stream'
@@ -232,7 +233,7 @@ def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extensio
         playlist = client.get(result['url']).text
         segment_name = next(line for line in playlist.splitlines() if line.endswith(extension))
         base = result['url'].rsplit('/',1)[0]
-        media_type = 'video/mp4' if profile == 'xbox' else 'video/mp2t'
+        media_type = 'video/mp4' if extension == '.m4s' else 'video/mp2t'
         fragment = client.get(base+'/'+segment_name,headers={'Range':'bytes=0-15'})
         assert fragment.status_code == 206 and len(fragment.content) == 16
         assert fragment.headers['content-type'] == media_type
@@ -244,7 +245,7 @@ def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extensio
         with pytest.raises(main.HTTPException) as foreign_user:
             main.stream_file(result['session'],segment_name,{'id':'someone-else'})
         assert foreign_user.value.status_code == 404
-        if profile == 'xbox':
+        if extension == '.m4s':
             assert '#EXT-X-MAP:URI="init.mp4"' in playlist
             assert not re.search(r'^segment\d+\.ts$',playlist,re.M)
             init = client.get(base+'/init.mp4',headers={'Range':'bytes=0-15'})
@@ -260,9 +261,10 @@ def test_hevc_remux_real_output_and_fragment_access(tv_client, profile, extensio
         assert video['codec_name'] == 'hevc' and video['pix_fmt'] == 'yuv420p10le'
         assert video['color_transfer'] == 'smpte2084'
         assert (video['width'],video['height']) == (320,180)
-        if profile == 'xbox':
+        if extension == '.m4s':
             assert video['codec_tag_string'] == 'hvc1'
-        assert audio['codec_name'] == 'ac3' and audio['channels'] == 6
+        assert audio['codec_name'] == ('ac3' if profile == 'xbox' else 'aac')
+        assert audio['channels'] == (6 if profile == 'xbox' else 2)
         if hdr_base:
             def hashes(path):
                 decoded = subprocess.run(['ffmpeg','-v','error','-i',str(path),'-map','0:v:0','-f','framemd5','-'],check=True,capture_output=True,timeout=20)

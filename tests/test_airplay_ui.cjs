@@ -12,6 +12,7 @@ function setup(safari) {
   const html=fs.readFileSync('app/static/index.html','utf8');
   const dom=new JSDOM(html,{url:'http://fjord.test/',runScripts:'outside-only'}), w=dom.window, calls=[];
   w.matchMedia=()=>({matches:false,addEventListener(){}});
+  w.scrollTo=()=>{};
   w.HTMLDialogElement.prototype.showModal=function(){this.open=true};
   w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};
   w.HTMLMediaElement.prototype.canPlayType=type=>type.includes('mpegurl')?(safari?'probably':''):'probably';
@@ -32,6 +33,7 @@ function setup(safari) {
     let result={};
     if(path==='/api/state')result={user:{id:'owner',name:'Tester',admin:false},managed:false};
     else if(path==='/api/movies')result=[movie];
+    else if(path.endsWith('/tracks'))result=movie.tracks;
     else if(path.endsWith('/plan'))result={mode:'Direct Stream',height:720,mbps:1,reason:'Test'};
     else if(path.endsWith('/play'))result={mode:'Direct Stream',height:720,mbps:1,encoder:'AAC',session:'s1',offset:data.start,
       url:'http://fjord.test/media/test/streams/s1/index.m3u8',media_ticket:'t'.repeat(43),airplay:data.airplay,
