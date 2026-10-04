@@ -94,6 +94,8 @@ test('AirPlay uses native HLS and carries selected tracks through changes and ba
 test('decoder recovery keeps the current transcode and fails visibly on a second error',async()=>{
   const {dom,w,calls,api}=setup(false,true);
   try {
+    // Modern Chrome advertises native HLS without exposing AirPlay.
+    w.HTMLMediaElement.prototype.canPlayType=()=> 'maybe';
     class Hls {
       static Events={ERROR:'error',FRAG_LOADED:'frag'};
       static ErrorTypes={MEDIA_ERROR:'media'};
@@ -107,6 +109,8 @@ test('decoder recovery keeps the current transcode and fails visibly on a second
     await tick();await tick();await api.openDetail(movie);
     api.playFromDetail(30);await until(()=>api.playback&&!api.switching);
     const v=w.document.getElementById('video'), hls=api.hls;
+    assert.ok(hls,'Chrome uses HLS.js even when native HLS is advertised');
+    assert.match(api.playback.infoText,/HLS.js/);
     v.currentTime=5;
     Object.defineProperty(v,'error',{value:{code:3},writable:true,configurable:true});
     v.dispatchEvent(new w.Event('error'));

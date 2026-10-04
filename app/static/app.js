@@ -202,7 +202,7 @@ async function capabilities(movie, quality) {
   const hdr10Base = FjordLibrary.hdr10Base(movie);
   const hdrAllowed = !movie.hdr || ((['HDR10', 'HDR10+', 'HLG'].includes(dynamicRange) || hdr10Base)
     && typeof matchMedia === 'function' && matchMedia('(dynamic-range: high)').matches);
-  if (hevcProfile && hdrAllowed && !airplaySupported && !video.canPlayType('application/vnd.apple.mpegurl')
+  if (hevcProfile && hdrAllowed && !airplaySupported
       && mse?.isTypeSupported(`video/mp4; codecs="${codec}"`) && navigator.mediaCapabilities) {
     try {
       const config = {contentType:`video/mp4; codecs="${codec}"`, width:movie.width, height:movie.height,
@@ -297,7 +297,9 @@ async function startPlayback(position = 0, fallback = false) {
   badge('actual-badge', 'Forbereder'); $('playback-info').textContent = '';
   $('timeline').max = selected.duration;
   try {
-    if (!video.canPlayType('application/vnd.apple.mpegurl')) await loadHlsLibrary();
+    // Chrome can advertise native HLS too. Prefer our MSE player except for
+    // AirPlay, which requires the native path for remote playback/subtitles.
+    if (!airplaySupported) await loadHlsLibrary();
     if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
     if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; data.hdr10_base = false; }
@@ -306,11 +308,13 @@ async function startPlayback(position = 0, fallback = false) {
     playback = result; lastSaved = 0;
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
     $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
-    result.infoText = $('playback-info').textContent;
+    const useHls = !!result.session && !airplaySupported && !!window.Hls?.isSupported();
+    result.infoText = $('playback-info').textContent + (result.session ? ` · ${useHls ? 'HLS.js' : 'Native HLS'}` : '');
+    $('playback-info').textContent = result.infoText;
     result.health = FjordPlaybackHealth.create(video);
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
-    if (!result.session || video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
-    else if (window.Hls?.isSupported()) {
+    if (!result.session || !useHls && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
+    else if (useHls) {
       hls = new Hls({startPosition:0, maxBufferLength:30, backBufferLength:30});
       hls.on(Hls.Events.FRAG_LOADED, (_, data) => result.health.fragment(data));
       hls.on(Hls.Events.ERROR, (_, info) => {

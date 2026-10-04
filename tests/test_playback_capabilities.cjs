@@ -31,7 +31,7 @@ test('HEVC Main10 HDR uses remux only with confirmed display and smooth MSE deco
   const probes = [];
   const context = vm.createContext({
     FjordLibrary,
-    video:{canPlayType:type => type.includes('mpegurl') ? '' : 'probably'}, airplaySupported:false,
+    video:{canPlayType:() => 'maybe'}, airplaySupported:false,
     MediaSource:{isTypeSupported:() => true}, matchMedia:() => ({matches:true}),
     navigator:{mediaCapabilities:{decodingInfo:async config => {probes.push(config); return {supported:true,smooth:true};}}},
     FjordTracks:{request:() => ({})},
