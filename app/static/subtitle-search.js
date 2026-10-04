@@ -1,14 +1,22 @@
 /* Provider credentials stay on the server. Only administrators spend its quota. */
 (() => {
   let settings = null;
+  let settingsBusy = false;
   const providerName = value => value === 'subdl' ? 'SubDL' : 'OpenSubtitles';
   const selectedProvider = () => $('subtitle-provider').value;
   const providerFields = () => {
     const subdl = selectedProvider() === 'subdl';
     $('os-login-fields').hidden = subdl;
-    $('os-username').disabled = $('os-password').disabled = subdl;
-    $('os-username').value = '';
-    $('os-disconnect').disabled = !settings?.configured || selectedProvider() !== settings.provider;
+    $('os-username').disabled = $('os-password').disabled = subdl || settingsBusy;
+    $('os-disconnect').disabled = settingsBusy || !settings?.configured || selectedProvider() !== settings.provider;
+    if (!settingsBusy) $('os-disconnect').textContent = !settings?.configured && selectedProvider() === settings?.provider
+      ? 'Ingen forbindelse at fjerne' : 'Fjern forbindelsen';
+  };
+  const setSettingsBusy = busy => {
+    settingsBusy = busy;
+    for (const id of ['os-save','os-key','subtitle-provider','subtitle-automatic','subtitle-primary-language','subtitle-fallback-language']) $(id).disabled = busy;
+    $('os-disconnect').setAttribute('aria-busy', String(busy));
+    providerFields();
   };
   const showStatus = data => {
     settings = data;
@@ -18,20 +26,23 @@
     $('subtitle-automatic').checked = data.automatic;
     $('subtitle-primary-language').value = data.language;
     $('subtitle-fallback-language').value = data.fallback_language;
+    $('os-username').value = '';
     providerFields();
   };
   const clearSecrets = () => { $('os-key').value = ''; $('os-password').value = ''; };
   window.loadSubtitleSettings = async () => {
+    if (settingsBusy) return;
     try {
       const data = await api('/admin/subtitles'); showStatus(data);
-      clearSecrets(); $('os-error').textContent = '';
+      clearSecrets(); $('os-error').textContent = ''; $('os-action-status').textContent = '';
 
     } catch(e) { toast(e.message); }
   };
   $('admin-dialog').addEventListener('close',clearSecrets);
-  $('subtitle-provider').onchange = () => { clearSecrets(); providerFields(); };
+  $('subtitle-provider').onchange = () => { clearSecrets(); $('os-username').value = ''; providerFields(); $('os-action-status').textContent = ''; };
   $('os-form').onsubmit = async event => {
-    event.preventDefault(); $('os-save').disabled = true; $('os-error').textContent = 'Tester forbindelsen…';
+    event.preventDefault(); if (settingsBusy) return;
+    setSettingsBusy(true); $('os-error').textContent = 'Tester forbindelsen…'; $('os-action-status').textContent = '';
     try {
       showStatus(await api('/admin/subtitles','PUT',{provider:selectedProvider(),automatic:$('subtitle-automatic').checked,
         language:$('subtitle-primary-language').value,fallback_language:$('subtitle-fallback-language').value,
@@ -39,11 +50,20 @@
         password:selectedProvider()==='opensubtitles' ? $('os-password').value : ''}));
       clearSecrets(); $('os-error').textContent = ''; toast('Undertekstindstillingerne er gemt.');
     } catch(e) { $('os-error').textContent = e.message; }
-    finally { $('os-save').disabled = false; }
+    finally { setSettingsBusy(false); }
   };
   $('os-disconnect').onclick = async () => {
-    try { showStatus(await api('/admin/subtitles','DELETE')); clearSecrets(); }
-    catch(e) { $('os-error').textContent = e.message; }
+    if (settingsBusy || $('os-disconnect').disabled) return;
+    const name = providerName(selectedProvider());
+    setSettingsBusy(true); $('os-disconnect').textContent = 'Fjerner forbindelsen…';
+    $('os-error').textContent = ''; $('os-action-status').textContent = 'Fjerner den gemte forbindelse…';
+    try {
+      showStatus(await api('/admin/subtitles','DELETE')); clearSecrets();
+      $('os-action-status').textContent = `${name}-forbindelsen er fjernet. Allerede hentede undertekster er bevaret.`;
+      toast(`${name}-forbindelsen er fjernet.`);
+    }
+    catch(e) { $('os-error').textContent = e.message; $('os-action-status').textContent = ''; }
+    finally { setSettingsBusy(false); }
   };
   let movie = null, generation = 0, downloading = false;
   $('subtitle-fetch').onclick = async () => {

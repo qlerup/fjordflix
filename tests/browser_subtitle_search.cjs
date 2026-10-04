@@ -5,6 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  let downloaded=false,configured=false,searches=0,provider='opensubtitles',automatic=false;
+ let deleteCount=0, failDelete=true, finishDelete;
  const movie={id:'a'.repeat(32),title:'Scary Movie',width:3840,height:2160,format:'matroska',video:'hevc',audio:'aac',duration:61,size:500000000,bitrate:60000000,position:0,catalog:{media_type:'movie'},tracks:{version:1,audio:[],subtitles:[]}};
  await page.route('**/*',async route=>{
   const req=route.request(),url=new URL(req.url());
@@ -16,6 +17,11 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   else if(url.pathname.endsWith('/plan'))data={mode:'Direct Play',height:2160,mbps:60,reason:'Test'};
   else if(url.pathname==='/api/admin')data={gpu:false,free_gb:100,streams:0,max_streams:3,users:[]};
   else if(url.pathname==='/api/admin/subtitles'){
+   if(req.method()==='DELETE') {
+    deleteCount++;
+    if(failDelete)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Prøv igen senere.'})});
+    await new Promise(resolve=>{finishDelete=resolve;}); configured=false;
+   }
    if(req.method()==='PUT'){assert.equal(req.postDataJSON().api_key,'test-key');configured=true;provider=req.postDataJSON().provider;automatic=req.postDataJSON().automatic;}
    data={configured,provider,automatic,language:'da',fallback_language:'en',providers:{opensubtitles:{configured},subdl:{configured}}};
   } else if(url.pathname.endsWith('/subtitle-fetch')){
@@ -66,6 +72,29 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   assert.ok(downloaded);assert.equal(await page.locator('#detail-subtitle').inputValue(),'1000000123');
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-results/subtitle-search-mobile.png'});
   assert.ok(await page.locator('#subtitle-search-dialog').evaluate(el=>el.getBoundingClientRect().right<=innerWidth));
+  await page.locator('#subtitle-search-close').click();
+  await page.setViewportSize({width:1280,height:900});
+  await page.locator('#admin-open').click();
+  await page.locator('[data-settings-tab="subtitles"]').click();
+  await page.waitForFunction(()=>!document.getElementById('os-disconnect').disabled);
+  await page.locator('#os-disconnect').click();
+  await page.waitForFunction(()=>document.getElementById('os-error').textContent.includes('Prøv igen'));
+  assert.equal(await page.locator('#os-disconnect').isEnabled(),true,'failed disconnect can be retried');
+  assert.equal(await page.locator('#os-save').isEnabled(),true);
+  failDelete=false;
+  await page.locator('#os-disconnect').click();
+  await page.waitForFunction(()=>document.getElementById('os-disconnect').textContent.includes('Fjerner'));
+  assert.equal(await page.locator('#os-disconnect').isEnabled(),false);
+  assert.equal(await page.locator('#os-save').isEnabled(),false,'save cannot race disconnect');
+  assert.equal(await page.locator('#os-disconnect').evaluate(el=>getComputedStyle(el).cursor),'wait');
+  finishDelete();
+  await page.waitForFunction(()=>document.getElementById('os-action-status').textContent.includes('SubDL-forbindelsen er fjernet'));
+  assert.equal(deleteCount,2);
+  assert.equal(await page.locator('#os-disconnect').textContent(),'Ingen forbindelse at fjerne');
+  assert.equal(await page.locator('#os-disconnect').evaluate(el=>getComputedStyle(el).cursor),'default');
+  assert.equal(await page.locator('#os-save').isEnabled(),true);
+  await page.locator('#os-disconnect').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'test-results/subdl-disconnected.png'});
   assert.deepEqual(errors,[]);console.log('PASS: settings, explicit Danish search, safe results, download, selection, desktop/mobile');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

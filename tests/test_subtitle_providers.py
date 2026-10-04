@@ -86,6 +86,23 @@ def test_subdl_download_cache_and_disjoint_track_ids(client, providers):
     assert main.movie(MID)[1]['external_subtitles'][0]['title'].startswith('SubDL')
 
 
+def test_disconnect_removes_subdl_key_without_network_and_preserves_other_provider(client, providers):
+    manager, requests, _ = providers
+    assert client.put('/api/admin/opensubtitles',json=CREDS).status_code == 200
+    configure(client,automatic=True)
+    count = len(requests)
+    response = client.delete('/api/admin/subtitles')
+    assert response.status_code == 200
+    assert response.json()['configured'] is False
+    assert response.json()['providers']['opensubtitles']['configured'] is True
+    assert manager.providers['subdl'].credentials() == {}
+    assert manager.providers['subdl'].choices == {}
+    manager.automatic(MID)
+    assert len(requests) == count, 'disconnect and subsequent automatic work must not contact SubDL'
+    assert client.get('/api/admin/subtitles').json()['configured'] is False
+    assert client.delete('/api/admin/subtitles').json()['configured'] is False
+
+
 def test_automatic_primary_fallback_existing_and_failed_import(client, providers, monkeypatch):
     manager, requests, data = providers
     configure(client,automatic=True)
