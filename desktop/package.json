@@ -24,6 +24,7 @@
       "playback-diagnostics.cjs",
       "subtitle-options.cjs",
       "audio-options.cjs",
+      "audio-fallback.cjs",
       "previews.cjs",
       "setup.html",
       "setup.js",

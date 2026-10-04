@@ -107,6 +107,9 @@ async function play(data) {
       });
       run.socket = socket;
       const command = (command, request_id) => { if (!socket.destroyed) socket.write(JSON.stringify({command,request_id})+'\n'); };
+      const audioFallback = require('./audio-fallback.cjs').createAudioFallback({
+        send:command, record:run.diagnostics.record, audio:result.audio
+      });
       run.previews = require('./previews.cjs').createPreviews({executable,url,send:command});
       socket.on('error', () => child.kill());
       let buffer = '';
@@ -117,7 +120,7 @@ async function play(data) {
         while ((end=buffer.indexOf('\n'))>=0) {
           const line=buffer.slice(0,end); buffer=buffer.slice(end+1);
           let message; try { message=JSON.parse(line); } catch { continue; }
-          const failure = run.diagnostics.receive(message);
+          const failure = run.diagnostics.receive(message) || audioFallback.receive(message);
           if (failure) { playbackFailure(run, failure); command(['quit']); }
           if (message.event === 'client-message' && message.args?.[0] === 'fjord-preview-request') run.previews.request(message.args[1],message.args[2]);
           if (message.event === 'property-change' && message.name === 'time-pos' && Number.isFinite(message.data)) run.position=message.data;

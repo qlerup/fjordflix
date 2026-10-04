@@ -18,8 +18,10 @@ HDR-resultatet afhænger af Windows, skærm, grafikdriver og filformat.
 Dolby Digital, Dolby Digital Plus, TrueHD og DTS/DTS-HD forsøges sendt uændret
 via WASAPI til Windows' valgte lydudgang. Det bevarer også Atmos/DTS:X-data,
 når HDMI-forbindelsen og lydanlægget understøtter det oprindelige format.
-Vælg HDMI-lydudgangen i Windows. Hvis udgangen afviser formatet, kan mpv afkode
-lyden lokalt til PCM; det er ikke Atmos-passthrough. Serveren konverterer ikke
+Vælg HDMI-lydudgangen i Windows. Hvis WASAPI ikke kan starte lydudgangen, forsøger
+appen én gang at genåbne det valgte lydspor med lokal PCM-afkodning. Video,
+position, pause og undertekster bevares. Hvis PCM også fejler, vises en fejlbesked.
+PCM er ikke Atmos-passthrough. Serveren konverterer ikke
 desktop-lyden. Passthrough er endnu ikke verificeret med et fysisk Atmos-anlæg.
 
 - Vælg lyd og undertekster i filmvisningen før afspilning.
@@ -61,6 +63,13 @@ Se `THIRD-PARTY.txt` og medfølgende licenser for mpv/Electron og deres kilder.
 Test: `node smoke.cjs` med Playwright tilgængelig i `NODE_PATH`. Testen bruger
 midlertidig database, profil og lydfil, og tester login, native HTTP-afspilning og
 gemt position. Den er ikke en test af 4K/HDR-hardware eller installation på en ren pc.
+
+WASAPI-regression: Sæt `FFMPEG` til ffmpeg.exe og `FJORDFLIX_TEST_WASAPI=1`,
+og kør `node --test desktop/tests/audio-fallback.cjs` fra projektroden. Testen
+afspiller en genereret, lydløs TrueHD-video gennem Windows' valgte lydudgang
+og kræver en udgang, som afviser TrueHD-passthrough. Den kontrollerer, at PCM
+starter og tidspositionen fortsætter uden at genindlæse videoen. Den normale
+testsuite kræver ikke en fysisk lydudgang.
 
 Undertekstregression: `node desktop/test-subtitle-switch.cjs <ffmpeg.exe> [supsample.mkv]`
 fra projektroden. Den valgfrie PGS-testfil findes hos
