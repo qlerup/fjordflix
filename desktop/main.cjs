@@ -7,8 +7,24 @@ const crypto = require('node:crypto');
 const {pathToFileURL} = require('node:url');
 const {serverUrl, selection, mediaUrl} = require('./validation.cjs');
 const {createUpdates} = require('./updates.cjs');
+const {createDiagnostics, clean} = require('./playback-diagnostics.cjs');
 if (!app.isPackaged && process.env.FJORDFLIX_TEST_PROFILE) app.setPath('userData', process.env.FJORDFLIX_TEST_PROFILE);
 let win, origin = '', active, launching = false;
+let lastDiagnostics;
+function saveDiagnostics(run) {
+  lastDiagnostics = run.diagnostics?.snapshot();
+  if (!lastDiagnostics) return;
+  try { fs.writeFileSync(path.join(app.getPath('userData'), 'playback-diagnostics.json'), JSON.stringify(lastDiagnostics, null, 2)); }
+  catch (error) { console.warn('Playback diagnostics could not be saved:', error.code); }
+}
+function playbackFailure(run, detail) {
+  if (run.finished || run.failureShown) return;
+  run.failureShown = true;
+  run.diagnostics.record('failure', detail);
+  saveDiagnostics(run);
+  if (!win.isDestroyed()) dialog.showMessageBox(win, {type:'error', message:'Filmen kunne ikke afspilles.',
+    detail:clean(detail) + '\nDu kan gemme fejloplysninger via FjordFlix → Gem afspilningsdiagnostik.'});
+}
 const setup = pathToFileURL(path.join(__dirname, 'setup.html')).href;
 const configPath = () => path.join(app.getPath('userData'), 'server.json');
 const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json');
@@ -37,6 +53,7 @@ async function api(route, data) {
 }
 async function finish(run) {
   if (run.finished) return;
+  saveDiagnostics(run);
   run.finished = true; run.previews?.dispose(); clearInterval(run.timer); clearTimeout(run.statusTimer); run.socket?.destroy();
   if (run.playbackId) await api(`/playbacks/${run.playbackId}/stop`, {}).catch(()=>{});
   if (active === run) active = null;
@@ -51,6 +68,7 @@ async function play(data) {
     const chosen = selection(data);
     const result = await api(`/desktop/movies/${chosen.id}/play`, chosen);
     const run = {id:chosen.id, ticket:result.media_ticket, position:chosen.start, playbackId:result.playback_id, status:{}}; active = run;
+    run.diagnostics = createDiagnostics({version:app.getVersion(), title:result.title, start:result.start});
     const report = () => run.playbackId && !run.finished ? api(`/playbacks/${run.playbackId}/heartbeat`, {
       position:run.position, state:run.status['paused-for-cache'] ? 'buffering' : run.status.pause ? 'paused' : 'playing',
       ...Object.fromEntries([['aid','audio_ordinal'],['sid','subtitle_ordinal']].flatMap(([key,name]) =>
@@ -72,8 +90,12 @@ async function play(data) {
         {windowsHide:true, stdio:'ignore'});
       run.child = child;
       let startError;
-      child.once('error', error => { startError = error; finish(run); });
-      child.once('exit', () => finish(run));
+      child.once('error', error => { startError = error; playbackFailure(run, 'Afspilleren kunne ikke startes (' + error.code + ').'); finish(run); });
+      child.once('exit', (code, signal) => {
+        run.diagnostics.record('process-exit', `code=${code}, signal=${signal}`);
+        if (code && !run.finished) playbackFailure(run, 'Afspilleren lukkede med fejlkode ' + code + '.');
+        finish(run);
+      });
       const socket = await new Promise((resolve,reject) => {
         const deadline = Date.now()+10000;
         function connect() {
@@ -84,7 +106,7 @@ async function play(data) {
         } connect();
       });
       run.socket = socket;
-      const command = command => { if (!socket.destroyed) socket.write(JSON.stringify({command})+'\n'); };
+      const command = (command, request_id) => { if (!socket.destroyed) socket.write(JSON.stringify({command,request_id})+'\n'); };
       run.previews = require('./previews.cjs').createPreviews({executable,url,send:command});
       socket.on('error', () => child.kill());
       let buffer = '';
@@ -95,6 +117,8 @@ async function play(data) {
         while ((end=buffer.indexOf('\n'))>=0) {
           const line=buffer.slice(0,end); buffer=buffer.slice(end+1);
           let message; try { message=JSON.parse(line); } catch { continue; }
+          const failure = run.diagnostics.receive(message);
+          if (failure) { playbackFailure(run, failure); command(['quit']); }
           if (message.event === 'client-message' && message.args?.[0] === 'fjord-preview-request') run.previews.request(message.args[1],message.args[2]);
           if (message.event === 'property-change' && message.name === 'time-pos' && Number.isFinite(message.data)) run.position=message.data;
           if (message.event === 'property-change' && ['pause','paused-for-cache','aid','sid'].includes(message.name)) {
@@ -103,21 +127,22 @@ async function play(data) {
           }
           if (message.event === 'file-loaded' && sub) command(['sub-add',sub,'select']);
           if (message.event === 'end-file') {
-            if (message.reason === 'error') dialog.showMessageBox(win,{type:'error',message:'Filmen kunne ikke afspilles.',detail:'Kontrollér forbindelsen til serveren og prøv igen.'});
             if (['eof','error'].includes(message.reason)) command(['quit']);
           }
         }
       });
       command(['observe_property',1,'time-pos']);
+      command(['request_log_messages','warn']);
+      ['demuxer-cache-duration','cache-speed','seeking'].forEach((name,i)=>command(['observe_property',i+20,name]));
       ['pause','paused-for-cache','aid','sid'].forEach((name,i)=>command(['observe_property',i+2,name]));
       command(['script-message','fjord-title',String(result.title || 'FjordFlix')]);
-      command(['loadfile',url,'replace',-1,{start:String(result.start),aid:String(result.audio),sid:String(result.subtitle)}]);
+      command(['loadfile',url,'replace',-1,{start:String(result.start),aid:String(result.audio),sid:String(result.subtitle)}],100);
       run.timer = setInterval(async () => {
         try {
           await api('/media/heartbeat',{ticket:run.ticket});
           await api(`/movies/${run.id}/progress`,{position:run.position});
           await report();
-        } catch { child.kill(); }
+        } catch (error) { playbackFailure(run, 'Forbindelsen til serveren blev afbrudt: ' + error.message); child.kill(); }
       },15000);
       return {ok:true};
     } catch (error) { run.child?.kill(); await finish(run); throw error; }
@@ -158,6 +183,15 @@ app.whenReady().then(async () => {
   win.webContents.on('will-redirect',(event,url)=> { if (!origin || new URL(url).origin !== origin) event.preventDefault(); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'FjordFlix',submenu:[
     {label:'Søg efter opdateringer…',click:()=>updates.check()},
+    {label:'Gem afspilningsdiagnostik…',click:async()=>{
+      const diagnostics = active?.diagnostics?.snapshot() || lastDiagnostics;
+      if (!diagnostics) { await dialog.showMessageBox(win,{message:'Start en film først for at indsamle fejloplysninger.'}); return; }
+      const result = await dialog.showSaveDialog(win,{defaultPath:'FjordFlix-afspilningsdiagnostik.json',filters:[{name:'JSON',extensions:['json']}]});
+      if (!result.canceled && result.filePath) {
+        try { fs.writeFileSync(result.filePath,JSON.stringify(diagnostics,null,2)); }
+        catch { await dialog.showMessageBox(win,{type:'error',message:'Fejloplysningerne kunne ikke gemmes.'}); }
+      }
+    }},
     {label:'Skift server',click:()=>{ if(active || launching) return; win.loadURL(setup); }},
     {label:'Genindlæs',role:'reload'}, {type:'separator'}, {label:'Afslut',role:'quit'}
   ]},{label:'Vis',submenu:[{role:'togglefullscreen'},{role:'zoomIn'},{role:'zoomOut'},{role:'resetZoom'}]}]));

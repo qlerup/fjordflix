@@ -33,6 +33,15 @@ desktop-lyden. Passthrough er endnu ikke verificeret med et fysisk Atmos-anlæg.
 - Appen skal have adgang til både webadressen og en eventuel separat medieadresse.
 - Installationsfilen er ikke codesignet. Windows kan derfor vise SmartScreen.
 
+## Fejlfinding af afspilning
+
+Hvis afspilleren bliver stående ved indlæsning, brug appmenuen **FjordFlix → Gem
+afspilningsdiagnostik** mens problemet er til stede. Rapporten indeholder appversion,
+filmnavn, startposition, buffer-/seek-status og de seneste mpv-advarsler. Medieadresser
+og videobilletter skjules. Ved afspilningsfejl gemmes også en lokal rapport som
+`playback-diagnostics.json` i appens brugerprofil. Ingen rapport sendes automatisk.
+Fejl fra åbning af filmen og mpv's konkrete slutfejl vises nu i fejlbeskeden.
+
 ## Byg
 
 På Windows med Node.js og PowerShell:

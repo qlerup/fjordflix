@@ -21,6 +21,7 @@
       "main.cjs",
       "preload.cjs",
       "validation.cjs",
+      "playback-diagnostics.cjs",
       "subtitle-options.cjs",
       "audio-options.cjs",
       "previews.cjs",
