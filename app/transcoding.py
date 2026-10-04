@@ -93,11 +93,22 @@ def _probe(path, size, modified, height, cpu_filters, hdr, encoder):
     return (inputs, filters) if _works(path, inputs, filters, encoder) else ((), cpu_filters)
 
 
-def accelerated_filters(path, height, cpu_filters, *, enabled, hdr=False, burn=False, soft=False, encoder='h264_nvenc'):
-    if not enabled or burn or soft:
+def accelerated_filters(path, height, cpu_filters, *, enabled, hdr=False, burn=False, bitmap=False, soft=False, encoder='h264_nvenc'):
+    if not enabled or (burn and not bitmap) or soft:
         return (), cpu_filters
     try:
         stat = path.stat()
     except OSError:
         return (), cpu_filters
-    return _probe(str(path), stat.st_size, stat.st_mtime_ns, height, cpu_filters, hdr, encoder)
+    inputs, filters = _probe(str(path), stat.st_size, stat.st_mtime_ns, height, cpu_filters, hdr, encoder)
+    if bitmap and '-hwaccel_output_format' in inputs:
+        # CPU subtitle compositing needs software frames after GPU scaling.
+        filters += ',hwdownload,format=nv12'
+    return inputs, filters
+
+
+def bitmap_overlay(filters, index):
+    # Tone-map/scale the video first. Subtitle whites must not be tone-mapped as
+    # HDR pixels, and the expensive video filters can still run on the GPU.
+    return (f'[0:v:0]{filters}[base];[0:{index}][base]scale2ref[sub][video];'
+            '[video][sub]overlay=eof_action=pass:shortest=0,format=yuv420p[vout]')

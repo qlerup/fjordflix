@@ -14,7 +14,8 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  const ff=spawnSync(process.argv[2],['-hide_banner','-loglevel','error','-f','lavfi','-i','color=c=black:s=320x180:r=10:d=30','-i',path.join(temp,'one.srt'),'-i',path.join(temp,'two.srt'),'-map','0:v','-map','1:s','-map','2:s','-c:v','libx264','-g','10','-c:s','srt',media],{windowsHide:true,encoding:'utf8'});
  assert.equal(ff.status,0,ff.stderr||String(ff.error));
  const pipe='\\\\.\\pipe\\fjord-sub-'+process.pid;
- const child=spawn(path.join(__dirname,'vendor/mpv/mpv.exe'),['--no-config','--load-scripts=no','--osc=no','--idle=yes','--force-window=yes','--vo=gpu-next','--gpu-api=d3d11','--cache=yes',...require('./subtitle-options.cjs'),'--sid=no','--pause','--start=20','--script='+path.join(__dirname,'player.lua'),'--input-ipc-server='+pipe,media],{windowsHide:true,stdio:'ignore'});
+ const display=['--force-window=yes','--vo=gpu-next','--gpu-api=d3d11', ...(process.env.MPV_MINIMIZED ? ['--window-minimized=yes'] : [])];
+ const child=spawn(path.join(__dirname,'vendor/mpv/mpv.exe'),['--no-config','--load-scripts=no','--osc=no','--idle=yes',...display,'--cache=yes',...require('./subtitle-options.cjs'),'--sid=no','--pause','--start=20','--script='+path.join(__dirname,'player.lua'),'--input-ipc-server='+pipe,media],{windowsHide:true,stdio:'ignore'});
  let socket,buffer='',id=0;const pending=new Map();
  try{
   for(let i=0;i<100;i++){socket=await new Promise(resolve=>{const s=net.connect(pipe);s.once('connect',()=>resolve(s));s.once('error',()=>{s.destroy();resolve(null);});});if(socket)break;await delay(100);}

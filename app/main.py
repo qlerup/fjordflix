@@ -1041,9 +1041,10 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     else:
         filters += [f"scale=-2:{result['height']}"]
     filters += ['format=yuv420p']
+    bitmap = bool(burn and subtitle['delivery'] == 'burn')
     hardware_inputs, filter_chain = transcoding.accelerated_filters(
         Path(row['path']).resolve(), result['height'], ','.join(filters),
-        enabled=use_gpu and result['mode'] == 'Transcoding', hdr=bool(meta['hdr']), burn=bool(burn), soft=soft,
+        enabled=use_gpu and result['mode'] == 'Transcoding', hdr=bool(meta['hdr']), burn=bool(burn), bitmap=bitmap, soft=soft,
         encoder=video_encoder)
     with LOCK:
         if len(JOBS) >= int(os.getenv('MAX_TRANSCODES', 3)):
@@ -1055,7 +1056,6 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         folder.mkdir()
         if subtitle_file:
             shutil.copyfile(subtitle_file, folder / 'subtitles.vtt')
-        bitmap = burn and subtitle['delivery'] == 'burn'
         cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'warning', '-nostdin', '-progress', str(folder / 'progress.txt'), '-threads', '4', '-protocol_whitelist', 'file,pipe']
         if offset > 0:
             cmd += ['-ss', str(offset)]
@@ -1079,7 +1079,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                     ' · HDR på GPU' if 'tonemap_opencl=' in filter_chain else
                     ' · HDR på CPU' if meta['hdr'] else ' · GPU-skalering')
             if bitmap:
-                cmd += ['-filter_complex', f"[0:{subtitle['index']}]scale={int(meta['width'])}:{int(meta['height'])}[sub];[0:v:0][sub]overlay=eof_action=pass:shortest=0," + ','.join(filters) + '[vout]']
+                cmd += ['-filter_complex', transcoding.bitmap_overlay(filter_chain, subtitle['index'])]
             else:
                 cmd += ['-vf', filter_chain]
             cmd += ['-c:v', video_encoder, '-preset', 'fast' if use_gpu else ('ultrafast' if hevc_transcode else 'veryfast'), '-b:v', f"{result['mbps']}M", '-maxrate', f"{result['mbps']}M", '-bufsize', f"{result['mbps'] * 2}M", '-force_key_frames', 'expr:gte(t,n_forced*2)']

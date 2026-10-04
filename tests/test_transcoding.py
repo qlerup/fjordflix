@@ -84,6 +84,16 @@ def test_hdr_falls_back_when_both_gpu_probes_fail(video, monkeypatch):
     assert transcoding.accelerated_filters(video, 2160, 'cpu-tonemap', enabled=True, hdr=True) == ((), 'cpu-tonemap')
 
 
+def test_bitmap_burn_preserves_gpu_scaling_and_downloads_for_overlay(video, monkeypatch):
+    monkeypatch.setattr(transcoding.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0))
+    inputs, filters = transcoding.accelerated_filters(video, 1080, 'cpu', enabled=True, burn=True, bitmap=True)
+    assert '-hwaccel_output_format' in inputs
+    assert filters == 'scale_cuda=-2:1080:format=nv12,hwdownload,format=nv12'
+    graph = transcoding.bitmap_overlay(filters, 4)
+    assert graph.index('scale_cuda=') < graph.index('overlay=')
+    assert '[0:4][base]scale2ref' in graph
+
+
 @pytest.mark.parametrize('failure', ['unsupported', 'timeout', 'missing'])
 def test_probe_failures_preserve_existing_pipeline(video, monkeypatch, failure):
     def run(*a, **kw):

@@ -372,7 +372,7 @@ setInterval(() => {
 }, 10000);
 setInterval(() => {
   if (!playback?.health || switching) return;
-  $('playback-info').textContent = [playback.infoText, playback.transcodeInfo, playback.health.label()].filter(Boolean).join(' · ');
+  $('playback-info').textContent = [playback.infoText, playback.transcodeInfo, playback.health.label(), FjordTracks.statusLabel()].filter(Boolean).join(' · ');
 }, 2000);
 setInterval(() => {
   if(playback?.media_ticket) api('/media/heartbeat', 'POST', {ticket:playback.media_ticket}).catch(e => showPlayerError(e.message));

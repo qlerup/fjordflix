@@ -105,9 +105,24 @@ const FjordTracks = {
     }
   },
   selectedSubtitle() { return this.movie?.tracks?.subtitles?.find(t => t.index === this.subtitle); },
+  statusLabel() {
+    const s = this.subtitleStatus;
+    if (!s) return '';
+    const prefix = `Undertekster: spor ${s.index}`;
+    if (s.error) return `${prefix} · ${s.error}`;
+    if (s.delivery !== 'text') return `${prefix} · ${s.delivery === 'burn' ? 'indbrændt' : s.delivery}`;
+    if (!this.element) return `${prefix} · henter tekst`;
+    if (this.element.readyState !== 2) return `${prefix} · indlæser tekst`;
+    const track = this.element.track;
+    const cues = Array.from(track.cues || []);
+    const next = cues.find(c => c.startTime > video.currentTime);
+    return `${prefix} · ${cues.length} tekstlinjer · ${track.activeCues?.length || 0} aktive · ${track.mode}` +
+      (next ? ` · næste om ${Math.ceil(next.startTime - video.currentTime)} s` : '');
+  },
   request() { return {audio_track:this.audio, subtitle_track:this.subtitle, burn_subtitles:this.burnSubtitles}; },
   clear() {
     ++this.generation;
+    this.subtitleStatus = null;
     this.nativeCleanup?.(); this.nativeCleanup = null;
     this.pending?.abort(); this.pending = null;
     if (this.element) { this.element.track.mode = 'disabled'; this.element.remove(); this.element = null; }
@@ -121,6 +136,7 @@ const FjordTracks = {
   },
   async attach(result) {
     this.clear();
+    if (result.subtitle_track != null) this.subtitleStatus = {index:result.subtitle_track, delivery:result.subtitle_delivery};
     if (result.subtitle_delivery === 'hls') {
       const generation = this.generation;
       const select = () => {
@@ -142,9 +158,19 @@ const FjordTracks = {
     if (result.subtitle_delivery !== 'text' || result.subtitle_track == null) return;
     const generation = this.generation;
     const controller = new AbortController(); this.pending = controller;
-    const response = await fetch(`/api/movies/${this.movie.id}/subtitles/${result.subtitle_track}.vtt`, {signal:controller.signal});
-    if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.detail || 'Underteksterne kunne ikke indlæses.'); }
-    const data = await response.blob();
+    let data;
+    try {
+      const response = await fetch(`/api/movies/${this.movie.id}/subtitles/${result.subtitle_track}.vtt`, {signal:controller.signal});
+      if (!response.ok) {
+        if (generation === this.generation) this.subtitleStatus.error = `hentning fejlede (HTTP ${response.status})`;
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Underteksterne kunne ikke indlæses.');
+      }
+      data = await response.blob();
+    } catch (error) {
+      if (generation === this.generation && error.name !== 'AbortError') this.subtitleStatus.error ||= 'hentning fejlede';
+      throw error;
+    }
     if (generation !== this.generation) return;
     const element = document.createElement('track');
     element.kind = 'subtitles'; element.label = this.label(this.selectedSubtitle());
@@ -156,7 +182,10 @@ const FjordTracks = {
       this.shiftCues(element.track, result.offset || 0);
       element.track.mode = 'showing';
     };
-    element.onerror = () => { if (generation === this.generation) toast('Underteksterne kunne ikke vises.'); };
+    element.onerror = () => { if (generation === this.generation) {
+      this.subtitleStatus.error = 'browseren kunne ikke læse teksten';
+      toast('Underteksterne kunne ikke vises.');
+    } };
     video.append(element); element.track.mode = 'hidden';
   }
 };

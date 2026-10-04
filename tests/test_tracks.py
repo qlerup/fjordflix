@@ -133,13 +133,27 @@ def test_track_routes_require_login(client):
 
 
 @pytest.mark.parametrize('start', [0, 2])
-def test_real_pgs_overlay(client, monkeypatch, start):
+@pytest.mark.parametrize('gpu,hdr', [(False, False), (True, False), (True, True)])
+def test_real_pgs_overlay(client, monkeypatch, tmp_path, start, gpu, hdr):
     import os
     fixture = os.getenv('PGS_TEST_FILE')
     if not fixture:
         pytest.skip('Set PGS_TEST_FILE to a local PGS sample for decoder verification.')
+    if gpu and os.getenv('FJORDFLIX_TEST_NVENC') != '1':
+        pytest.skip('Opt-in NVIDIA GPU test')
     path = Path(fixture)
-    monkeypatch.setattr(main, 'GPU', False)
+    if gpu:
+        # The tiny sample's original H.264 geometry is unsupported by NVDEC.
+        # Keep its real PGS packets over a representative, decodable video.
+        path = tmp_path / 'gpu-pgs.mkv'
+        color = ['-pix_fmt', 'p010le', '-bsf:v',
+                 'hevc_metadata=colour_primaries=9:transfer_characteristics=16:matrix_coefficients=9'] if hdr else []
+        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+            'color=c=blue:s=3840x2160:r=24:d=10', '-i', fixture,
+            '-map', '0:v', '-map', '1:s:0', '-c:v', 'hevc_nvenc', *color,
+            '-g', '24', '-c:s', 'copy', '-y', str(path)],
+            check=True, capture_output=True, timeout=30)
+    monkeypatch.setattr(main, 'GPU', gpu)
     (main.DATA / 'streams').mkdir()
     meta = main.probe(path)
     with main.db() as conn:
@@ -148,11 +162,16 @@ def test_real_pgs_overlay(client, monkeypatch, start):
     outputs = []
     try:
         for track in [None, subtitle]:
-            response = client.post('/api/movies/'+'a'*32+'/play', json={'quality':'480', 'subtitle_track':track, 'start':start})
+            response = client.post('/api/movies/'+'a'*32+'/play', json={'quality':'original' if hdr else '480', 'subtitle_track':track, 'start':start})
             assert response.status_code == 200, response.text
             result = response.json()
             job = main.JOBS[result['session']]
             job['process'].wait(timeout=15)
+            assert job['process'].returncode == 0
+            if gpu and track is not None:
+                assert '-hwaccel' in job['process'].args
+                if hdr:
+                    assert 'tonemap_opencl=' in job['process'].args[job['process'].args.index('-filter_complex') + 1]
             frame = subprocess.run(['ffmpeg','-v','error','-ss',str(2 if start == 0 else 0.5),'-i',str(job['folder']/'index.m3u8'),'-frames:v','1','-f','rawvideo','-pix_fmt','gray','-'],capture_output=True,check=True)
             outputs.append(frame.stdout)
         assert len(outputs[0]) == len(outputs[1]) > 0
