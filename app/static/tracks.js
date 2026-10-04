@@ -92,6 +92,11 @@ const FjordTracks = {
     this.sync();
   },
   sync() {
+    const audioBadge = $('detail-audio-format');
+    if (audioBadge && this.movie) {
+      const track = this.movie.tracks?.audio?.find(t => t.index === this.audio);
+      audioBadge.textContent = FjordLibrary.audioLabel(this.movie, track);
+    }
     for (const place of ['detail','player']) {
       for (const kind of ['audio','subtitle']) $(`${place}-${kind}`).value = this[kind] ?? '';
       const fallback = $(`${place}-burn-subtitles`);

@@ -13,7 +13,11 @@ const path=require('node:path'),assert=require('node:assert/strict');
   if(url.pathname==='/api/state')data={user:{id:'user',name:'Mikkel',admin:false}};
   if(url.pathname==='/api/movies')data=[movie];
   if(url.pathname.endsWith('/credits'))data={cast:Array.from({length:10},(_,i)=>({name:'Skuespiller '+i,character:'Rolle '+i}))};
-  if(url.pathname.endsWith('/tracks'))data={audio:[],subtitles:[],defaults:{audio_track:null,subtitle_track:null}};
+  if(url.pathname.endsWith('/tracks'))data={audio:[
+    {index:1,codec:'truehd',profile:'Dolby TrueHD + Dolby Atmos',channels:8,layout:'7.1',language:'eng',default:true},
+    {index:2,codec:'aac',channels:2,layout:'stereo',language:'dan'},
+    {index:3,codec:'dts',profile:'DTS-HD MA',channels:6,layout:'5.1',language:'eng'}
+  ],subtitles:[],defaults:{audio_track:1,subtitle_track:null}};
   if(url.pathname.endsWith('/plan'))data={mode:'Direct Play',height:2160,mbps:25,reason:'Original kvalitet'};
   return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
  });
@@ -35,6 +39,12 @@ const path=require('node:path'),assert=require('node:assert/strict');
     await page.evaluate(quality=>openDetail({...library[0],hdr:true,quality}),quality);
     assert.ok((await page.locator('#detail-meta > span').allTextContents()).includes(expected));
   }
+  assert.equal(await page.locator('#detail-audio-format').textContent(),'Dolby Atmos');
+  await page.selectOption('#detail-audio','2',{force:true});
+  assert.equal(await page.locator('#detail-audio-format').textContent(),'AAC Stereo');
+  await page.selectOption('#detail-audio','3',{force:true});
+  assert.equal(await page.locator('#detail-audio-format').textContent(),'DTS-HD MA 5.1');
+  await page.selectOption('#detail-audio','1',{force:true});
   await page.screenshot({path:'test-results/detail-page-desktop.png',fullPage:true});
   await page.goBack();assert.ok(await page.locator('#detail').isHidden());
   await page.goForward();await page.locator('#detail').waitFor();

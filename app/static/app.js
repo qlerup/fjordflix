@@ -234,6 +234,11 @@ async function openDetail(movie) {
   $('detail-art').style.backgroundImage = `url('${FjordLibrary.artwork(movie, 'backdrop')}')`;
   $('detail-meta').innerHTML = [`${movie.width} × ${movie.height}`,movie.video.toUpperCase(),FjordLibrary.dynamicRangeLabel(movie) || 'SDR',clock(movie.duration)].map(t => `<span>${escapeHtml(t)}</span>`).join('');
   $('detail-description').textContent = `${(movie.size / 1024**3).toFixed(2)} GB · ${(movie.bitrate/1e6).toFixed(1)} Mbit/s · ${movie.audio?.toUpperCase() || 'Uden lyd'}. En film fra dit fælles bibliotek.`;
+  const audioBadge = document.createElement('span');
+  audioBadge.id = 'detail-audio-format';
+  audioBadge.textContent = FjordLibrary.audioLabel(movie);
+  audioBadge.title = 'Lydformat i det valgte kildespor. Afspilningen kan bruge PCM eller konverteret lyd.';
+  $('detail-meta').insertBefore(audioBadge, $('detail-meta').lastElementChild);
   $('detail-quality').value = 'auto'; $('favorite-button').textContent = movie.favorite ? '✓ På min liste' : '＋ Min liste';
   const info = movie.catalog;
   if (info?.status === 'matched' || info?.manual) {

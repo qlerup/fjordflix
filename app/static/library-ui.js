@@ -40,6 +40,15 @@ const FjordLibrary = {
     const height = Number(item.height), width = Number(item.width);
     const resolution = height >= 4320 || width >= 7680 ? '8K' : height >= 2160 || width >= 3840 ? '4K'
       : height >= 1080 || width >= 1920 ? '1080p' : height >= 720 || width >= 1280 ? '720p' : height > 0 ? `${height}p` : null;
+    return [resolution, this.dynamicRangeLabel(item), this.audioLabel(item)].filter(Boolean);
+  },
+  audioLabel(item, track) {
+    // File-level MediaInfo describes the first audio stream only.
+    const first = item.tracks?.audio?.[0];
+    const q = track ? {audio_codec:track.codec, audio_profile:track.profile,
+      audio_channels:track.channels, audio_layout:track.layout,
+      dolby_atmos:/atmos/i.test(track.profile || '') ||
+        (track.index === first?.index && !!item.quality?.dolby_atmos)} : item.quality || {};
     const codec = q.audio_codec || item.audio;
     const names = {ac3:'Dolby Digital', eac3:'Dolby Digital Plus', truehd:'Dolby TrueHD', dts:'DTS', aac:'AAC', flac:'FLAC', opus:'Opus', mp3:'MP3'};
     let sound = q.dolby_atmos ? 'Dolby Atmos' : names[codec] || (codec ? codec.toUpperCase() : 'Uden lyd');
@@ -49,7 +58,7 @@ const FjordLibrary = {
     const channelLabel = channels === 1 ? 'Mono' : channels === 2 ? 'Stereo'
       : layout.startsWith('5.1') ? '5.1' : layout.startsWith('7.1') ? '7.1' : channels > 2 ? `${channels} kanaler` : '';
     if (channelLabel && !q.dolby_atmos) sound += ` ${channelLabel}`;
-    return [resolution, this.dynamicRangeLabel(item), sound].filter(Boolean);
+    return sound;
   },
   qualityBadges(item) {
     const labels = this.qualityLabels(item);
