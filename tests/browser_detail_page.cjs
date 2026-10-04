@@ -76,6 +76,15 @@ const path=require('node:path'),assert=require('node:assert/strict');
   assert.equal(await page.locator('#detail-title').textContent(),'En ny serie');
   assert.ok(await page.locator('#detail-extras #episode-picker').isVisible());
   assert.ok(await page.locator('#toast').isHidden(),'no playback-plan errors');
-  assert.deepEqual(errors,[]);console.log('PASS detail page, cast, back/forward, reload, mobile');
+  await page.evaluate(()=>{
+    document.getElementById('player-dialog').showModal();
+    document.getElementById('playback-info').textContent = '2160p → 2160p · 25 Mbit/s · NVIDIA NVDEC + NVENC · H.264 · HDR på GPU · Konvertering: 4.38× · Buffer: 29.5 s · Tabte billeder: 12/1500 · Bufferstop: 1 · Segment hentet: 0.12 s / 2.00 s video';
+  });
+  for(const width of [390,1440]){
+    await page.setViewportSize({width,height:960});
+    assert.ok(await page.locator('#player-dialog').evaluate(e=>e.scrollWidth<=e.clientWidth+1),'playback measurements fit the player');
+    await page.screenshot({path:`test-results/playback-health-${width}.png`});
+  }
+  assert.deepEqual(errors,[]);console.log('PASS detail page, cast, back/forward, reload, mobile, playback measurements');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

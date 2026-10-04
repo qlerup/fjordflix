@@ -307,25 +307,36 @@ async function startPlayback(position = 0, fallback = false) {
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
     $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
     result.infoText = $('playback-info').textContent;
+    result.health = FjordPlaybackHealth.create(video);
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (!result.session || video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else if (window.Hls?.isSupported()) {
       hls = new Hls({startPosition:0, maxBufferLength:30, backBufferLength:30});
-      hls.loadSource(result.url); hls.attachMedia(video);
+      hls.on(Hls.Events.FRAG_LOADED, (_, data) => result.health.fragment(data));
       hls.on(Hls.Events.ERROR, (_, info) => {
+        result.health.error(info);
         if (!info.fatal || generation !== playGeneration) return;
+        if (info.type === Hls.ErrorTypes.MEDIA_ERROR && recoverPlaybackDecode()) return;
         if (!fallback && result.mode === 'Direct Stream' && data.video_copy && info.type === Hls.ErrorTypes.MEDIA_ERROR) {
           startPlayback(position + (video.currentTime || 0), true).catch(e => showPlayerError(e.message));
-        } else showPlayerError('Streamen blev afbrudt. Vælg kvalitet igen for at genstarte.');
+        } else showPlayerError(`Streamen blev afbrudt (${/^[a-zA-Z0-9_-]{1,80}$/.test(info.details || '') ? info.details : 'HLS-fejl'}). Vælg kvalitet igen for at genstarte.`);
       });
+      hls.loadSource(result.url); hls.attachMedia(video);
     }
     else { showPlayerError('Denne browser understøtter ikke HLS. Prøv en nyere browser.'); }
     FjordTracks.attach(result).catch(e => { if (e.name !== 'AbortError' && generation === playGeneration) toast(e.message); });
   } finally { switching = false; }
 }
-video.onplaying = () => { $('player-loading').hidden = true; if(playback) badge('actual-badge', playback.mode); };
-video.onwaiting = () => { if(playback) { $('player-loading').hidden = false; $('player-loading').textContent = 'Bufferer…'; } };
-video.onerror = () => { if(switching || !playback) return; if(playback.mode === 'Direct Play') { toast('Originalformatet kunne ikke afspilles. Prøver transcoding.'); startPlayback(video.currentTime || 0, true).catch(e => showPlayerError(e.message)); } else showPlayerError('Videoen kunne ikke afspilles. Prøv en anden kvalitet.'); };
+video.onplaying = () => { $('player-loading').hidden = true; if(playback) { playback.health?.playing(); badge('actual-badge', playback.mode); } };
+video.onwaiting = () => { if(playback) { playback.health?.waiting(); $('player-loading').hidden = false; $('player-loading').textContent = 'Bufferer…'; } };
+function recoverPlaybackDecode() {
+  if (playback?.mode !== 'Transcoding' || !playback.health?.recoverDecode(hls)) return false;
+  $('player-error').textContent = '';
+  $('player-loading').hidden = false;
+  $('player-loading').textContent = 'Genopretter videoafkodning…';
+  return true;
+}
+video.onerror = () => { if(switching || !playback || recoverPlaybackDecode()) return; if(playback.mode === 'Direct Play') { toast('Originalformatet kunne ikke afspilles. Prøver transcoding.'); startPlayback(video.currentTime || 0, true).catch(e => showPlayerError(e.message)); } else showPlayerError(FjordPlaybackHealth.mediaError(video.error) + ' Vælg kvalitet igen for at genstarte.'); };
 function position() { return Math.min(selected?.duration || 0, (video.currentTime || 0) + (playback?.offset || 0)); }
 function reportPresence() {
   if (!playback?.playback_id) return;
@@ -352,9 +363,13 @@ setInterval(() => {
     const speed = progress?.speed;
     const detail = progress?.finished ? 'Konvertering færdig' : Number.isFinite(speed)
       ? `Konvertering: ${speed.toFixed(2)}×${speed < 1 ? ' · Under afspilningshastighed; kan give buffering' : ''}` : '';
-    $('playback-info').textContent = current.infoText + (detail ? ` · ${detail}` : '');
+    current.transcodeInfo = detail;
   }).catch(() => {});
 }, 10000);
+setInterval(() => {
+  if (!playback?.health || switching) return;
+  $('playback-info').textContent = [playback.infoText, playback.transcodeInfo, playback.health.label()].filter(Boolean).join(' · ');
+}, 2000);
 setInterval(() => {
   if(playback?.media_ticket) api('/media/heartbeat', 'POST', {ticket:playback.media_ticket}).catch(e => showPlayerError(e.message));
 }, 30000);

@@ -8,7 +8,7 @@ const movie = {id:'a'.repeat(32),title:'AirPlay test',duration:120,position:0,wi
     subtitles:[{index:3,codec:'subrip',language:'dan',delivery:'text'}]}};
 const tick = () => new Promise(resolve=>setImmediate(resolve));
 async function until(check) { for(let i=0;i<100;i++){if(check())return;await tick();} throw Error('UI did not settle'); }
-function setup(safari) {
+function setup(safari, transcode = false) {
   const html=fs.readFileSync('app/static/index.html','utf8');
   const dom=new JSDOM(html,{url:'http://fjord.test/',runScripts:'outside-only'}), w=dom.window, calls=[];
   w.matchMedia=()=>({matches:false,addEventListener(){}});
@@ -35,7 +35,7 @@ function setup(safari) {
     else if(path==='/api/movies')result=[movie];
     else if(path.endsWith('/tracks'))result=movie.tracks;
     else if(path.endsWith('/plan'))result={mode:'Direct Stream',height:720,mbps:1,reason:'Test'};
-    else if(path.endsWith('/play'))result={mode:'Direct Stream',height:720,mbps:1,encoder:'AAC',session:'s1',offset:data.start,
+    else if(path.endsWith('/play'))result={mode:transcode?'Transcoding':'Direct Stream',height:720,mbps:1,encoder:'AAC',session:'s1',offset:data.start,
       url:'http://fjord.test/media/test/streams/s1/index.m3u8',media_ticket:'t'.repeat(43),airplay:data.airplay,
       subtitle_delivery:data.subtitle_track===null?null:data.burn_subtitles?'burn':'hls',subtitle_track:data.subtitle_track};
     return {ok:true,json:async()=>result};
@@ -88,6 +88,37 @@ test('AirPlay uses native HLS and carries selected tracks through changes and ba
     assert.equal(api.playback,null);
     assert.ok(calls.some(c=>c.path==='/api/media/revoke'));
     assert.ok(calls.some(c=>c.method==='DELETE'));
+  }finally{dom.window.close()}
+});
+
+test('decoder recovery keeps the current transcode and fails visibly on a second error',async()=>{
+  const {dom,w,calls,api}=setup(false,true);
+  try {
+    class Hls {
+      static Events={ERROR:'error',FRAG_LOADED:'frag'};
+      static ErrorTypes={MEDIA_ERROR:'media'};
+      static isSupported(){return true}
+      handlers={}; recoveries=0;
+      on(event,callback){this.handlers[event]=callback}
+      loadSource(){} attachMedia(){} destroy(){}
+      recoverMediaError(){this.recoveries++}
+    }
+    w.Hls=Hls;
+    await tick();await tick();await api.openDetail(movie);
+    api.playFromDetail(30);await until(()=>api.playback&&!api.switching);
+    const v=w.document.getElementById('video'), hls=api.hls;
+    v.currentTime=5;
+    Object.defineProperty(v,'error',{value:{code:3},writable:true,configurable:true});
+    v.dispatchEvent(new w.Event('error'));
+    hls.handlers.error('error',{fatal:true,type:'media',details:'bufferAppendError'});
+    assert.equal(hls.recoveries,1);
+    assert.equal(calls.filter(c=>c.path.endsWith('/play')).length,1);
+    assert.equal(v.currentTime,5);
+    assert.equal(w.document.getElementById('player-error').textContent,'');
+    v.error=null;v.dispatchEvent(new w.Event('playing'));
+    v.error={code:3};v.dispatchEvent(new w.Event('error'));
+    assert.equal(hls.recoveries,1);
+    assert.match(w.document.getElementById('player-error').textContent,/kode 3/);
   }finally{dom.window.close()}
 });
 test('browsers without AirPlay keep their existing playback choices',async()=>{

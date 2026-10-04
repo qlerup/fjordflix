@@ -11,3 +11,5 @@
 /* Native desktop: keep wheel, touchpad and keyboard scrolling without visible bars. */
 html.fjord-desktop,html.fjord-desktop *{scrollbar-width:none!important}
 html.fjord-desktop::-webkit-scrollbar,html.fjord-desktop *::-webkit-scrollbar{display:none!important;width:0;height:0}
+
+#playback-info{min-width:0;overflow-wrap:anywhere}
