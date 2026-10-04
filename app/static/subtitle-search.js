@@ -111,7 +111,7 @@
     try {
       const data = await api(`/movies/${target.id}/subtitle-search?language=${encodeURIComponent($('subtitle-language').value)}`);
       if (run !== generation) return;
-      $('subtitle-search-status').textContent = providerName(data.provider) + ': ' + (data.results.length ? data.message : 'Ingen undertekster fundet på det valgte sprog. Prøv et andet sprog, eller kontrollér filmoplysningerne.');
+      $('subtitle-search-status').textContent = providerName(data.provider) + ': ' + (data.results.length ? data.message : data.reason || 'Ingen undertekster fundet på det valgte sprog. Prøv et andet sprog, eller kontrollér filmoplysningerne.');
       for (const item of data.results) {
         const row = document.createElement('article'); row.className = 'subtitle-result';
         const label = document.createElement('strong'); label.textContent = item.release || 'Ukendt udgave';

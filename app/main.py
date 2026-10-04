@@ -879,18 +879,26 @@ def movie_tracks(mid: str, u=Depends(user)):
 
 
 @app.get('/api/movies/{mid}/subtitles/{index}.vtt')
-def movie_subtitles(mid: str, index: int, u=Depends(user)):
+def movie_subtitles(mid: str, index: int, u=Depends(user), progressive: bool = False):
     row, meta = movie(mid)
     try:
         _, subtitle = tracks.select(meta, subtitle_index=index)
         if subtitle['delivery'] != 'text':
             raise ValueError('Dette spor vises ved at brænde underteksterne ind i videoen.')
         source = opensubtitles.subtitle_path(DATA, mid, index) if subtitle.get('external') else row['path']
+        if progressive:
+            text, complete = tracks.progressive_webvtt(source, 0 if subtitle.get('external') else index, DATA / 'subtitles')
+            return Response(text, media_type='text/vtt', headers={'Cache-Control':'private, no-store',
+                            'X-Subtitle-Complete':'1' if complete else '0'})
         path = tracks.webvtt(source, 0 if subtitle.get('external') else index, DATA / 'subtitles')
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    except (OSError, RuntimeError, subprocess.TimeoutExpired):
-        raise HTTPException(503, 'Underteksterne kunne ikke klargøres. Prøv igen.')
+    except subprocess.TimeoutExpired:
+        raise HTTPException(503, 'Udtrækningen af undertekstsporet tog for lang tid på serveren.')
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+    except OSError:
+        raise HTTPException(503, 'Underteksternes filer kunne ikke læses eller skrives på serveren.')
     return FileResponse(path, media_type='text/vtt', headers={'Cache-Control': 'private, no-cache'})
 
 

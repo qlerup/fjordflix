@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var movies = [], selected, filter = 'all', page = 0, playback, generation = 0, busy = false;
   var lastSaved = 0, hideTimer, startTimer, cardFocus, video = $('video');
-  var planGeneration = 0, selectedAudio = null, selectedSubtitle = null, subtitleURL = null, subtitleXHR = null;
+  var planGeneration = 0, selectedAudio = null, selectedSubtitle = null, subtitleURL = null, subtitleXHR = null, subtitleTimer;
   var server = '', token = '', images = [], imageGeneration = 0, backdropURL;
   var serverFeatures = [], fallbackStage = '', lastRequest, lastFailure = '', lastPlan;
   var runtime = null, streamProgress = null, waitingCount = 0, stalledCount = 0;
@@ -279,6 +279,7 @@
     video.pause(); video.removeAttribute('src'); video.load(); return dispose(old);
   }
   function clearSubtitles() {
+    clearTimeout(subtitleTimer);
     if (subtitleXHR) { subtitleXHR.abort(); subtitleXHR = null; }
     Array.prototype.forEach.call(video.querySelectorAll('track'), function (track) { track.track.mode = 'disabled'; video.removeChild(track); });
     if (subtitleURL) { URL.revokeObjectURL(subtitleURL); subtitleURL = null; }
@@ -286,7 +287,7 @@
   function loadSubtitles(movie, result, id) {
     if (selectedSubtitle === null || result.subtitle_delivery !== 'text') return;
     var xhr = new XMLHttpRequest(); subtitleXHR = xhr;
-    xhr.open('GET', server + '/tv-api/movies/' + movie.id + '/subtitles/' + selectedSubtitle + '.vtt');
+    xhr.open('GET', server + '/tv-api/movies/' + movie.id + '/subtitles/' + selectedSubtitle + '.vtt?progressive=true');
     xhr.setRequestHeader('Authorization', 'Bearer ' + token); xhr.timeout = 90000;
     function failed() { if (id === generation) message('Underteksterne kunne ikke hentes. Opdatér FjordFlix-serveren, eller prøv et andet spor.'); }
     xhr.onerror = failed; xhr.ontimeout = failed;
@@ -294,10 +295,13 @@
       if (id !== generation) return;
       subtitleXHR = null;
       if (xhr.status !== 200) { failed(); return; }
+      var previousURL = subtitleURL;
+      var complete = xhr.getResponseHeader('X-Subtitle-Complete') !== '0';
       subtitleURL = URL.createObjectURL(new Blob([xhr.responseText], {type:'text/vtt'}));
       var track = document.createElement('track'); track.kind = 'subtitles'; track.label = 'FjordFlix';
       track.src = subtitleURL;
       track.onload = function () {
+        if (id !== generation) return;
         if (id !== generation) return;
         var cues = track.track.cues, offset = result.offset || 0;
         if (!cues) { failed(); return; }
@@ -309,6 +313,13 @@
           else { cue.startTime = Math.max(0, cue.startTime - offset); cue.endTime -= offset; }
         }
         track.track.mode = 'showing';
+        Array.prototype.forEach.call(video.querySelectorAll('track'), function (old) {
+          if (old !== track) { old.track.mode = 'disabled'; video.removeChild(old); }
+        });
+        if (previousURL) URL.revokeObjectURL(previousURL);
+        if (!complete) subtitleTimer = setTimeout(function () {
+          if (id === generation) loadSubtitles(movie, result, id);
+        }, 2000);
       };
       track.onerror = failed; video.appendChild(track); track.track.mode = 'hidden';
     };

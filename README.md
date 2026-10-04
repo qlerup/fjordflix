@@ -6,6 +6,8 @@ Privat streamingserver med dansk brugerflade, mørkt biografdesign og reel FFmpe
 
 ## Start og første film
 
+Browseren og den opdaterede Xbox-klient henter tekstundertekster løbende, mens serveren udtrækker resten og gemmer det færdige spor i cache. Første visning kræver derfor ikke, at hele filmfilen er gennemlæst. Ved genoptagelse langt inde i en endnu ikke klargjort film kan der fortsat være ventetid, indtil udtrækningen når de relevante tekstlinjer. Xbox-klienten skal opdateres sammen med serveren for at bruge denne funktion.
+
 Kræver Docker med Linux-containere. Den medfølgende Compose-fil er sat op til NVIDIA GPU-adgang. På en maskine uden NVIDIA GPU skal linjen `gpus: all` fjernes fra `compose.yaml`; appen bruger derefter CPU-transcoding.
 
 Kør i projektmappen:

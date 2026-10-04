@@ -83,12 +83,32 @@ class SubDL(OpenSubtitles):
         if params['type']=='tv':
             params.update(season_number=info.get('season',1),episode_number=info.get('episode',1))
         result = self.request_api('subtitles',params)
+        title = info.get('series_title') or info.get('title') or row['title']
+        year = str(info.get('series_year') or info.get('release_date') or '')[:4]
+        def verified(response):
+            matches = response.get('results') or []
+            if not isinstance(matches, list) or not matches or not isinstance(matches[0], dict):
+                return False
+            match = matches[0]
+            if not params.get('tmdb_id'):
+                return True
+            if match.get('tmdb_id'):
+                return str(match['tmdb_id']) == str(params['tmdb_id'])
+            # Missing provider IDs can be matched by exact title/year/type;
+            # a conflicting ID must never be accepted on title alone.
+            return bool(year and match.get('type') == params['type'] and
+                        str(match.get('year')) == year and
+                        str(match.get('name', '')).strip().casefold() == title.strip().casefold())
+        if params.get('tmdb_id') and year and (not verified(result) or not result.get('subtitles')):
+            fallback = {k:v for k,v in params.items() if k != 'tmdb_id'}
+            fallback.update(film_name=title, year=year)
+            candidate = self.request_api('subtitles', fallback)
+            if verified(candidate):
+                result = candidate
         # SubDL may broaden a search. Its subtitles belong to the first result;
         # never automatically attach a different title to an explicit TMDB ID.
-        matches = result.get('results') or []
-        if params.get('tmdb_id') and (not isinstance(matches,list) or not matches
-                or not isinstance(matches[0],dict) or str(matches[0].get('tmdb_id'))!=str(params['tmdb_id'])):
-            return {'results':[],'provider':'subdl','message':'SubDL fandt ikke et sikkert match på filmens TMDB-ID.'}
+        if params.get('tmdb_id') and not verified(result):
+            return {'results':[],'provider':'subdl','reason':'SubDL kunne ikke matche filmens ID eller titel og år sikkert.'}
         subtitles = result.get('subtitles') or []
         if not isinstance(subtitles,list): raise ValueError('SubDL returnerede et ugyldigt søgeresultat.')
         saved = {t['index'] for t in meta.get('external_subtitles',[])}
@@ -101,8 +121,9 @@ class SubDL(OpenSubtitles):
                 if not isinstance(files,list): continue
                 for file in files[:100]:
                     if not isinstance(file,dict): continue
-                    if file.get('format') and file['format'].lower()!='srt': continue
-                    lang = str(file.get('language') or item.get('language') or code).upper()
+                    if file.get('format') and str(file['format']).strip().lower().lstrip('.') not in ('srt', 'subrip'): continue
+                    lang = str(file.get('language') or item.get('language') or code).strip().upper()
+                    lang = {'DAN':'DA', 'ENG':'EN', 'NOR':'NO', 'NOB':'NO', 'SWE':'SV', 'DEU':'DE', 'GER':'DE', 'FRA':'FR', 'FRE':'FR', 'SPA':'ES'}.get(lang, lang)
                     if lang not in (code,{'DA':'DANISH','EN':'ENGLISH','NO':'NORWEGIAN','SV':'SWEDISH',
                                          'DE':'GERMAN','FR':'FRENCH','ES':'SPANISH'}.get(code)): continue
                     if params['type']=='tv':
@@ -124,7 +145,9 @@ class SubDL(OpenSubtitles):
                                   if k not in ('mid','link','expires')})
             while len(self.choices)>2000: self.choices.pop(next(iter(self.choices)))
         found.sort(key=lambda x:not x['release_match'])
-        return {'results':found,'provider':'subdl','message':'Vælg samme udgave som filmen. Kontrollér timing efter download.'}
+        reason = '' if found else ('SubDL returnerede filer, men ingen kunne bruges som SRT på det valgte sprog til denne film eller dette afsnit.'
+                                  if subtitles else 'SubDLs API returnerede ingen undertekster på det valgte sprog til den matchede titel.')
+        return {'results':found,'provider':'subdl','reason':reason,'message':'Vælg samme udgave som filmen. Kontrollér timing efter download.'}
 
     def content(self, entry):
         link = self.download_url(entry['link'])

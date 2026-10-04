@@ -88,7 +88,7 @@ def test_tv_subtitles_require_bearer_and_validate_track(tv_client, tmp_path, mon
         conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
     output = tmp_path / 'subtitle.vtt'
     output.write_text('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHej\n')
-    monkeypatch.setattr(main.tracks, 'webvtt', lambda *args: output)
+    monkeypatch.setattr(main.tracks, 'webvtt', lambda *args, **kwargs: output)
     path = f'/tv-api/movies/{mid}/subtitles/2.vtt'
     assert client.get(path).status_code == 401
     assert client.post('/api/login', json=credentials).status_code == 200

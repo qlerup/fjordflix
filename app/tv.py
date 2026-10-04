@@ -14,7 +14,7 @@ def attach_tv(app, main):
     tv_pairing.attach_pairing(tv, main, page_app=app)
     tv.add_middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['GET', 'HEAD', 'POST', 'DELETE'],
                       allow_headers=['Authorization', 'Content-Type', 'Range'],
-                      expose_headers=['Content-Length', 'Content-Range', 'Accept-Ranges'])
+                      expose_headers=['Content-Length', 'Content-Range', 'Accept-Ranges', 'X-Subtitle-Complete'])
 
 
     @tv.middleware('http')
@@ -99,8 +99,8 @@ def attach_tv(app, main):
 
 
     @tv.get('/tv-api/movies/{mid}/subtitles/{index}.vtt')
-    def subtitles(mid: str, index: int, auth=Depends(authorized)):
-        return main.movie_subtitles(mid, index, auth[0])
+    def subtitles(mid: str, index: int, auth=Depends(authorized), progressive: bool = False):
+        return main.movie_subtitles(mid, index, auth[0], progressive=progressive)
 
 
     @tv.get('/tv-api/movies/{mid}/tracks')

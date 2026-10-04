@@ -16,7 +16,7 @@ const {pathToFileURL} = require('node:url');
   const movie={id:'subtest',title:'Underteksttest',height:1080,width:1920,duration:60,position:0,video:'h264',audio:'aac',format:'mp4',pix_fmt:'yuv420p',hdr:false,
     tracks:{audio:[],subtitles:[{index:2,language:'Dansk',codec:'subrip',delivery:'text'}, {index:3,language:'Engelsk',codec:'hdmv_pgs_subtitle',delivery:'burn'}]}};
   for (let i=4;i<37;i++) movie.tracks.subtitles.push({index:i,language:'Spor '+i,delivery:'burn'});
-  const headers={'access-control-allow-origin':'*','access-control-allow-headers':'authorization,content-type'};
+  const headers={'access-control-allow-origin':'*','access-control-allow-headers':'authorization,content-type','access-control-expose-headers':'X-Subtitle-Complete'};
   await page.addInitScript(()=>{
     localStorage.setItem('fjordflix.connection',JSON.stringify({server:'https://subtitle.test',token:'t'.repeat(43)}));
     const original=HTMLMediaElement.prototype.canPlayType;
@@ -29,8 +29,9 @@ const {pathToFileURL} = require('node:url');
     if(url.pathname==='/media.wav') return route.fulfill({headers,contentType:'audio/wav',body:wav});
     if(url.pathname.endsWith('.vtt')) {
       subtitleRequests++;
+      assert.equal(url.searchParams.get('progressive'),'true');
       assert.equal(req.headers().authorization,'Bearer '+'t'.repeat(43));
-      return route.fulfill({headers,contentType:'text/vtt',body:'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nEarlier\n\n00:00:11.000 --> 00:00:13.000\nHej fra FjordFlix\n'});
+      return route.fulfill({headers:{...headers,'X-Subtitle-Complete':subtitleRequests===1?'0':'1'},contentType:'text/vtt',body:'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nEarlier\n\n00:00:11.000 --> 00:00:13.000\nHej fra FjordFlix\n'});
     }
     if(url.pathname.endsWith('/state')) return json({user:{name:'Tester'}});
     if(url.pathname.endsWith('/movies')) return json([movie]);
@@ -103,6 +104,9 @@ const {pathToFileURL} = require('node:url');
     assert.equal(plays[0].subtitle_track,2);
     assert.equal(subtitleRequests,1);
     assert.deepEqual(await page.locator('video track').evaluate(el=>[el.track.cues[0].startTime,el.track.cues[0].endTime,el.track.cues[0].text]),[1,3,'Hej fra FjordFlix']);
+    await page.waitForResponse(response=>response.url().includes('.vtt?progressive=true'));
+    await page.waitForFunction(()=>document.querySelectorAll('video track').length===1 && document.querySelector('video track').readyState===2);
+    assert.equal(subtitleRequests,2);
     await page.locator('#stop').click();
     assert.equal(await page.locator('video track').count(),0);
     assert.equal(await page.locator('[data-subtitle="2"]').getAttribute('aria-pressed'),'true');
@@ -111,7 +115,7 @@ const {pathToFileURL} = require('node:url');
     await page.locator('#play').click();
     await page.waitForFunction(()=>document.getElementById('video').readyState>=1);
     assert.equal(plays.at(-1).subtitle_track,null);
-    assert.equal(subtitleRequests,1);
+    assert.equal(subtitleRequests,2);
     assert.equal(await page.locator('video track').count(),0);
     assert.deepEqual(errors,[]);
     console.log('Subtitle browser flow passed: tracks, plan, authenticated VTT, offset, cleanup, remembered selection and off.');

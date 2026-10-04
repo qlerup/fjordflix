@@ -111,18 +111,22 @@ const FjordTracks = {
     const prefix = `Undertekster: spor ${s.index}`;
     if (s.error) return `${prefix} · ${s.error}`;
     if (s.delivery !== 'text') return `${prefix} · ${s.delivery === 'burn' ? 'indbrændt' : s.delivery}`;
-    if (!this.element) return `${prefix} · henter tekst`;
+    if (!this.element) return `${prefix} · ${s.phase === 'body' ? 'modtager tekst (HTTP 200)' : s.phase === 'prepare' ? 'klargør tekst' : 'henter tekst'}`;
     if (this.element.readyState !== 2) return `${prefix} · indlæser tekst`;
     const track = this.element.track;
     const cues = Array.from(track.cues || []);
     const next = cues.find(c => c.startTime > video.currentTime);
     return `${prefix} · ${cues.length} tekstlinjer · ${track.activeCues?.length || 0} aktive · ${track.mode}` +
-      (next ? ` · næste om ${Math.ceil(next.startTime - video.currentTime)} s` : '');
+      (next ? ` · næste om ${Math.ceil(next.startTime - video.currentTime)} s` : '') +
+      (s.complete === false ? ' · udtrækker resten' : '');
   },
   request() { return {audio_track:this.audio, subtitle_track:this.subtitle, burn_subtitles:this.burnSubtitles}; },
   clear() {
     ++this.generation;
     this.subtitleStatus = null;
+    clearTimeout(this.refreshTimer);
+    if (this.oldElement) { this.oldElement.track.mode = 'disabled'; this.oldElement.remove(); this.oldElement = null; }
+    if (this.oldUrl) { URL.revokeObjectURL(this.oldUrl); this.oldUrl = null; }
     this.nativeCleanup?.(); this.nativeCleanup = null;
     this.pending?.abort(); this.pending = null;
     if (this.element) { this.element.track.mode = 'disabled'; this.element.remove(); this.element = null; }
@@ -134,9 +138,11 @@ const FjordTracks = {
       else { cue.startTime = Math.max(0, cue.startTime - offset); cue.endTime -= offset; }
     }
   },
-  async attach(result) {
-    this.clear();
-    if (result.subtitle_track != null) this.subtitleStatus = {index:result.subtitle_track, delivery:result.subtitle_delivery};
+  async attach(result, refreshing = false) {
+    if (!refreshing) {
+      this.clear();
+      if (result.subtitle_track != null) this.subtitleStatus = {index:result.subtitle_track, delivery:result.subtitle_delivery};
+    }
     if (result.subtitle_delivery === 'hls') {
       const generation = this.generation;
       const select = () => {
@@ -158,35 +164,59 @@ const FjordTracks = {
     if (result.subtitle_delivery !== 'text' || result.subtitle_track == null) return;
     const generation = this.generation;
     const controller = new AbortController(); this.pending = controller;
+    // Older servers allow 60 s for extraction. Bound transport/body waits too,
+    // with 30 s of headroom, matching the TV client's request deadline.
+    let timedOut = false;
+    const deadline = setTimeout(() => { timedOut = true; controller.abort(); }, 90000);
     let data;
     try {
-      const response = await fetch(`/api/movies/${this.movie.id}/subtitles/${result.subtitle_track}.vtt`, {signal:controller.signal});
+      const response = await fetch(`/api/movies/${this.movie.id}/subtitles/${result.subtitle_track}.vtt?progressive=true`, {signal:controller.signal});
       if (!response.ok) {
         if (generation === this.generation) this.subtitleStatus.error = `hentning fejlede (HTTP ${response.status})`;
         const error = await response.json().catch(() => ({}));
         throw new Error(error.detail || 'Underteksterne kunne ikke indlæses.');
       }
+      if (generation === this.generation) this.subtitleStatus.phase = 'body';
+      if (generation === this.generation) this.subtitleStatus.complete = response.headers?.get('X-Subtitle-Complete') !== '0';
       data = await response.blob();
     } catch (error) {
+      if (timedOut && generation === this.generation) {
+        this.subtitleStatus.error = 'intet fuldt svar fra serveren inden 90 sekunder';
+        throw new Error('Underteksterne blev ikke leveret inden 90 sekunder.');
+      }
       if (generation === this.generation && error.name !== 'AbortError') this.subtitleStatus.error ||= 'hentning fejlede';
       throw error;
-    }
+    } finally { clearTimeout(deadline); }
     if (generation !== this.generation) return;
-    const element = document.createElement('track');
-    element.kind = 'subtitles'; element.label = this.label(this.selectedSubtitle());
-    this.url = URL.createObjectURL(new Blob([data], {type:'text/vtt'}));
-    element.src = this.url;
-    this.element = element;
-    element.onload = () => {
-      if (generation !== this.generation) return;
-      this.shiftCues(element.track, result.offset || 0);
-      element.track.mode = 'showing';
-    };
-    element.onerror = () => { if (generation === this.generation) {
-      this.subtitleStatus.error = 'browseren kunne ikke læse teksten';
-      toast('Underteksterne kunne ikke vises.');
-    } };
-    video.append(element); element.track.mode = 'hidden';
+    this.subtitleStatus.phase = 'prepare';
+    try {
+      const element = document.createElement('track');
+      element.kind = 'subtitles'; element.label = this.label(this.selectedSubtitle());
+      this.oldElement = this.element; this.oldUrl = this.url;
+      this.url = URL.createObjectURL(new Blob([data], {type:'text/vtt'}));
+      element.src = this.url;
+      this.element = element;
+      element.onload = () => {
+        if (generation !== this.generation) return;
+        this.shiftCues(element.track, result.offset || 0);
+        if (this.oldElement) { this.oldElement.track.mode = 'disabled'; this.oldElement.remove(); this.oldElement = null; }
+        if (this.oldUrl) { URL.revokeObjectURL(this.oldUrl); this.oldUrl = null; }
+        element.track.mode = 'showing';
+        if (!this.subtitleStatus.complete) this.refreshTimer = setTimeout(() => {
+          if (generation === this.generation) this.attach(result, true).catch(error => {
+            if (generation === this.generation && error.name !== 'AbortError') toast(error.message);
+          });
+        }, 2000);
+      };
+      element.onerror = () => { if (generation === this.generation) {
+        this.subtitleStatus.error = 'browseren kunne ikke læse teksten';
+        toast('Underteksterne kunne ikke vises.');
+      } };
+      video.append(element); element.track.mode = 'hidden';
+    } catch (error) {
+      this.subtitleStatus.error = 'teksten blev hentet, men kunne ikke klargøres';
+      throw error;
+    }
   }
 };
 if (typeof module !== 'undefined') module.exports = FjordTracks;

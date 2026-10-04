@@ -26,6 +26,13 @@ const fs=require('node:fs'), path=require('node:path'), http=require('node:http'
   try {
     for (const offset of [0, 3]) {
     const page=await browser.newPage();await page.goto('http://127.0.0.1:'+server.address().port);
+    let subtitleRequests = 0;
+    await page.route('**/subtitles/*.vtt*', route => {
+      subtitleRequests++;
+      const complete = subtitleRequests >= 3;
+      route.fulfill({status:200,contentType:'text/vtt',headers:{'X-Subtitle-Complete':complete?'1':'0'},
+        body:fs.readFileSync(path.join(folder,'text.vtt'),'utf8') + (complete ? '\n00:00:07.000 --> 00:00:08.000\nLater cue\n\n' : '')});
+    });
     await page.addScriptTag({url:'/hls.js'});
     await page.addScriptTag({path:path.resolve('app/static/tracks.js')});
     await page.evaluate(async(offset)=>{
@@ -43,7 +50,10 @@ const fs=require('node:fs'), path=require('node:path'), http=require('node:http'
     assert.ok(state.tracks.some(t=>t.mode==='showing'&&t.active.includes('Hej med dig! Æ, ø og å.')));
     assert.match(await page.evaluate(()=>FjordTracks.statusLabel()), /1 tekstlinjer · 1 aktive · showing/);
     await page.screenshot({path:path.join(folder,`visible-${offset}.png`)});
-    await page.route('**/subtitles/*.vtt', route => route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Extraction timed out'})}));
+    await page.waitForFunction(()=>FjordTracks.subtitleStatus.complete && FjordTracks.element.track.cues.length===2);
+    assert.equal(subtitleRequests,3,'Progressive extraction stops polling when complete');
+    assert.equal(await page.evaluate(()=>video.querySelectorAll('track').length),1);
+    await page.route('**/subtitles/*.vtt*', route => route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Extraction timed out'})}));
     const failed = await page.evaluate(async()=>{
       try { await FjordTracks.attach({subtitle_delivery:'text',subtitle_track:1,offset:0}); }
       catch (error) { return {message:error.message, status:FjordTracks.statusLabel()}; }

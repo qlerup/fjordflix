@@ -1,14 +1,91 @@
 """Embedded media tracks and browser subtitle extraction."""
 import hashlib
 import json
+import logging
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 TEXT = {'subrip', 'srt', 'ass', 'ssa', 'webvtt', 'mov_text', 'text'}
 BITMAP = {'hdmv_pgs_subtitle', 'dvd_subtitle', 'dvb_subtitle'}
 EXTRACTIONS = threading.BoundedSemaphore(2)
+PENDING = {}
+PENDING_LOCK = threading.Lock()
+log = logging.getLogger(__name__)
+
+
+def cache_path(path, index, cache):
+    path = Path(path)
+    stat = path.stat()
+    key = hashlib.sha256(f'{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{index}'.encode()).hexdigest()
+    cache = Path(cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    return cache / f'{key}.vtt'
+
+
+def progressive_webvtt(path, index, cache):
+    """Return complete cues so far, while one bounded worker caches the full track."""
+    output = cache_path(path, index, cache)
+    if output.exists():
+        return output.read_text(encoding='utf-8'), True
+    with PENDING_LOCK:
+        for key, old in list(PENDING.items()):
+            if old.get('finished', float('inf')) < time.monotonic() - 120:
+                del PENDING[key]
+        job = PENDING.get(output)
+        if job is None:
+            if len(PENDING) >= 32:
+                raise RuntimeError('Serveren klargør andre undertekster. Prøv igen om lidt.')
+            if not EXTRACTIONS.acquire(blocking=False):
+                raise RuntimeError('Serveren klargør andre undertekster. Prøv igen om lidt.')
+            try:
+                handle = tempfile.NamedTemporaryFile(prefix='stream-', suffix='.vtt', dir=output.parent, delete=False)
+            except OSError:
+                EXTRACTIONS.release()
+                raise
+            partial = Path(handle.name)
+            handle.close()
+            job = {'partial':partial}
+            PENDING[output] = job
+            def extract():
+                try:
+                    result = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-protocol_whitelist', 'file,pipe',
+                        '-i', str(path), '-map', f'0:{index}', '-c:s', 'webvtt', '-flush_packets', '1',
+                        '-f', 'webvtt', '-y', str(partial)], capture_output=True, timeout=600)
+                    if result.returncode:
+                        log.error('Subtitle extraction failed: %s', result.stderr.decode(errors='replace')[-2000:])
+                        raise RuntimeError('FFmpeg kunne ikke udtrække undertekstsporet.')
+                    if partial.stat().st_size > 16 * 1024**2:
+                        raise RuntimeError('Undertekstsporet er for stort.')
+                    partial.replace(output)
+                except subprocess.TimeoutExpired:
+                    job['error'] = 'Undertekstsporet kunne ikke udtrækkes inden for 10 minutter.'
+                except (OSError, RuntimeError) as exc:
+                    job['error'] = str(exc) if isinstance(exc, RuntimeError) else 'Serveren kunne ikke læse eller skrive undertekstfilen.'
+                finally:
+                    try:
+                        partial.unlink(missing_ok=True)
+                    finally:
+                        job['finished'] = time.monotonic()
+                        EXTRACTIONS.release()
+            threading.Thread(target=extract, daemon=True, name='subtitle-extraction').start()
+    if job.get('error'):
+        raise RuntimeError(job['error'])
+    if output.exists():
+        return output.read_text(encoding='utf-8'), True
+    try:
+        with job['partial'].open('rb') as stream:
+            data = stream.read(16 * 1024**2 + 1)
+    except FileNotFoundError:
+        return ('WEBVTT\n\n', False)  # Atomic rename; next request reads the completed cache.
+    if len(data) > 16 * 1024**2:
+        raise RuntimeError('Undertekstsporet er for stort.')
+    # Never send an incomplete cue or half a UTF-8 character to the client.
+    data = data.replace(b'\r\n', b'\n')
+    end = data.rfind(b'\n\n')
+    return (data[:end + 2].decode('utf-8') if end >= 0 else 'WEBVTT\n\n'), False
 
 
 def language(value):
@@ -109,11 +186,8 @@ def select(meta, audio_index=None, subtitle_index=None):
 
 def webvtt(path, index, cache):
     path = Path(path)
-    stat = path.stat()
-    key = hashlib.sha256(f'{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{index}'.encode()).hexdigest()
-    cache = Path(cache)
-    cache.mkdir(parents=True, exist_ok=True)
-    output = cache / f'{key}.vtt'
+    output = cache_path(path, index, cache)
+    cache = output.parent
     if output.exists():
         return output
     if not EXTRACTIONS.acquire(blocking=False):
