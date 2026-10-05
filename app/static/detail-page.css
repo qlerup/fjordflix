@@ -23,6 +23,9 @@
 .cast-person{flex:0 0 130px;text-align:center}.cast-portrait{position:relative;display:grid;place-items:center;width:130px;height:130px;border-radius:50%;overflow:hidden;background:#292933;color:#9994a7;font-size:38px}
 .cast-portrait img{position:absolute;width:100%;height:100%;object-fit:cover;object-position:center 25%}.cast-person h3{font-size:13px;margin:14px 0 5px;line-height:1.4}.cast-person p{font-size:12px;color:var(--muted);margin:0;line-height:1.5}
 .cast-heading{font-size:21px;letter-spacing:-.4px}.on-detail-page #shell>footer{display:none}
+.detail-disclosure{min-width:0}
+.detail-disclosure>summary{display:none}
+#detail-management{order:1}
 /* A compact cover and title lead into a single, readable mobile column. */
 @media (max-width:800px) {
   #detail, .has-library-sidebar #detail {
@@ -67,6 +70,13 @@
   #detail .fx-select-button { min-height:50px; padding:12px 14px; border-radius:11px; font-size:14px; line-height:1.5; }
   #detail .detail-body > p.fine { margin:0 0 4px; font-size:12px!important; line-height:1.7; }
   #detail .detail-body > p:empty { display:none; }
+  #detail .detail-disclosure { grid-column:1/-1; margin:8px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:0 0 4px; }
+  #detail .detail-disclosure > summary { display:list-item; cursor:pointer; padding:16px 4px; min-height:52px; font-size:14px; font-weight:600; color:#dddbe3; }
+  #detail .detail-disclosure[open] > summary { margin-bottom:8px; }
+  #detail .detail-disclosure .play-plan { border-top:0; padding-top:0; }
+  #detail .detail-disclosure .quality-label { display:block; margin:18px 0 12px; }
+  #detail #detail-management #detail-tools { border:0; padding-top:0; margin:0 0 12px; }
+  #detail #library-delete, #detail #library-delete-series { color:#ff9eab; border-color:#ec344e66; }
   #detail #detail-tools { margin:8px 0 0; padding-top:20px; gap:10px; }
   #detail #detail-tools:has(>button:not([hidden])) { display:flex; flex-wrap:wrap; }
   #detail #detail-tools > button { flex:1 1 140px; min-height:46px; font-size:12px; }

@@ -13,7 +13,7 @@ if (!playwright) throw new Error('Install Playwright or use the existing desktop
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'test-results/mobile');
 const prefix = process.env.MOBILE_QA_PREFIX ? `${process.env.MOBILE_QA_PREFIX}-` : '';
-const widths = (process.env.MOBILE_QA_WIDTHS || '320,390,768,800,1440').split(',').map(Number);
+const widths = (process.env.MOBILE_QA_WIDTHS || '320,390,430,768,800,1440').split(',').map(Number);
 const overview = 'En uventet rejse langs den danske kyst bringer gamle venner sammen igen. En fortælling om de valg, der former os, og de mennesker, vi møder undervejs.';
 const names = ['Ved verdens ende', 'Den sidste sommer', 'Nattens hemmeligheder', 'Et sted mellem himmel og hav', 'Familien på farten', 'Mørket kalder', 'Uden for kortet', 'En ganske almindelig tirsdag'];
 function fixtures() {
@@ -70,6 +70,7 @@ async function mockApp(page, options = {}) {
     else if (endpoint === '/api/admin/media') data = {web_url: 'https://film.example.test', media_url: 'https://media.example.test', enabled: true};
     else if (endpoint === '/api/admin/metadata') data = {configured: false};
     else if (endpoint === '/api/admin/opensubtitles') data = {configured: false, username: ''};
+    else if (endpoint === '/api/admin/subtitles') data = {provider: 'opensubtitles', configured: false, automatic: false};
     else if (endpoint === '/api/admin/active-streams') data = {streams: [{id: 'qa-playback', movie_id: movies[0].id, title: movies[3].title, user: 'Sofie', client: 'Browser på mobil', poster: `/api/movies/${movies[0].id}/poster`, duration: 7200, position: 1830, state: 'playing', mode: 'Direct Play', height: 2160, mbps: 25, video: {source: 'hevc', output: 'hevc', transcoded: false}, audio: {codec: 'eac3', language: 'dan', title: 'Dansk surround'}, subtitle: null, audio_transcoded: false, encoder: 'Original · afspilles lokalt'}]};
     else if (endpoint.endsWith('/subtitle-search')) data = {message: '', results: []};
     else {unexpected.push(endpoint); return route.fulfill({status: 404, contentType: 'application/json', body: JSON.stringify({detail: 'Unexpected mock endpoint: ' + endpoint})});}
@@ -148,6 +149,15 @@ async function choose(page, id, pattern) {
       await navigate('all');
       assert.equal(await page.locator('#movie-grid .movie-card').count(), 8);
       await snapshot(page, width, 'films');
+      const attribution = page.locator('.catalog-attribution');
+      await attribution.locator('summary').click();
+      const attributionBox = await attribution.boundingBox();
+      if (width > 800) {
+        const sidebarBox = await page.locator('#library-categories').boundingBox();
+        assert.ok(attributionBox.x >= sidebarBox.x + sidebarBox.width, 'TMDB attribution clears the sidebar');
+      }
+      await snapshot(page, width, 'attribution');
+      await attribution.locator('summary').click();
       if (width <= 800) {
         const lastCard = page.locator('#movie-grid .movie-card').last();
         await lastCard.scrollIntoViewIfNeeded();
@@ -174,6 +184,13 @@ async function choose(page, id, pattern) {
       await page.locator('#movie-grid .movie-card').first().click();
       await page.waitForFunction(() => document.getElementById('plan-badge').textContent === 'Direct Play');
       assert.ok(page.url().includes('#title/'));
+      if (width <= 800) {
+        assert.ok(await page.locator('#detail-tracks').isHidden(), 'advanced playback options start collapsed');
+        assert.ok(await page.locator('#play-button').isVisible(), 'play remains outside advanced settings');
+        await page.evaluate(() => scrollTo(0,0));
+        await snapshot(page, width, 'detail-simple');
+        await page.locator('#detail-playback-options > summary').click();
+      }
       await choose(page, 'detail-subtitle', /Dansk/);
       assert.equal(await page.locator('#detail-subtitle').inputValue(), '3');
       await choose(page, 'detail-quality', /Original kvalitet/);
@@ -206,6 +223,7 @@ async function choose(page, id, pattern) {
       }
       await page.locator('#player-close').click();
       await page.locator('#favorite-button').click();
+      if (width <= 800) await page.locator('#detail-management > summary').click();
       await page.locator('#subtitle-find').click();
       await snapshot(page, width, 'subtitle-search', '#subtitle-search-dialog');
       await page.locator('#subtitle-search-submit').click();

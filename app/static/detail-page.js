@@ -1,4 +1,18 @@
 let detailScroll = 0, detailFocus;
+const detailMobile = matchMedia('(max-width: 800px)');
+function detailDisclosure(id, title, nodes) {
+  let group = document.getElementById(id);
+  if (!group) {
+    group = document.createElement('details'); group.id = id; group.className = 'detail-disclosure';
+    const summary = document.createElement('summary'); summary.textContent = title;
+    group.append(summary); document.querySelector('#detail .detail-body').append(group);
+  }
+  for (const node of nodes) if (node) group.append(node);
+  return group;
+}
+detailMobile.addEventListener('change', () => {
+  for (const group of document.querySelectorAll('.detail-disclosure')) group.open = !detailMobile.matches;
+});
 function closeDetailPage(updateHistory = true) {
   const page = document.getElementById('detail');
   if (page.hidden) return;
@@ -31,6 +45,14 @@ function showDetailPage(movie) {
   let tools = $('detail-tools');
   if (!tools) { tools = document.createElement('div'); tools.id = 'detail-tools'; tools.className = 'hero-actions'; document.querySelector('#detail .detail-body').append(tools); }
   for (const id of ['subtitle-fetch','subtitle-find','library-edit','metadata-refresh','library-delete','library-delete-series']) if ($(id)) tools.append($(id));
+  const body = document.querySelector('#detail .detail-body');
+  const settings = detailDisclosure('detail-playback-options', 'Lyd, undertekster og kvalitet', [
+    body.querySelector('.play-plan'), $('detail-tracks'), $('track-status'), body.querySelector('.quality-label'),
+    body.querySelector(':scope > p.fine:not(#track-status)'),
+  ]);
+  const management = detailDisclosure('detail-management', 'Flere muligheder', [tools]);
+  management.hidden = ![...tools.children].some(button => !button.hidden);
+  if (wasHidden) { settings.open = !detailMobile.matches; management.open = !detailMobile.matches; }
   $('detail-kind').textContent = movie.series_key ? 'SERIE · FRA DIT BIBLIOTEK' : 'FILM · FRA DIT BIBLIOTEK';
   // Keep episode browsing and the cast rail outside the narrow information column.
   $('detail-extras').prepend($('episode-picker'));
