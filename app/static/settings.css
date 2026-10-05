@@ -94,3 +94,6 @@
 #os-disconnect:disabled { cursor: default; }
 #os-disconnect[aria-busy="true"] { cursor: wait; }
 #os-action-status:empty { display: none; }
+
+.settings-nav #desktop-download { display: flex; flex-shrink: 0; min-height: 44px; padding: 14px 16px; font-size: 14px; white-space: nowrap; }
+.settings-nav #desktop-download[hidden] { display: none; }
