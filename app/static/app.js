@@ -10,6 +10,18 @@ if (window.fjordDesktop) {
   }
 }
 let state, library = [], selected, view = 'home', authMode = 'login', hls, playback, lastSaved = 0, switching = false, playGeneration = 0, planGeneration = 0;
+const BUFFER_OPTIONS = [30, 60, 120];
+function playbackBufferSeconds() {
+  try {
+    const seconds = Number(localStorage.getItem('fjordflix-buffer-seconds'));
+    return BUFFER_OPTIONS.includes(seconds) ? seconds : 60;
+  } catch (_) { return 60; }
+}
+function savePlaybackBuffer(seconds) {
+  if (!BUFFER_OPTIONS.includes(seconds)) throw new Error('Vælg 30, 60 eller 120 sekunder.');
+  localStorage.setItem('fjordflix-buffer-seconds', String(seconds));
+  if (hls) hls.config.maxBufferLength = seconds;
+}
 const video = $('video');
 const airplaySupported = typeof video.webkitShowPlaybackTargetPicker === 'function' && !!video.canPlayType('application/vnd.apple.mpegurl');
 function airplayActive() { return !!video.webkitCurrentPlaybackTargetIsWireless; }
@@ -315,7 +327,7 @@ async function startPlayback(position = 0, fallback = false) {
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (!result.session || !useHls && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else if (useHls) {
-      hls = new Hls({startPosition:0, maxBufferLength:30, backBufferLength:30});
+      hls = new Hls({startPosition:0, maxBufferLength:playbackBufferSeconds(), backBufferLength:30});
       hls.on(Hls.Events.FRAG_LOADED, (_, data) => result.health.fragment(data));
       hls.on(Hls.Events.ERROR, (_, info) => {
         result.health.error(info);

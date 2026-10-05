@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="da">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Dit eget biograflærred</title><link rel="stylesheet" href="/static/style.css?v=playback-health1"><link rel="stylesheet" href="/static/categories.css?v=mobile4"><script defer src="/static/categories.js?v=sidebar-fixed2"></script><script defer src="/static/deletion.js?v=1"></script><script defer src="/static/library-ui.js?v=browser-hdr2"></script><script defer src="/static/uploads.js?v=chunks3"></script><script defer src="/static/tracks.js?v=audio-badge1"></script><link rel="stylesheet" href="/static/onboarding.css?v=mobile3"><script defer src="/static/onboarding.js?v=1"></script><script defer src="/static/detail-page.js?v=mobile4"></script><script defer src="/static/playback-health.js?v=1"></script><script defer src="/static/app.js?v=hls-routing2"></script><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/tvremote.js?v=10"></script>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101014"><title>FjordFlix · Dit eget biograflærred</title><link rel="stylesheet" href="/static/style.css?v=playback-health1"><link rel="stylesheet" href="/static/categories.css?v=mobile4"><script defer src="/static/categories.js?v=sidebar-fixed2"></script><script defer src="/static/deletion.js?v=1"></script><script defer src="/static/library-ui.js?v=browser-hdr2"></script><script defer src="/static/uploads.js?v=chunks3"></script><script defer src="/static/tracks.js?v=audio-badge1"></script><link rel="stylesheet" href="/static/onboarding.css?v=mobile3"><script defer src="/static/onboarding.js?v=1"></script><script defer src="/static/detail-page.js?v=mobile4"></script><script defer src="/static/playback-health.js?v=1"></script><script defer src="/static/app.js?v=buffer-settings1"></script><link rel="stylesheet" href="/static/remote.css"><script defer src="/static/tvremote.js?v=10"></script>
 <link rel="icon" href="/static/logos/web/favicon.ico?v=brand-20261005" sizes="any">
 <link rel="icon" href="/static/logos/web/favicon-32x32.png?v=brand-20261005" type="image/png" sizes="32x32">
 <link rel="icon" href="/static/logos/web/favicon-16x16.png?v=brand-20261005" type="image/png" sizes="16x16">
@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="application-name" content="FjordFlix">
 <meta name="msapplication-config" content="/static/logos/web/browserconfig.xml">
-<link rel="stylesheet" href="/static/player.css?v=mobile3"><script defer src="/static/player.js?v=airplay1"></script><link rel="stylesheet" href="/static/library.css?v=airplay2"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script><script defer src="/static/subtitle-search.js?v=saved-key3"></script><link rel="stylesheet" href="/static/settings.css?v=windows-download1"><script defer src="/static/settings.js?v=storage-connect1"></script><link rel="stylesheet" href="/static/active-streams.css?v=mobile3"><script defer src="/static/active-streams.js?v=1"></script><link rel="stylesheet" href="/static/detail-page.css?v=mobile4"><link rel="stylesheet" href="/static/mobile.css?v=mobile4"></head>
+<link rel="stylesheet" href="/static/player.css?v=mobile3"><script defer src="/static/player.js?v=airplay1"></script><link rel="stylesheet" href="/static/library.css?v=airplay2"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script><script defer src="/static/subtitle-search.js?v=saved-key3"></script><link rel="stylesheet" href="/static/settings.css?v=windows-download1"><script defer src="/static/settings.js?v=buffer-settings1"></script><link rel="stylesheet" href="/static/active-streams.css?v=mobile3"><script defer src="/static/active-streams.js?v=1"></script><link rel="stylesheet" href="/static/detail-page.css?v=mobile4"><link rel="stylesheet" href="/static/mobile.css?v=mobile4"></head>
 <body>
 <div id="toast" role="status" hidden></div>
 <section id="auth" class="auth" hidden>
@@ -68,7 +68,11 @@
 <div id="active-streams-list" class="active-streams-list"></div>
 </section>
 <section id="media-settings-dialog" data-settings-panel="media" hidden>
-<span class="eyebrow">FORBINDELSE</span><h2>Video direkte fra serveren</h2>
+<span class="eyebrow">AFSPILNING</span><h2>Buffer i browseren</h2>
+<label>Video klar foran afspilningen<select id="playback-buffer"><option value="30">30 sekunder</option><option value="60" selected>60 sekunder (standard)</option><option value="120">120 sekunder</option></select></label>
+<p class="fine">Gemmes automatisk på denne enhed. En større buffer bruger mere hukommelse og kan hjælpe ved en ustabil forbindelse. Gælder HLS-afspilleren i browseren; direkte afspilning og AirPlay styrer selv deres buffer.</p>
+<p id="playback-buffer-status" class="fine" role="status" aria-live="polite"></p>
+<h2>Video direkte fra serveren</h2>
 <p>Login og bibliotek kan gå gennem Cloudflare. Videoen hentes fra en separat adresse uden tunnel eller proxy hos Cloudflare.</p>
 <form id="media-settings-form"><label>Webadresse<input id="media-web-url" type="url" required placeholder="https://film.gleruphub.dk"></label>
 <p id="media-hub-source" class="muted"></p>

@@ -250,8 +250,19 @@ async function choose(page, id, pattern) {
         await page.locator(`[data-settings-tab="${tab}"]`).click();
         await page.locator(`[data-settings-panel="${tab}"]`).waitFor();
         if (tab === 'active-streams') await page.locator('.stream-card').waitFor();
+        if (tab === 'media') {
+          assert.equal(await page.locator('#playback-buffer').inputValue(), '60');
+          await choose(page, 'playback-buffer', '120 sekunder');
+          assert.ok((await page.locator('#playback-buffer-status').textContent()).includes('Gemt'));
+        }
         await snapshot(page, width, `settings-${tab}`, '.settings-content');
       }
+      await page.locator('[data-close="admin-dialog"]').click();
+      await page.reload();
+      await page.locator('#admin-open').click();
+      await page.locator('[data-settings-tab="media"]').click();
+      assert.equal(await page.locator('#playback-buffer').inputValue(), '120', 'buffer preference survives reload');
+      assert.equal(await page.evaluate(() => playbackBufferSeconds()), 120);
       await page.locator('[data-close="admin-dialog"]').click();
       await navigate('home');
       await page.locator('#logout').click();

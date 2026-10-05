@@ -1,5 +1,15 @@
 (() => {
   const dialog = $('admin-dialog');
+  $('playback-buffer').value = String(playbackBufferSeconds());
+  $('playback-buffer').onchange = () => {
+    try {
+      savePlaybackBuffer(Number($('playback-buffer').value));
+      $('playback-buffer-status').textContent = 'Gemt på denne enhed. Bruges også ved næste afspilning.';
+    } catch (_) {
+      $('playback-buffer').value = String(playbackBufferSeconds());
+      $('playback-buffer-status').textContent = 'Indstillingen kunne ikke gemmes i browseren.';
+    }
+  };
   let folder = '', timer, poolTimer, poolPending = false, browsing = false;
   const fail = error => { $('source-error').textContent = error.message; };
   async function loadSources() {
