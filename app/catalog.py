@@ -22,9 +22,31 @@ def credits(info):
         return _credits(info)
 
 
+def danish_character(value):
+    """Translate generic credit labels while preserving character names."""
+    labels = {'self': 'Sig selv', 'himself': 'Sig selv', 'herself': 'Sig selv',
+              'themselves': 'Sig selv', 'host': 'Vært', 'presenter': 'Vært',
+              'narrator': 'Fortæller', 'voice': 'Stemme',
+              'self - host': 'Sig selv – vært', 'self - presenter': 'Sig selv – vært',
+              'self - narrator': 'Sig selv – fortæller'}
+    annotations = {'voice': 'stemme', 'archive footage': 'arkivoptagelser',
+                   'uncredited': 'ukrediteret'}
+    def translate(role):
+        role = role.strip()
+        base = re.split(r'\s*\(', role, maxsplit=1)[0].strip()
+        translated = labels.get(base.casefold(), base)
+        suffix = role[len(base):]
+        suffix = re.sub(r'\((voice|archive footage|uncredited)\)',
+                        lambda match: '(' + annotations[match[1].casefold()] + ')',
+                        suffix, flags=re.I)
+        return translated + suffix
+    return ', '.join(translate(role) for role in str(value or '').split(','))
+
+
 def local_portraits(cast):
     def portrait(person):
         person = dict(person)
+        person['character'] = danish_character(person.get('character'))
         profile = person.get('profile_path')
         person['profile_url'] = None
         if not _data or not isinstance(profile, str) or not re.fullmatch(r'/[A-Za-z0-9]+\.jpg', profile):
