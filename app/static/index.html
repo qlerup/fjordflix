@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="application-name" content="FjordFlix">
 <meta name="msapplication-config" content="/static/logos/web/browserconfig.xml">
-<link rel="stylesheet" href="/static/player.css?v=mobile3"><script defer src="/static/player.js?v=airplay1"></script><link rel="stylesheet" href="/static/library.css?v=airplay2"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script><script defer src="/static/subtitle-search.js?v=settings2"></script><link rel="stylesheet" href="/static/settings.css?v=mobile3"><script defer src="/static/settings.js?v=storage-connect1"></script><link rel="stylesheet" href="/static/active-streams.css?v=mobile3"><script defer src="/static/active-streams.js?v=1"></script><link rel="stylesheet" href="/static/detail-page.css?v=mobile4"><link rel="stylesheet" href="/static/mobile.css?v=mobile4"></head>
+<link rel="stylesheet" href="/static/player.css?v=mobile3"><script defer src="/static/player.js?v=airplay1"></script><link rel="stylesheet" href="/static/library.css?v=airplay2"><link rel="stylesheet" href="/static/selects.css?v=1"><script defer src="/static/selects.js?v=1"></script><script defer src="/static/subtitle-search.js?v=saved-key3"></script><link rel="stylesheet" href="/static/settings.css?v=mobile3"><script defer src="/static/settings.js?v=storage-connect1"></script><link rel="stylesheet" href="/static/active-streams.css?v=mobile3"><script defer src="/static/active-streams.js?v=1"></script><link rel="stylesheet" href="/static/detail-page.css?v=mobile4"><link rel="stylesheet" href="/static/mobile.css?v=mobile4"></head>
 <body>
 <div id="toast" role="status" hidden></div>
 <section id="auth" class="auth" hidden>
@@ -81,7 +81,8 @@
 <form id="os-form">
 <label>Udbyder<select id="subtitle-provider"><option value="opensubtitles">OpenSubtitles</option><option value="subdl">SubDL</option></select></label>
 <p class="fine">Kun den gemte udbyder bruges til søgning og hentning. Du kan skifte uden at miste gemte undertekster.</p>
-<label>API-nøgle<input id="os-key" type="password" maxlength="256" autocomplete="off"></label>
+<label>API-nøgle<input id="os-key" type="password" maxlength="256" autocomplete="off" aria-describedby="os-key-status"></label>
+<p id="os-key-status" class="fine" role="status" aria-live="polite">Henter status for API-nøglen…</p>
 <div id="os-login-fields"><label>OpenSubtitles-brugernavn<input id="os-username" maxlength="200" autocomplete="off"></label>
 <label>Adgangskode<input id="os-password" type="password" maxlength="512" autocomplete="new-password"></label></div>
 <label class="check-label"><input id="subtitle-automatic" type="checkbox">Hent automatisk til nye film og afsnit</label>

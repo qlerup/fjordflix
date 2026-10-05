@@ -44,6 +44,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.locator('#admin-open').click();
   await page.locator('[data-settings-tab="subtitles"]').click();
   await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('ikke tilsluttet'));
+  assert.ok((await page.locator('#os-key-status').textContent()).includes('Ingen API-nøgle'));
   await page.locator('#os-key').fill('test-key');await page.locator('#os-username').fill('tester');await page.locator('#os-password').fill('test-password');
   await page.locator('#os-save').click();await page.waitForFunction(()=>document.getElementById('os-status').textContent.includes('OpenSubtitles er aktiv'));
   assert.equal(await page.locator('#os-password').inputValue(),'');
@@ -77,6 +78,9 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.locator('#admin-open').click();
   await page.locator('[data-settings-tab="subtitles"]').click();
   await page.waitForFunction(()=>!document.getElementById('os-disconnect').disabled);
+  assert.ok((await page.locator('#os-key-status').textContent()).includes('API-nøglen er gemt'));
+  assert.equal(await page.locator('#os-key').inputValue(),'');
+  assert.equal(await page.locator('#os-key').getAttribute('placeholder'),'API-nøglen er gemt');
   await page.locator('#os-disconnect').click();
   await page.waitForFunction(()=>document.getElementById('os-error').textContent.includes('Prøv igen'));
   assert.equal(await page.locator('#os-disconnect').isEnabled(),true,'failed disconnect can be retried');
@@ -90,6 +94,8 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   finishDelete();
   await page.waitForFunction(()=>document.getElementById('os-action-status').textContent.includes('SubDL-forbindelsen er fjernet'));
   assert.equal(deleteCount,2);
+  assert.ok((await page.locator('#os-key-status').textContent()).includes('Ingen API-nøgle'));
+  assert.equal(await page.locator('#os-key').getAttribute('placeholder'),'Indsæt API-nøgle');
   assert.equal(await page.locator('#os-disconnect').textContent(),'Ingen forbindelse at fjerne');
   assert.equal(await page.locator('#os-disconnect').evaluate(el=>getComputedStyle(el).cursor),'default');
   assert.equal(await page.locator('#os-save').isEnabled(),true);

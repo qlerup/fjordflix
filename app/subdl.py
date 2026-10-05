@@ -7,7 +7,7 @@ import secrets
 import time
 import zipfile
 from pathlib import Path
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, parse_qsl
 
 import httpx
 from app.opensubtitles import OpenSubtitles, LANGUAGES, LIMIT, OFFSET, normalize_srt
@@ -61,9 +61,12 @@ class SubDL(OpenSubtitles):
         return 2*OFFSET + int(hashlib.sha256(entry['link'].encode()).hexdigest()[:12],16) + 1
 
     @staticmethod
-    def download_url(link):
+    def download_url(link, api_key=None):
         link = urljoin('https://dl.subdl.com',str(link))
         url = urlparse(link)
+        if url.query and api_key and parse_qsl(url.query, keep_blank_values=True) == [('api_key', api_key)]:
+            url = url._replace(query='')
+            link = url.geturl()
         if (url.scheme!='https' or url.hostname!='dl.subdl.com' or url.username or url.password
                 or url.port not in (None,443) or url.query or url.fragment
                 or not re.fullmatch(r'/subtitle/[A-Za-z0-9_-]+(?:\.zip|/[A-Za-z0-9_-]+)',url.path)):
@@ -76,8 +79,10 @@ class SubDL(OpenSubtitles):
         row, meta = self.main.movie(mid)
         info = meta.get('catalog',{})
         code = {'nb':'NO'}.get(language,language.upper())
+        # SubDL treats hi=1 as an HI-only filter in practice, excluding ordinary
+        # subtitles. Leave it unset and use each returned file's HI flag.
         params = {'languages':code,'type':'tv' if info.get('media_type')=='tv' else 'movie',
-                  'subs_per_page':30,'unpack':1,'hi':1,'releases':1,'client':'custom_integration'}
+                  'subs_per_page':30,'unpack':1,'releases':1,'client':'custom_integration'}
         if info.get('tmdb_id'): params['tmdb_id'] = info['tmdb_id']
         else: params['film_name'] = info.get('series_title') or row['title']
         if params['type']=='tv':
@@ -132,7 +137,7 @@ class SubDL(OpenSubtitles):
                             if int(file.get('episode',item.get('episode',-1)))!=int(params['episode_number']): continue
                         except (TypeError,ValueError): continue
                         if file is item and item.get('full_season'): continue
-                    try: link = self.download_url(file.get('url',''))
+                    try: link = self.download_url(file.get('url',''), self.credentials().get('api_key'))
                     except ValueError: continue
                     release = str(file.get('release_name') or item.get('release_name') or file.get('name') or '')[:300]
                     exact = Path(row['path']).stem.casefold()==Path(release).stem.casefold()
@@ -153,7 +158,7 @@ class SubDL(OpenSubtitles):
         link = self.download_url(entry['link'])
         try:
             with httpx.Client(timeout=30,follow_redirects=False) as client:
-                with client.stream('GET',link) as response:
+                with client.stream('GET',link,headers={'x-api-key':self.credentials().get('api_key','')}) as response:
                     if response.status_code in (402,403,429):
                         raise ValueError('SubDL afviste download. Kontrollér kontoens downloadkvote.')
                     response.raise_for_status()

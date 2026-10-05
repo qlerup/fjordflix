@@ -6,6 +6,12 @@
   const selectedProvider = () => $('subtitle-provider').value;
   const providerFields = () => {
     const subdl = selectedProvider() === 'subdl';
+    const saved = settings?.providers?.[selectedProvider()]?.configured
+      ?? (selectedProvider() === settings?.provider && settings?.configured);
+    $('os-key').placeholder = saved ? 'API-nøglen er gemt' : 'Indsæt API-nøgle';
+    $('os-key-status').textContent = !settings ? 'Henter status for API-nøglen…' : saved
+      ? `${providerName(selectedProvider())}: API-nøglen er gemt. Lad feltet være tomt for at beholde den.`
+      : `${providerName(selectedProvider())}: Ingen API-nøgle er gemt. Indsæt nøglen, og tryk på Gem og test forbindelse.`;
     $('os-login-fields').hidden = subdl;
     $('os-username').disabled = $('os-password').disabled = subdl || settingsBusy;
     $('os-disconnect').disabled = settingsBusy || !settings?.configured || selectedProvider() !== settings.provider;

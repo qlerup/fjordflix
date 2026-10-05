@@ -29,12 +29,15 @@ def providers(client, monkeypatch):
     def handler(request):
         requests.append(request)
         if request.url.host=='dl.subdl.com':
+            assert not request.url.query
+            assert request.headers['x-api-key']=='subdl-secret'
             assert 'api_key' not in request.url.params and 'authorization' not in request.headers
             return httpx.Response(200,content=archive.getvalue())
         if request.url.host=='api.subdl.com':
             assert request.url.params['api_key']=='subdl-secret'
             if request.url.path.endswith('/me'): return httpx.Response(200,json={'status':True})
             assert request.url.params['tmdb_id']=='42'
+            assert 'hi' not in request.url.params, 'HI-only filtering hides ordinary subtitles'
             return httpx.Response(200,json=response_data)
         if request.url.path.endswith('/login'):
             return httpx.Response(200,json={'token':'os-token'})
@@ -236,3 +239,28 @@ def test_subdl_quota_and_connection_errors_do_not_leak_keys(client, providers, m
         response = client.put('/api/admin/subtitles',json={'provider':'subdl','api_key':'subdl-secret'})
         assert response.status_code==400 and 'subdl-secret' not in response.text
         assert not client.get('/api/admin/subtitles').json()['providers']['subdl']['configured']
+
+
+def test_subdl_signed_download_urls_keep_credentials_server_side():
+    assert SubDL.download_url('/subtitle/abc/def?api_key=saved-key', 'saved-key') == 'https://dl.subdl.com/subtitle/abc/def'
+    for link in ('/subtitle/abc/def?api_key=other-key',
+                 '/subtitle/abc/def?api_key=saved-key&redirect=evil',
+                 'https://evil.test/subtitle/abc/def?api_key=saved-key'):
+        with pytest.raises(ValueError):
+            SubDL.download_url(link, 'saved-key')
+
+
+def test_subdl_signed_search_results_download_without_exposing_key(client, providers):
+    configure(client)
+    manager, requests, data = providers
+    for item in data['subtitles']:
+        item['url'] += '?api_key=subdl-secret'
+        for file in item.get('unpack_files', []):
+            file['url'] += '?api_key=subdl-secret'
+    mid = client.get('/api/movies').json()[0]['id']
+    response = client.get(f'/api/movies/{mid}/subtitle-search?language=da')
+    assert response.status_code == 200
+    assert 'subdl-secret' not in response.text
+    choice = response.json()['results'][0]['choice']
+    response = client.post(f'/api/movies/{mid}/subtitle-download', json={'choice':choice})
+    assert response.status_code == 200
