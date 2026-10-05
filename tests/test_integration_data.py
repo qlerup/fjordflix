@@ -18,11 +18,11 @@ def fixture(tmp_path, monkeypatch):
         conn.row_factory = sqlite3.Row
         return conn
     with db() as conn:
-        conn.execute('CREATE TABLE movies(id TEXT,title TEXT,metadata TEXT,path TEXT)')
+        conn.execute('CREATE TABLE movies(id TEXT,title TEXT,metadata TEXT,path TEXT,created REAL)')
         for i in range(140):
             mid = f'{i:032x}'
-            conn.execute('INSERT INTO movies VALUES(?,?,?,?)', (mid, f'Title {i}',
-                json.dumps({'catalog': {'overview': 'Description æøå', 'rating': 8, 'secret': 'hidden'}, 'secret': 'hidden'}), '/private/media'))
+            conn.execute('INSERT INTO movies VALUES(?,?,?,?,?)', (mid, f'Title {i}',
+                json.dumps({'catalog': {'overview': 'Description æøå', 'rating': 8, 'secret': 'hidden'}, 'secret': 'hidden'}), '/private/media', i))
             if i >= 130:
                 (tmp_path / 'posters' / f'{mid}.jpg').write_bytes(b'jpeg')
     main = SimpleNamespace(app=FastAPI(), db=db, DATA=tmp_path)
@@ -43,6 +43,7 @@ def test_auth_sample_and_posters(tmp_path, monkeypatch):
     assert data['library_count'] == 140
     assert len(data['items']) == 10
     assert len({item['id'] for item in data['items']}) == 10
+    assert [item['title'] for item in data['items']] == [f'Title {i}' for i in range(139,129,-1)]
     assert '/private' not in response.text and 'hidden' not in response.text
     mid = data['items'][0]['id']
     assert client.get(endpoint + '/posters/' + mid).status_code == 401
@@ -52,6 +53,19 @@ def test_auth_sample_and_posters(tmp_path, monkeypatch):
     assert client.get(endpoint + '/posters/' + '0'*32, headers=headers).status_code == 404
     monkeypatch.delenv('FJORDHUB_API_KEY')
     assert client.get(endpoint, headers=headers).status_code == 401
+
+
+def test_latest_uploads_use_added_time_and_include_missing_posters(tmp_path, monkeypatch):
+    client = fixture(tmp_path, monkeypatch)
+    with sqlite3.connect(tmp_path / 'test.db') as conn:
+        conn.execute('UPDATE movies SET created=1000 WHERE id IN (?,?)', (f'{0:032x}', f'{1:032x}'))
+    headers = {'X-Hub-Key': 'internal-secret'}
+    endpoint = '/api/hub/integration-data'
+    first = client.get(endpoint, headers=headers).json()['items']
+    second = client.get(endpoint, headers=headers).json()['items']
+    assert first == second
+    assert [item['title'] for item in first] == ['Title 1', 'Title 0'] + [f'Title {i}' for i in range(139,131,-1)]
+    assert client.get(endpoint + '/posters/' + first[0]['id'], headers=headers).status_code == 404
 
 
 def test_live_streams_are_projected_and_expire(tmp_path, monkeypatch):

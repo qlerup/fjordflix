@@ -35,13 +35,11 @@ def poster_path(main, mid):
 def snapshot(main):
     # Select only public display fields; never send media paths or credentials.
     with closing(main.db()) as conn:
-        conn.create_function('has_poster', 1, lambda mid: bool(
-            re.fullmatch(r'[a-f0-9]{32}', mid) and (main.DATA / 'posters' / f'{mid}.jpg').is_file()))
-        rows = conn.execute('SELECT id,title,metadata FROM movies WHERE has_poster(id) ORDER BY RANDOM() LIMIT 10').fetchall()
+        rows = conn.execute('SELECT id,title,metadata FROM movies ORDER BY created DESC, id DESC LIMIT 10').fetchall()
         total = conn.execute('SELECT count(*) FROM movies').fetchone()[0]
     items = []
     for row in rows:
-        if not re.fullmatch(r'[a-f0-9]{32}', row['id']) or not (main.DATA / 'posters' / f"{row['id']}.jpg").is_file():
+        if not re.fullmatch(r'[a-f0-9]{32}', row['id']):
             continue
         try:
             meta = json.loads(row['metadata'] or '{}')
