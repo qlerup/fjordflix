@@ -13,3 +13,11 @@ html.fjord-desktop,html.fjord-desktop *{scrollbar-width:none!important}
 html.fjord-desktop::-webkit-scrollbar,html.fjord-desktop *::-webkit-scrollbar{display:none!important;width:0;height:0}
 
 #playback-info{min-width:0;overflow-wrap:anywhere}
+
+@media (min-width:801px) {
+  .header-right .search { height:44px; margin:0; }
+  .header-right .search input { height:44px; margin:0; padding:0 14px; width:176px; }
+  .header-right .search span { display:grid; place-items:center; height:44px; line-height:1; }
+  .header-right #remote-open, .header-right .icon-button, .header-right .avatar { display:inline-flex; align-items:center; justify-content:center; height:44px; line-height:1; flex-shrink:0; }
+  .header-right .icon-button, .header-right .avatar { width:44px; padding:0; }
+}

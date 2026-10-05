@@ -133,6 +133,14 @@ async function choose(page, id, pattern) {
         const heights = await page.locator(`#${grid} .movie-image`).evaluateAll(images => images.map(image => image.getBoundingClientRect().height));
         assert.ok(Math.max(...heights) - Math.min(...heights) < 1, `${grid}: portrait and landscape artwork have equal heights`);
       }
+      if (width > 800) {
+        const controls = await page.locator('#remote-open, #search, #admin-open, #logout').evaluateAll(elements => elements.map(element => {
+          const box = element.getBoundingClientRect();
+          return {height:box.height, center:box.y + box.height / 2};
+        }));
+        assert.ok(controls.every(control => Math.abs(control.height - 44) < 1), 'desktop header controls have equal heights');
+        assert.ok(Math.max(...controls.map(control => control.center)) - Math.min(...controls.map(control => control.center)) < 1, 'desktop header controls are vertically aligned');
+      }
       await snapshot(page, width, 'home');
       const navigate = async view => {
         const headerButton = page.locator(`header [data-view="${view}"]`);
