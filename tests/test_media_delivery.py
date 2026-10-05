@@ -36,6 +36,34 @@ def test_direct_media_scoping_renewal_revocation_and_proxy_block(tmp_path):
         assert web.get(path).status_code==403
         assert web.get(f'/api/movies/{mid}/file').status_code==409
         assert direct.get(path.replace(mid,'other-movie')).status_code==403
+        # A local browser must not depend on the public VPN forwarding port.
+        with TestClient(main.app, base_url='http://192.168.1.110:8097') as lan:
+            lan.cookies.set('fjordflix_session', login)
+            local = lan.post(f'/api/movies/{mid}/play', json={'quality':'original','direct':True,'h264':True}).json()
+            assert local['delivery'] == 'same-origin'
+            assert local['url'].startswith('/media/')
+            assert lan.get(local['url'], headers={'Origin':'http://192.168.1.110:8097','Range':'bytes=10-19'}).status_code == 206
+            assert lan.get(local['url'], headers={'Origin':'http://evil.test'}).status_code == 403
+            assert lan.get(local['url'], headers={'CF-Ray':'proxied'}).status_code == 403
+            assert web.get(local['url']).status_code == 403
+            # HLS manifests and segments use the same local, scoped-ticket route.
+            from starlette.requests import Request
+            folder = tmp_path / 'hls'; folder.mkdir()
+            (folder / 'index.m3u8').write_text('#EXTM3U\n#EXTINF:2,\nsegment00000.ts\n')
+            (folder / 'segment00000.ts').write_bytes(b'test-segment')
+            sid = secrets.token_hex(16)
+            main.JOBS[sid] = {'folder':folder,'user':uid,'touch':time.time()}
+            try:
+                request = Request({'type':'http','scheme':'http','server':('192.168.1.110',8097),'path':'/','query_string':b'',
+                    'headers':[(b'host',b'192.168.1.110:8097'),(b'cookie',f'fjordflix_session={login}'.encode())]})
+                stream = main.media.issue({'session':sid},request,mid,main.db)
+                manifest = lan.get(stream['url'], headers={'Origin':'http://192.168.1.110:8097'})
+                assert manifest.status_code == 200 and '#EXTM3U' in manifest.text
+                assert lan.get(stream['url'].replace('index.m3u8','segment00000.ts')).content == b'test-segment'
+                assert lan.post('/api/media/revoke',json={'ticket':stream['media_ticket']}).status_code == 200
+                assert lan.get(stream['url']).status_code == 401
+            finally:
+                main.JOBS.pop(sid, None)
         assert web.post('/api/media/heartbeat',json={'ticket':ticket}).status_code==200
         assert direct.post('/api/media/heartbeat',json={'ticket':ticket}).status_code==401
         assert web.post('/api/media/revoke',json={'ticket':ticket}).status_code==200

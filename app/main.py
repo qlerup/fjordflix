@@ -133,9 +133,10 @@ async def security(request, call_next):
     is_media = request.url.path.startswith('/media/')
     is_probe = request.url.path == '/media/connection-check'
     if is_media:
-        if (direct and not is_probe and request.headers.get('host', '').lower() != urlparse(direct).netloc.lower()) or ((direct or is_probe) and (request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'))):
+        local_media = media.local_request(request) and not is_probe
+        if (direct and not local_media and not is_probe and request.headers.get('host', '').lower() != urlparse(direct).netloc.lower()) or ((direct or is_probe) and (request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'))):
             return Response('Video skal hentes via den direkte videoadresse uden Cloudflare.', status_code=403)
-        web_origin = web_origin or str(request.base_url).rstrip('/')
+        web_origin = str(request.base_url).rstrip('/') if local_media else (web_origin or str(request.base_url).rstrip('/'))
         if not is_probe and request.headers.get('origin') not in (None, web_origin):
             return Response('Ugyldig video-oprindelse.', status_code=403)
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):

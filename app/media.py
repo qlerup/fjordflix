@@ -1,4 +1,5 @@
 """Short-lived, scoped media grants. Web login cookies never go to the media origin."""
+import ipaddress
 import hashlib
 import logging
 import os
@@ -43,6 +44,22 @@ def validate_config(direct, web):
     if direct and web.startswith('https:') and not direct.startswith('https:'):
         raise RuntimeError('En HTTPS-webside kræver HTTPS på den direkte videoadresse.')
     return direct, web
+
+def local_request(request):
+    # Use only explicit LAN/loopback hosts, never forwarded headers or DNS names.
+    # Public reverse proxies must continue using the separate media origin.
+    if request.headers.get('cf-ray') or request.headers.get('cf-connecting-ip'):
+        return False
+    host = urlsplit(str(request.base_url)).hostname
+    if host == 'localhost':
+        return True
+    try:
+        address = ipaddress.ip_address(host or '')
+    except ValueError:
+        return False
+    return address.is_loopback or any(address in ipaddress.ip_network(network)
+        for network in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7'))
+
 
 def key(ticket):
     return hashlib.sha256(ticket.encode()).hexdigest()
@@ -94,9 +111,9 @@ def issue(result, request, mid, db, *, airplay=False, duration=0, force=False):
     path = f"streams/{sid}/{result.get('playlist', 'index.m3u8')}" if sid else f'movies/{mid}/file'
     # Relative same-origin URLs let Safari resolve the public HTTPS origin even
     # when a reverse proxy talks plain HTTP to this server.
-    base = direct
+    base = '' if local_request(request) else direct
     return {**result, 'url': f'{base}/media/{ticket}/{path}', 'media_ticket': ticket, 'media_expires_in': ttl,
-            'delivery': 'direct' if direct else 'same-origin', 'airplay': airplay}
+            'delivery': 'direct' if base else 'same-origin', 'airplay': airplay}
 
 def validate(ticket, db, session_user, *, mid=None, sid=None):
     if not re.fullmatch(r'[A-Za-z0-9_-]{43}', ticket):
