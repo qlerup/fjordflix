@@ -68,6 +68,58 @@ def test_latest_uploads_use_added_time_and_include_missing_posters(tmp_path, mon
     assert client.get(endpoint + '/posters/' + first[0]['id'], headers=headers).status_code == 404
 
 
+def test_many_episodes_count_as_one_recent_series(tmp_path, monkeypatch):
+    client = fixture(tmp_path, monkeypatch)
+    with sqlite3.connect(tmp_path / 'test.db') as conn:
+        for i in range(120, 140):
+            info = {'media_type': 'tv', 'tmdb_id': 42, 'series_title': 'Example Show',
+                    'season': 1 if i < 130 else 2, 'episode': i - 119,
+                    'overview': 'Episode description', 'series_overview': 'Series description'}
+            conn.execute('UPDATE movies SET metadata=? WHERE id=?',
+                         (json.dumps({'catalog': info}), f'{i:032x}'))
+    items = client.get('/api/hub/integration-data', headers={'X-Hub-Key': 'internal-secret'}).json()['items']
+    assert len(items) == 10
+    assert [item['title'] for item in items] == ['Example Show'] + [f'Title {i}' for i in range(119, 110, -1)]
+    assert items[0]['id'] == f'{139:032x}'
+    assert items[0]['overview'] == 'Series description'
+    assert 'season' not in items[0] and 'episode' not in items[0]
+    assert client.get('/api/hub/integration-data/posters/' + items[0]['id'],
+                      headers={'X-Hub-Key': 'internal-secret'}).content == b'jpeg'
+    # A new episode moves the entire series ahead of the newer standalone film.
+    with sqlite3.connect(tmp_path / 'test.db') as conn:
+        conn.execute('UPDATE movies SET created=200 WHERE id=?', (f'{119:032x}',))
+    assert client.get('/api/hub/integration-data', headers={'X-Hub-Key': 'internal-secret'}).json()['items'][0]['title'] == 'Title 119'
+    with sqlite3.connect(tmp_path / 'test.db') as conn:
+        conn.execute('UPDATE movies SET created=300 WHERE id=?', (f'{120:032x}',))
+    items = client.get('/api/hub/integration-data', headers={'X-Hub-Key': 'internal-secret'}).json()['items']
+    assert [item['title'] for item in items[:2]] == ['Example Show', 'Title 119']
+    assert items[0]['id'] == f'{120:032x}'
+
+
+def test_series_aliases_legacy_names_and_remakes(tmp_path, monkeypatch):
+    client = fixture(tmp_path, monkeypatch)
+    records = [
+        ('The Show 2020 S02E02', {}),
+        ('Dansk serie S01E01', {'catalog': {'media_type': 'tv', 'tmdb_id': 42,
+            'series_title': 'Dansk serie', 'series_year': '2020'}, 'original_title': 'The Show 2020 S01E01'}),
+        ('The Show 1990 S01E01', {'catalog': {'media_type': 'tv', 'tmdb_id': 55,
+            'series_title': 'The Show', 'series_year': '1990'}}),
+        ('The Show 2020 S01E01', {'catalog': {'media_type': 'movie', 'manual': True}}),
+    ]
+    with sqlite3.connect(tmp_path / 'test.db') as conn:
+        conn.execute('DELETE FROM movies')
+        for i, (title, meta) in enumerate(records):
+            conn.execute('INSERT INTO movies VALUES(?,?,?,?,?)',
+                         (f'{i:032x}', title, json.dumps(meta), '/private/media', 10-i))
+    response = client.get('/api/hub/integration-data', headers={'X-Hub-Key': 'internal-secret'})
+    items = response.json()['items']
+    assert len(items) == 3
+    assert [item['title'] for item in items] == ['The Show', 'The Show', 'The Show 2020 S01E01']
+    assert [item['id'] for item in items] == [f'{i:032x}' for i in (0, 2, 3)]
+    assert items[-1]['media_type'] == 'movie'
+    assert '/private' not in response.text
+
+
 def test_live_streams_are_projected_and_expire(tmp_path, monkeypatch):
     client = fixture(tmp_path, monkeypatch)
     monkeypatch.setattr(active_streams, 'LIVE', {

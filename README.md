@@ -72,7 +72,9 @@ Fjernelse af en kilde fjerner dens titler, favoritter og historik fra FjordFlix,
 ## Ekstra data gennem FjordHub
 
 FjordHub kan dele ekstra FjordFlix-data med andre apps via et adgangstoken:
-de 10 senest tilføjede titler med posters samt aktive streams. Vælg FjordFlix på
+de 10 senest tilføjede film/serier med posters samt aktive streams. Alle afsnit
+fra samme serie tæller som én titel, sorteret efter seriens nyeste tilføjede
+afsnit. Vælg FjordFlix på
 tokenet i FjordHubs indstillinger og opdater begge apps. Se
 [FjordHubs API-kontrakt](https://github.com/qlerup/fjordhub/blob/main/docs/app-data-integration.md).
 Det interne læse-API kræver appens FjordHub-nøgle; eksterne apps bruger alene

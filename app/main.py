@@ -514,22 +514,7 @@ def movies(u=Depends(user)):
                            position=r['position'], favorite=bool(r['favorite'])))
     # Join offline/unmatched uploads to a uniquely identified series, without guessing
     # between remakes. Original filename aliases also handle translated series titles.
-    aliases = {}
-    for item in result:
-        info = item['catalog']
-        if info.get('media_type') != 'tv' or not info.get('tmdb_id'):
-            continue
-        names = [info]
-        if not info.get('manual'):
-            names.append(catalog.identify(item.get('original_title') or item['title']))
-        for name in names:
-            if name.get('media_type') == 'tv':
-                alias = catalog.series_key({**name, 'tmdb_id': None})
-                aliases.setdefault(alias, set()).add(item['series_key'])
-    for item in result:
-        choices = aliases.get(item['series_key'], set())
-        if len(choices) == 1:
-            item['series_key'] = next(iter(choices))
+    catalog.resolve_series_aliases(result)
     return result
 
 

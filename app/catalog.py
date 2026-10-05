@@ -180,6 +180,26 @@ def series_key(info):
     return 'local:' + normalized(info.get('series_title', '')) + ':' + str(info.get('series_year', ''))
 
 
+def resolve_series_aliases(items):
+    """Join local episodes to a unique matched series, keeping remakes separate."""
+    aliases = {}
+    for item in items:
+        info = item['catalog']
+        if info.get('media_type') != 'tv' or not info.get('tmdb_id'):
+            continue
+        names = [info]
+        if not info.get('manual'):
+            names.append(identify(item.get('original_title') or item['title']))
+        for name in names:
+            if name.get('media_type') == 'tv':
+                alias = series_key({**name, 'tmdb_id': None})
+                aliases.setdefault(alias, set()).add(item['series_key'])
+    for item in items:
+        choices = aliases.get(item['series_key'], set())
+        if len(choices) == 1:
+            item['series_key'] = next(iter(choices))
+
+
 def choose_match(results, title, year, media_type='movie'):
     ranked = []
     for item in results:
