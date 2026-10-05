@@ -148,10 +148,6 @@ function fillGrid(id, movies) {
   }).join('');
   $(id).querySelectorAll('[data-id]').forEach(button => {
     button.onclick = () => openDetail(movies.find(m => m.id === button.dataset.id));
-    const image = button.querySelector('.movie-image img');
-    const updatePosterFormat = () => button.classList.toggle('poster-card', image.naturalHeight > image.naturalWidth);
-    image.addEventListener('load', updatePosterFormat);
-    if (image.complete) updatePosterFormat();
   });
 }
 setupLibraryUI();

@@ -46,7 +46,7 @@ async function mockApp(page, options = {}) {
     if (endpoint === '/') return route.fulfill({path: path.join(root, 'app/static/index.html'), contentType: 'text/html'});
     if (endpoint.startsWith('/static/')) return route.fulfill({path: path.join(root, 'app', endpoint.slice(1))});
     const art = endpoint.match(/^\/api\/movies\/([a-f0-9]+)\/(poster|backdrop|episode-still)$/);
-    if (art) return route.fulfill({contentType: 'image/svg+xml', body: artwork(art[1], art[2] !== 'poster')});
+    if (art) return route.fulfill({contentType: 'image/svg+xml', body: artwork(art[1], art[2] !== 'poster' || art[1] === '2'.padStart(32, '0'))});
     let data;
     if (endpoint === '/api/state') data = {user: authenticated ? {id: 'qa', name: 'Sofie', admin: options.admin !== false} : null, managed: false, setup: false};
     else if (endpoint === '/api/login') {
@@ -129,6 +129,10 @@ async function choose(page, id, pattern) {
       await page.locator('#auth-submit').click();
       await page.locator('#movie-grid .movie-card').first().waitFor();
       await page.waitForFunction(() => [...document.querySelectorAll('#movie-grid img')].every(img => img.complete));
+      for (const grid of ['movie-grid', 'continue-grid']) {
+        const heights = await page.locator(`#${grid} .movie-image`).evaluateAll(images => images.map(image => image.getBoundingClientRect().height));
+        assert.ok(Math.max(...heights) - Math.min(...heights) < 1, `${grid}: portrait and landscape artwork have equal heights`);
+      }
       await snapshot(page, width, 'home');
       const navigate = async view => {
         const headerButton = page.locator(`header [data-view="${view}"]`);
