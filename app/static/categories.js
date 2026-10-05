@@ -36,7 +36,7 @@ function setupCategories() {
   const content = document.createElement('div'); content.className = 'library-results';
   content.append(...section.childNodes); section.append(content);
   section.insertAdjacentHTML('afterbegin', `<aside id="library-categories" class="library-categories" hidden aria-labelledby="categories-title">
-    <a class="sidebar-brand" href="/" aria-label="FjordFlix hjem"><img src="/static/logos/source/fjordflix-horizontal-dark.svg" alt="FjordFlix"></a>
+    <a class="sidebar-brand" href="/" aria-label="FjordFlix hjem"><img src="/static/logos/source/fjordflix-horizontal-dark.svg?v=brand-20261005" alt="FjordFlix"></a>
     <section id="sidebar-library"><span class="sidebar-section-label">BIBLIOTEK</span><nav id="sidebar-browse" aria-label="Bibliotek">
     <button class="sidebar-view" data-side-view="home">Hjem</button><button class="sidebar-view" data-side-view="all">Film</button>
     <button class="sidebar-view" data-side-view="series">Serier</button><button class="sidebar-view" data-side-view="favorites">Min liste</button></nav></section>

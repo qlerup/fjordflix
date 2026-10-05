@@ -1,0 +1,432 @@
+{
+  "name": "FjordFlix",
+  "exports": [
+    {
+      "path": "app/static/logos/icons/android-chrome-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/android-chrome-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/app-icon-1024x1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/apple-touch-icon.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "app/static/logos/icons/favicon-128x128.png",
+      "size": [
+        128,
+        128
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/favicon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/favicon-256x256.png",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/favicon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/favicon-48x48.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/favicon-64x64.png",
+      "size": [
+        64,
+        64
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/favicon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/fjordflix-mark-transparent-512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/mstile-150x150.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/icons/pwa-maskable-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#07090d",
+      "scale": 0.7
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-app-icon-master.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-horizontal-dark.png",
+      "size": [
+        1440,
+        512
+      ],
+      "kind": "horizontal",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-horizontal-light.png",
+      "size": [
+        1440,
+        512
+      ],
+      "kind": "horizontal",
+      "ink": "#172c36"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-horizontal-transparent.png",
+      "size": [
+        1440,
+        512
+      ],
+      "kind": "horizontal",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-mark-transparent.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-mark-white-bg.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon",
+      "background": "#ffffff"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-stacked-dark.png",
+      "size": [
+        1536,
+        1280
+      ],
+      "kind": "stacked",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-stacked-light.png",
+      "size": [
+        1536,
+        1280
+      ],
+      "kind": "stacked",
+      "ink": "#172c36"
+    },
+    {
+      "path": "app/static/logos/logos/fjordflix-logo-stacked-transparent.png",
+      "size": [
+        1536,
+        1280
+      ],
+      "kind": "stacked",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "app/static/logos/source/fjordflix-app-icon.svg",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/source/fjordflix-horizontal-dark.svg",
+      "size": [
+        720,
+        256
+      ],
+      "kind": "horizontal",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "app/static/logos/source/fjordflix-horizontal-light.svg",
+      "size": [
+        720,
+        256
+      ],
+      "kind": "horizontal",
+      "ink": "#172c36"
+    },
+    {
+      "path": "app/static/logos/source/fjordflix-mark.svg",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/source/fjordflix-maskable.svg",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#07090d",
+      "scale": 0.7
+    },
+    {
+      "path": "app/static/logos/source/fjordflix-stacked-dark.svg",
+      "size": [
+        768,
+        640
+      ],
+      "kind": "stacked",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "app/static/logos/source/fjordflix-stacked-light.svg",
+      "size": [
+        768,
+        640
+      ],
+      "kind": "stacked",
+      "ink": "#172c36"
+    },
+    {
+      "path": "app/static/logos/web/android-chrome-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/web/android-chrome-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/web/apple-touch-icon.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "app/static/logos/web/favicon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/web/favicon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/web/favicon-48x48.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/web/favicon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/web/mstile-150x150.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/static/logos/web/pwa-maskable-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#07090d",
+      "scale": 0.7
+    },
+    {
+      "path": "desktop/assets/icon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "desktop/assets/logo.svg",
+      "size": [
+        720,
+        256
+      ],
+      "kind": "horizontal",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "xbox/app/Assets/SplashScreen.png",
+      "size": [
+        620,
+        300
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "xbox/app/Assets/Square150x150Logo.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "xbox/app/Assets/Square44x44Logo.png",
+      "size": [
+        44,
+        44
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "xbox/app/Assets/StoreLogo.png",
+      "size": [
+        50,
+        50
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "xbox/app/Assets/Wide310x150Logo.png",
+      "size": [
+        310,
+        150
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "xbox/app/icon.png",
+      "size": [
+        80,
+        80
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "xbox/app/largeIcon.png",
+      "size": [
+        130,
+        130
+      ],
+      "kind": "icon",
+      "background": "#07090d"
+    },
+    {
+      "path": "xbox/app/logo.svg",
+      "size": [
+        720,
+        256
+      ],
+      "kind": "horizontal",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "app/static/fjordflix.svg",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    }
+  ]
+}
