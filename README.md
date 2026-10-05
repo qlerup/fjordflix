@@ -69,6 +69,15 @@ I Proxmox skal lageret først være tilgængeligt i den VM/LXC, hvor Docker kør
 
 Fjernelse af en kilde fjerner dens titler, favoritter og historik fra FjordFlix, men **sletter aldrig originalfilerne**. En enkelt ekstern titel kan ikke slettes via den permanente filmsletning. Manglende filer/drev bevarer indeks og historik, så en midlertidig afbrydelse ikke tømmer biblioteket; afspilning kræver, at filen igen er tilgængelig. Symlinks i scannede mapper følges ikke. Ændrede filer genundersøges uden at fjerne manuelle filmdata eller historik.
 
+## Ekstra data gennem FjordHub
+
+FjordHub kan dele ekstra FjordFlix-data med andre apps via et adgangstoken:
+op til 10 tilfældige titler med posters samt aktive streams. Vælg FjordFlix på
+tokenet i FjordHubs indstillinger og opdater begge apps. Se
+[FjordHubs API-kontrakt](https://github.com/qlerup/fjordhub/blob/main/docs/app-data-integration.md).
+Det interne læse-API kræver appens FjordHub-nøgle; eksterne apps bruger alene
+FjordHubs token og billedproxy.
+
 ## Telefon som fjernbetjening (lokal test)
 
 Afspilleren bruger egne kontroller med én tidslinje for hele filmen, også ved transcoding. Den har afspil/pause, 10-sekunders spring, lyd, kvalitet og fuld skærm. Kontrollerne skjules efter inaktivitet under afspilning. Mellemrum/K, piletaster, M og F kan bruges, når fokus ikke står i en knap eller et inputfelt. På browsere uden HTML-fuldskærm kan videoens systemafspiller bruges som fallback.

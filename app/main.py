@@ -1280,6 +1280,8 @@ def stop(sid: str, u=Depends(user)):
 from app.remote import attach_remote
 
 active_streams.register(sys.modules[__name__])
+from app import integration_data
+integration_data.register(sys.modules[__name__])
 attach_remote(app, user, db, digest, session_user)
 app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), name='static')
 
