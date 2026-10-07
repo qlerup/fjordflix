@@ -13,6 +13,7 @@ from test_integration import main
 def tv_client(tmp_path, monkeypatch):
     monkeypatch.setattr(main.hub, 'managed', lambda: False)
     monkeypatch.setattr(main, 'ATTEMPTS', {})
+    monkeypatch.setattr(main, 'LOGIN_FAILURES', {})
     previous = main.media.config()
     main.media.save_config('', '', main.db)
     uid, mid = secrets.token_hex(16), secrets.token_hex(16)
@@ -46,6 +47,14 @@ def login(client, credentials):
     assert response.headers['cache-control'] == 'no-store'
     token = response.json()['token']
     return token, {'Authorization':'Bearer ' + token, 'Origin':'null'}
+
+
+def test_password_login_locks_after_five_failures(tv_client):
+    client, credentials, _ = tv_client
+    for _ in range(5):
+        response = client.post('/api/login', json={**credentials, 'password':'wrong-password'})
+        assert response.status_code == 401
+    assert client.post('/api/login', json=credentials).status_code == 429
 
 
 def test_login_cookie_isolation_cors_and_logout(tv_client):
