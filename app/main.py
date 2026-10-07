@@ -36,6 +36,7 @@ JOBS = {}
 LOCK = threading.RLock()
 GPU = False
 ATTEMPTS = {}
+LOGIN_FAILURES = {}
 
 
 def db():
@@ -237,6 +238,33 @@ def throttle(request):
         ATTEMPTS[ip] = recent + [now]
 
 
+def check_login_limit(request):
+    ip = request.client.host if request.client else 'unknown'
+    now = time.time()
+    with LOCK:
+        recent = [t for t in LOGIN_FAILURES.get(ip, []) if now - t < 300]
+        if recent:
+            LOGIN_FAILURES[ip] = recent
+        else:
+            LOGIN_FAILURES.pop(ip, None)
+        if len(recent) >= 5:
+            raise HTTPException(429, 'For mange mislykkede forsøg. Vent fem minutter.')
+
+
+def record_login_failure(request):
+    ip = request.client.host if request.client else 'unknown'
+    now = time.time()
+    with LOCK:
+        recent = [t for t in LOGIN_FAILURES.get(ip, []) if now - t < 300]
+        LOGIN_FAILURES[ip] = recent + [now]
+
+
+def clear_login_failures(request):
+    ip = request.client.host if request.client else 'unknown'
+    with LOCK:
+        LOGIN_FAILURES.pop(ip, None)
+
+
 @app.get('/api/health')
 def health():
     return {'ok': True}
@@ -274,15 +302,21 @@ def setup(data: Credentials, response: Response, request: Request):
 
 @app.post('/api/login')
 def login(data: LoginCredentials, response: Response, request: Request):
-    throttle(request)
+    check_login_limit(request)
     if hub.managed():
-        result = hub.call('/api/hub/apps/authenticate', {'username':data.name.strip(), 'password':data.password})
+        try:
+            result = hub.call('/api/hub/apps/authenticate', {'username':data.name.strip(), 'password':data.password})
+        except HTTPException as exc:
+            if exc.status_code == 401:
+                record_login_failure(request)
+            raise
         profile = result.get('user')
         if not isinstance(profile, dict):
             raise HTTPException(503, 'FjordHub returnerede en ugyldig bruger.')
         if profile.get('must_change_password'):
             raise HTTPException(403, 'Skift først din midlertidige adgangskode i FjordHub.')
         profile = hub.current(hub.identity(profile)[0], force=True)
+        clear_login_failures(request)
         session(response, sync_hub_user(profile))
         return {'ok': True}
     with db() as conn:
@@ -290,10 +324,13 @@ def login(data: LoginCredentials, response: Response, request: Request):
     try:
         if not row:
             PASSWORDS.hash(data.password)
+            record_login_failure(request)
             raise HTTPException(401, 'Forkert brugernavn eller adgangskode.')
         PASSWORDS.verify(row['password'], data.password)
     except VerificationError:
+        record_login_failure(request)
         raise HTTPException(401, 'Forkert brugernavn eller adgangskode.')
+    clear_login_failures(request)
     session(response, row['id'])
     return {'ok': True}
 
