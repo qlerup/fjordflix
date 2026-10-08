@@ -54,10 +54,17 @@ def test_managed_auth_roles_revocation_and_history(managed):
         assert client.get('/api/state').json()['user']['name']=='Renamed Alice'
         assert client.get('/hub-login?token=single-use',follow_redirects=False).status_code==303
         assert client.get('/api/state').json()['user']['id']==uid
+        assert client.get('/api/auth/access').json()['authenticated'] is True
         with main.db() as conn:
             assert conn.execute('SELECT position FROM progress WHERE user_id=? AND movie_id=?',(uid,'history-fixture')).fetchone()[0]==12
+        old_cookie=client.cookies.get('fjordflix_session')
         managed.clear();hub._cache['expires']=0
-        assert client.get('/api/movies').status_code==401
+        revoked=client.get('/api/auth/access')
+        assert revoked.status_code==401 and revoked.json()['error_code']=='access_revoked'
+        # Another browser/session must still receive the logout explanation after invalidation.
+        with TestClient(main.app) as other:
+            other.cookies.set('fjordflix_session',old_cookie)
+            assert other.get('/api/auth/access').json()['error_code']=='access_revoked'
         with main.db() as conn:
             assert conn.execute('SELECT count(*) FROM sessions WHERE user_id=?',(uid,)).fetchone()[0]==0
 

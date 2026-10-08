@@ -51,6 +51,7 @@ with db() as conn:
     PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT UNIQUE COLLATE NOCASE, password TEXT, admin INTEGER);
     CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id), expires REAL);
+    CREATE TABLE IF NOT EXISTS revoked_sessions(token TEXT PRIMARY KEY, expires REAL);
     CREATE TABLE IF NOT EXISTS invites(token TEXT PRIMARY KEY, created REAL);
     CREATE TABLE IF NOT EXISTS movies(id TEXT PRIMARY KEY, title TEXT, path TEXT, metadata TEXT, created REAL);
     CREATE TABLE IF NOT EXISTS progress(user_id TEXT, movie_id TEXT, position REAL, favorite INTEGER DEFAULT 0, PRIMARY KEY(user_id,movie_id));
@@ -114,6 +115,7 @@ async def lifespan(app):
                 await asyncio.to_thread(stop_job, key)
             with db() as conn:
                 conn.execute('DELETE FROM sessions WHERE expires < ?', (time.time(),))
+                conn.execute('DELETE FROM revoked_sessions WHERE expires < ?', (time.time(),))
     task = asyncio.create_task(cleanup())
     quality_task = asyncio.create_task(refresh_source_quality())
     sources_task = asyncio.create_task(library_sources.watch())
@@ -169,6 +171,10 @@ def session_user(token):
     with db() as conn:
         row = conn.execute('SELECT u.id,u.name,u.admin,u.hub_id,u.hub_username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?', (token, time.time())).fetchone()
     if not row:
+        with db() as conn:
+            revoked = conn.execute('SELECT 1 FROM revoked_sessions WHERE token=? AND expires>?', (token, time.time())).fetchone()
+        if revoked:
+            raise HTTPException(401, 'Din adgang er blevet fjernet.', headers={'X-FjordHub-Access':'revoked'})
         raise HTTPException(401, 'Log ind for at fortsætte.')
     if hub.managed():
         if row['hub_id'] is None:
@@ -178,7 +184,11 @@ def session_user(token):
         except HTTPException as exc:
             if exc.status_code in (401,403):
                 with db() as conn:
+                    if exc.status_code == 401:
+                        conn.execute('INSERT OR REPLACE INTO revoked_sessions SELECT token,expires FROM sessions WHERE user_id=?', (row['id'],))
                     conn.execute('DELETE FROM sessions WHERE user_id=?', (row['id'],))
+                if exc.status_code == 401:
+                    raise HTTPException(401, 'Din adgang er blevet fjernet.', headers={'X-FjordHub-Access':'revoked'}) from exc
             raise
         return {'id':row['id'], 'name':profile['username'], 'admin':profile.get('role') == 'admin', 'hub_id': row['hub_id'], 'language':tracks.language(profile.get('language', 'da'))}
     if row['hub_id'] is not None:
@@ -188,6 +198,22 @@ def session_user(token):
 
 def user(request: Request):
     return session_user(digest(request.cookies.get('fjordflix_session', '')))
+
+
+@app.get('/api/auth/access')
+def hub_access(request: Request):
+    from fastapi.responses import JSONResponse
+    if not request.cookies.get('fjordflix_session'):
+        return JSONResponse({'ok':True, 'authenticated':False}, headers={'Cache-Control':'no-store'})
+    try:
+        user(request)
+    except HTTPException as exc:
+        if exc.headers and exc.headers.get('X-FjordHub-Access') == 'revoked':
+            response = JSONResponse({'authenticated':False, 'error_code':'access_revoked'}, status_code=401)
+            response.delete_cookie('fjordflix_session', path='/')
+            return response
+        raise
+    return JSONResponse({'ok':True, 'authenticated':True}, headers={'Cache-Control':'no-store'})
 
 
 def sync_hub_user(profile):
