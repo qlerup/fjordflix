@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
-from . import catalog
+from . import catalog, library_cleanup
 
 VIDEO_SUFFIXES = {'.mp4', '.mkv', '.mov', '.webm', '.m4v', '.avi', '.ts'}
 log = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ class Sources:
                     movie_id TEXT PRIMARY KEY REFERENCES movies(id) ON DELETE CASCADE,
                     source_id TEXT NOT NULL REFERENCES library_sources(id),
                     fingerprint TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS library_scan_roots(path TEXT PRIMARY KEY, device TEXT NOT NULL);
             ''')
 
         @app.get('/api/admin/library')
@@ -245,6 +246,20 @@ class Sources:
                                 self.error(f'{path.name}: {getattr(exc, "detail", str(exc))}')
                 except (OSError, HTTPException) as exc:
                     self.error(f'{source["path"]}: {getattr(exc, "detail", str(exc))}')
+            # A separate complete inventory prevents partial scans or offline mounts
+            # from looking like deleted videos. Uploaded media uses the same cleanup.
+            targets = [(s['path'], s['id']) for s in sources
+                       if reindex_source is None or s['id'] == reindex_source]
+            if reindex_source is None:
+                targets.append((self.host.MEDIA, None))
+            self.status['removed'] = 0
+            for root, sid in targets:
+                try:
+                    if sid:
+                        root = self.allowed(root)
+                    self.status['removed'] += library_cleanup.prune(self.host, root, sid)
+                except (OSError, HTTPException) as exc:
+                    self.error(f'{root}: {exc}')
         except Exception:
             log.exception('Library scan failed')
             self.error('Scanningen blev afbrudt. Se serverloggen og prøv igen.')

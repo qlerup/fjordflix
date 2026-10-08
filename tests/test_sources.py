@@ -93,6 +93,96 @@ def scan(reindex_source=None):
     assert not main.library_sources.status['running']
 
 
+def test_deleted_movie_removes_catalog_artwork_subtitles_and_history(mounted):
+    client, root = mounted
+    video = root / 'Film' / 'Film.mp4'
+    video.write_bytes(b'video')
+    client.post('/api/admin/library', json={'path': str(video.parent)})
+    scan()
+    mid = client.get('/api/movies').json()[0]['id']
+    assets = [main.DATA / 'posters' / f'{mid}{suffix}.jpg' for suffix in ('', '-backdrop', '-episode', '-frame')]
+    assets.append(main.DATA / 'subtitles' / 'downloaded' / f'{mid}-100001.srt')
+    for path in assets:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b'cached')
+    with main.db() as conn:
+        conn.execute('INSERT INTO progress VALUES (?,?,?,?)', ('owner', mid, 42, 1))
+        conn.execute('INSERT INTO media_grants VALUES (?,?)', ('token', mid))
+    video.unlink()
+    scan()
+    assert client.get('/api/movies').json() == []
+    assert main.library_sources.status['removed'] == 1
+    assert not any(path.exists() for path in assets)
+    with main.db() as conn:
+        for table in ('movies', 'progress', 'media_grants', 'library_files'):
+            assert conn.execute(f'SELECT count(*) FROM {table}').fetchone()[0] == 0
+
+
+def test_deleted_upload_waits_for_active_stream_then_cleans(mounted, monkeypatch):
+    client, root = mounted
+    video = main.MEDIA / 'upload.mp4'
+    video.write_bytes(b'video')
+    mid = 'a' * 32
+    main.index_movie(video, 'Uploaded movie', mid, True)
+    scan()
+    video.unlink()
+    monkeypatch.setattr(main, 'JOBS', {'stream': {'movie_id': mid}})
+    scan()
+    assert len(client.get('/api/movies').json()) == 1
+    main.JOBS.clear()
+    scan()
+    assert client.get('/api/movies').json() == []
+
+
+def test_deleted_episodes_leave_surviving_episode_and_shared_portraits(mounted, monkeypatch):
+    client, root = mounted
+    monkeypatch.setattr(main.catalog, 'enrich', lambda title, *a: {**main.catalog.identify(title), 'status': 'disabled'})
+    episodes = [root / 'Serier' / f'Show S01E0{i}.mkv' for i in (1, 2)]
+    for path in episodes:
+        path.write_bytes(b'video')
+    portrait = main.DATA / 'people' / 'shared.jpg'
+    portrait.parent.mkdir()
+    portrait.write_bytes(b'actor')
+    client.post('/api/admin/library', json={'path': str(root / 'Serier')})
+    scan()
+    episodes[0].unlink()
+    scan()
+    items = client.get('/api/movies').json()
+    assert len(items) == 1 and items[0]['catalog']['episode'] == 2
+    episodes[1].unlink()
+    scan()
+    assert client.get('/api/movies').json() == []
+    assert portrait.read_bytes() == b'actor'
+
+
+def test_partial_scan_does_not_remove_missing_entries(mounted, monkeypatch):
+    client, root = mounted
+    video = root / 'Film' / 'Film.mp4'
+    video.write_bytes(b'video')
+    client.post('/api/admin/library', json={'path': str(video.parent)})
+    scan()
+    video.unlink()
+    def broken_walk(folder, **kwargs):
+        kwargs['onerror'](PermissionError('Cannot read directory'))
+        return iter([])
+    monkeypatch.setattr(sources.os, 'walk', broken_walk)
+    scan()
+    assert len(client.get('/api/movies').json()) == 1
+
+
+def test_storage_device_change_without_survivors_preserves_library(mounted):
+    client, root = mounted
+    video = root / 'Film' / 'Film.mp4'
+    video.write_bytes(b'video')
+    client.post('/api/admin/library', json={'path': str(video.parent)})
+    scan()
+    video.unlink()
+    with main.db() as conn:
+        conn.execute('UPDATE library_scan_roots SET device=?', ('offline-device',))
+    scan()
+    assert len(client.get('/api/movies').json()) == 1
+
+
 def test_reindex_repairs_existing_episodes_and_fetches_metadata(mounted, monkeypatch):
     client, root = mounted
     folder = root / 'Serier' / 'Example Show'
