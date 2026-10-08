@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import threading
 from difflib import SequenceMatcher
+from datetime import date
 
 import httpx
 
@@ -147,13 +148,22 @@ def disable():
 
 
 def clean_title(value):
+    value = re.sub(r'\.(?:mkv|mp4|m4v|avi|mov|webm|ts)$', '', value, flags=re.I)
     value = value.replace('.', ' ').replace('_', ' ')
-    # A year at the start may itself be the title (e.g. 1917).
-    year = re.search(r'\b(?:19|20)\d{2}\b', value[1:])
+    # A leading year can be the title (1917); a future number can be part of
+    # one (Blade Runner 2049). Resolution suffixes such as 1080p are not years.
+    year = next((match for match in re.finditer(r'\b(?:19|20)\d{2}\b', value)
+                 if any(c.isalnum() for c in value[:match.start()])
+                 and int(match.group()) <= date.today().year + 1), None)
     release = year.group() if year else None
     if year:
-        value = value[:year.start() + 1]
-    value = re.split(r'\b(?:2160p|1080p|720p|480p|4k|bluray|blu-ray|web-dl|webrip|hdtv|x264|x265|h264|h265)\b', value, flags=re.I)[0]
+        value = value[:year.start()]
+    parts = re.split(r'\b(?:\d{3,4}[pi]|4k|8k|uhd|bluray|blu-ray|bdrip|brrip|dvdrip|remux|web[ -]?dl|webrip|hdtv|[xh][ -]?26[45]|hevc|av1)\b', value, maxsplit=1, flags=re.I)
+    value = parts[0]
+    if len(parts) > 1:
+        # Language/release tags immediately before quality are not title words.
+        # Keep ordinary names like "The Danish Girl" intact.
+        value = re.sub(r'(?:[\s()\[\]-]+(?:danish|dansk|nordic|multi|english|eng|dublado|dubbed|subbed|subs))+[\s()\[\]-]*$', '', value, flags=re.I)
     return value.strip(' ()[]-'), release
 
 
@@ -233,6 +243,10 @@ def choose_match(results, title, year, media_type='movie'):
                     for k in (('name', 'original_name') if media_type == 'tv' else ('title', 'original_title')))
         ranked.append((score, item))
     ranked.sort(key=lambda x: x[0], reverse=True)
+    # A single eligible search result needs no manual disambiguation. Filename
+    # spellings such as "Troejen" can fall below the title similarity threshold.
+    if len(ranked) == 1:
+        return ranked[0][1]
     if not ranked or ranked[0][0] < .92:
         return None
     if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < .08:

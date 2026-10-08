@@ -75,6 +75,7 @@ const FjordLibrary = {
 };
 if (typeof module !== 'undefined') module.exports = FjordLibrary;
 const metadataRefreshPending = new Set();
+const metadataAutoAttempted = new Set();
 let selectMetadataMatch;
 
 function setupLibraryUI() {
@@ -390,4 +391,18 @@ function showCatalogStatus(movie) {
     button.onclick = () => selectMetadataMatch(candidate.id);
     return button;
   }));
+  if (state.user.admin && !movie.catalog?.manual && unmatched && candidates.length === 1
+      && !pending && !metadataAutoAttempted.has(movie.id) && typeof selected !== 'undefined'
+      && selected?.id === movie.id && !$('detail').hidden) {
+    metadataAutoAttempted.add(movie.id);
+    queueMicrotask(() => {
+      if (selected?.id === movie.id && !$('detail').hidden) {
+        // Recheck the search on the server, including year/adult filters, instead
+        // of treating a cached suggestion as an explicit user selection.
+        selectMetadataMatch();
+      } else {
+        metadataAutoAttempted.delete(movie.id);
+      }
+    });
+  }
 }

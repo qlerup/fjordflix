@@ -9,12 +9,59 @@ def test_filename_cleanup():
     assert catalog.clean_title('1917 1080p') == ('1917', None)
 
 
+@pytest.mark.parametrize('filename,title,year', [
+    ('Piger.I.Troejen.2.1976.DANISH.1080p.WEB-DL.H.264.AAC2.0-TWA.mkv', 'Piger I Troejen 2', '1976'),
+    ('1917.2019.ENGLISH.2160p.BluRay.mkv', '1917', '2019'),
+    ('(1917).1080p.mkv', '1917', None),
+    ('Blade.Runner.2049.2017.2160p.mkv', 'Blade Runner 2049', '2017'),
+    ('The_Danish_Girl_DANISH_1080p_WEB-DL.mkv', 'The Danish Girl', None),
+    ('Movie.NORDIC.MULTI.576p.DVDRip.avi', 'Movie', None),
+    ('Movie.H.264.AAC.mkv', 'Movie', None),
+    ('Movie.2020p.mkv', 'Movie', None),
+])
+def test_release_filename_search_parts(filename, title, year):
+    assert catalog.clean_title(filename) == (title, year)
+
+
+def test_series_release_tags_keep_season_and_episode():
+    info = catalog.identify('The.Show.2020.S02E03.DANISH.1080p.WEB-DL')
+    assert (info['series_title'], info['series_year'], info['season'], info['episode']) == ('The Show', '2020', 2, 3)
+
+
 def test_conservative_matching():
     films = [{'id': 1, 'title': 'Dune', 'release_date': '1984-01-01'},
              {'id': 2, 'title': 'Dune', 'release_date': '2021-01-01'}]
     assert catalog.choose_match(films, 'Dune', None) is None
     assert catalog.choose_match(films, 'Dune', '2021')['id'] == 2
     assert catalog.choose_match(films, 'Home video', None) is None
+
+
+def test_single_match_accepts_filename_spelling_but_keeps_year_and_adult_filters():
+    film = {'id': 42, 'title': 'Piger i trøjen 2', 'release_date': '1976-01-01'}
+    assert catalog.choose_match([film], 'Piger I Troejen 2', '1976') == film
+    assert catalog.choose_match([film], 'Piger I Troejen 2', '1977') is None
+    assert catalog.choose_match([{**film, 'adult': True}], film['title'], '1976') is None
+    assert catalog.choose_match([{**film, 'id': '42'}], film['title'], '1976') is None
+
+
+def test_single_lookup_fetches_details_without_manual_selection(monkeypatch):
+    monkeypatch.setattr(catalog, 'credential', lambda: ('test-token', 'settings'))
+    paths = []
+    def handler(request):
+        paths.append(request.url.path)
+        if request.url.path.endswith('/search/movie'):
+            assert request.url.params['query'] == 'Piger I Troejen 2'
+            assert request.url.params['primary_release_year'] == '1976'
+            return httpx.Response(200, json={'results': [
+                {'id': 42, 'title': 'Piger i trøjen 2', 'release_date': '1976-01-01'}]})
+        return httpx.Response(200, json={'title': 'Piger i trøjen 2', 'overview': 'Beskrivelse',
+                                       'poster_path': '/poster.jpg', 'release_date': '1976-01-01'})
+    client = httpx.Client
+    monkeypatch.setattr(catalog.httpx, 'Client', lambda **kw: client(transport=httpx.MockTransport(handler), **kw))
+    result = catalog.lookup('Piger I Troejen 2 1976 DANISH 1080p WEB-DL H 264 AAC2 0-TWA')
+    assert result['status'] == 'matched' and result['tmdb_id'] == 42
+    assert result['poster_path'] == '/poster.jpg'
+    assert paths == ['/3/search/movie', '/3/movie/42']
 
 
 def test_ambiguous_lookup_returns_candidates_and_selection_skips_search(monkeypatch):

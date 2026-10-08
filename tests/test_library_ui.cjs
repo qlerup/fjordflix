@@ -4,6 +4,42 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ui = require('../app/static/library-ui.js');
 const ep = (id,s,e,position=0) => ({id,title:`Show S${s}E${e}`,duration:100,position,series_key:'local:show:',catalog:{series_title:'Show',season:s,episode:e}});
+test('opening a single cached suggestion retries automatically once, without forcing its ID', () => {
+  const nodes = {}, queued = [], calls = [];
+  const element = () => ({hidden:false, children:[], setAttribute(){}, addEventListener(){},
+    replaceChildren(...children){this.children=children}, append(...children){this.children.push(...children)}});
+  const movie = {id:'film', title:'Piger I Troejen 2', catalog:{status:'unmatched',
+    candidates:[{id:42,title:'Piger i trøjen 2',year:'1976'}]}};
+  const context = vm.createContext({$: id => nodes[id] ||= element(), selected:movie,
+    state:{user:{admin:true}}, document:{createElement:element}, queueMicrotask:fn=>queued.push(fn),
+    calls, module:{exports:{}}});
+  vm.runInContext(fs.readFileSync(require.resolve('../app/static/library-ui.js'),'utf8'),context);
+  vm.runInContext('selectMetadataMatch = (...args) => calls.push(args)',context);
+  context.showCatalogStatus(movie);
+  context.showCatalogStatus(movie);
+  assert.equal(queued.length,1);
+  queued.shift()();
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].length,0);
+  context.showCatalogStatus(movie);
+  assert.equal(queued.length,0); // Failed refreshes do not loop.
+  for (const variant of [
+    {...movie,id:'manual',catalog:{...movie.catalog,manual:true}},
+    {...movie,id:'many',catalog:{...movie.catalog,candidates:[{id:1},{id:2}]}},
+    {...movie,id:'matched',catalog:{...movie.catalog,status:'matched'}}
+  ]) { context.selected=variant; context.showCatalogStatus(variant); }
+  assert.equal(queued.length,0);
+  context.state.user.admin=false;
+  context.selected={...movie,id:'viewer'};
+  context.showCatalogStatus(context.selected);
+  assert.equal(queued.length,0);
+  context.state.user.admin=true;
+  context.selected={...movie,id:'navigated'};
+  context.showCatalogStatus(context.selected);
+  context.selected=null;
+  queued.shift()();
+  assert.equal(calls.length,1);
+});
 test('source quality badges distinguish cropped 4K, Atmos, channels and mixed series', () => {
   const movie = {width:3840,height:1600,audio:'eac3',quality:{dynamic_range:'Dolby Vision',dolby_atmos:true}};
   assert.deepEqual(ui.qualityBadges(movie).labels, ['4K','Dolby Vision','Dolby Atmos']);
