@@ -73,3 +73,11 @@ def test_trailer_endpoint_checks_movie_and_login(client, monkeypatch):
     monkeypatch.delitem(main.app.dependency_overrides, main.user)
     client.cookies.clear()
     assert client.get('/api/movies/' + 'a' * 32 + '/trailer').status_code == 401
+
+
+def test_embed_policy_only_allows_youtube_player(client):
+    response = client.get('/')
+    policy = response.headers['content-security-policy']
+    assert 'frame-src https://www.youtube-nocookie.com;' in policy
+    assert "frame-ancestors 'none'" in policy
+    assert response.headers['referrer-policy'] == 'same-origin'

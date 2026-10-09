@@ -63,19 +63,40 @@ function showDetailPage(movie) {
 async function loadDetailTrailer(movie) {
   let link = $('trailer-link');
   if (!link) {
-    link = document.createElement('a'); link.id = 'trailer-link'; link.className = 'secondary';
-    link.textContent = '▷ Se trailer'; link.target = '_blank'; link.rel = 'noopener noreferrer';
-    link.setAttribute('aria-label', 'Se trailer på YouTube (åbner i en ny fane)');
+    link = document.createElement('button'); link.id = 'trailer-link'; link.className = 'secondary'; link.type = 'button';
+    link.textContent = '▷ Se trailer';
+    link.onclick = () => openTrailer(link.dataset.url, movie.title);
     $('play-button').after(link);
   }
-  link.hidden = true; link.removeAttribute('href');
+  link.hidden = true; delete link.dataset.url;
   if (movie.series_key || !movie.catalog?.tmdb_id) return;
   try {
     const result = await api(`/movies/${movie.id}/trailer`);
     if (selected !== movie || !/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(result.trailer?.url || '')) return;
-    link.href = result.trailer.url; link.hidden = false;
+    link.dataset.url = result.trailer.url;
+    link.onclick = () => openTrailer(link.dataset.url, movie.title);
+    link.hidden = false;
   } catch (_) { /* Trailer lookup is optional; playback stays available. */ }
 }
+function openTrailer(url, title) {
+  const key = url?.match(/^https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})$/)?.[1];
+  if (!key) return;
+  const dialog = $('trailer-dialog');
+  $('trailer-title').textContent = 'Trailer · ' + title;
+  $('trailer-youtube').href = url;
+  const frame = document.createElement('iframe');
+  frame.title = 'Trailer til ' + title;
+  frame.referrerPolicy = 'strict-origin-when-cross-origin';
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  frame.allowFullscreen = true;
+  frame.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&playsinline=1&rel=0`;
+  $('trailer-player').replaceChildren(frame);
+  dialog.showModal();
+}
+document.getElementById('trailer-dialog').addEventListener('close', () => {
+  $('trailer-player').replaceChildren();
+  $('trailer-youtube').removeAttribute('href');
+});
 async function loadDetailCast(movie) {
   const rail = $('detail-cast'); rail.replaceChildren();
   $('cast-status').textContent = 'Henter skuespillere…';

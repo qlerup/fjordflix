@@ -152,7 +152,7 @@ async def security(request, call_next):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
-    response.headers['Content-Security-Policy'] = f"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org; media-src 'self' blob: {direct}; connect-src 'self' {direct}; worker-src 'self' blob:; frame-ancestors 'none'"
+    response.headers['Content-Security-Policy'] = f"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org; media-src 'self' blob: {direct}; connect-src 'self' {direct}; worker-src 'self' blob:; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'"
     if request.url.path.startswith('/api') or is_media or request.url.path in ('/', '/remote'):
         response.headers['Cache-Control'] = 'no-store'
     elif request.url.path.startswith('/static/') and request.url.path.endswith(('.js', '.css')):

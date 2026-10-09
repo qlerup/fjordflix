@@ -21,3 +21,5 @@ html.fjord-desktop::-webkit-scrollbar,html.fjord-desktop *::-webkit-scrollbar{di
   .header-right #remote-open, .header-right .icon-button, .header-right .avatar { display:inline-flex; align-items:center; justify-content:center; height:44px; line-height:1; flex-shrink:0; }
   .header-right .icon-button, .header-right .avatar { width:44px; padding:0; }
 }
+
+#trailer-dialog{width:min(960px,calc(100vw - 24px));max-width:960px;max-height:calc(100dvh - 24px);padding:24px;overflow:auto}#trailer-title{font-size:22px;padding-right:36px;margin-bottom:20px}#trailer-player{width:100%;aspect-ratio:16/9;background:#000}#trailer-player iframe{display:block;width:100%;height:100%;border:0}#trailer-dialog .fine{margin:16px 0 0}#trailer-youtube{text-decoration:underline}@media(max-width:600px){#trailer-dialog{padding:16px}#trailer-title{font-size:18px}}
