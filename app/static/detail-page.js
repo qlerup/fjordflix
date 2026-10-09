@@ -58,6 +58,23 @@ function showDetailPage(movie) {
   $('detail-extras').prepend($('episode-picker'));
   if (wasHidden) { window.scrollTo(0,0); $('detail-title').focus({preventScroll:true}); }
   loadDetailCast(movie);
+  loadDetailTrailer(movie);
+}
+async function loadDetailTrailer(movie) {
+  let link = $('trailer-link');
+  if (!link) {
+    link = document.createElement('a'); link.id = 'trailer-link'; link.className = 'secondary';
+    link.textContent = '▷ Se trailer'; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    link.setAttribute('aria-label', 'Se trailer på YouTube (åbner i en ny fane)');
+    $('play-button').after(link);
+  }
+  link.hidden = true; link.removeAttribute('href');
+  if (movie.series_key || !movie.catalog?.tmdb_id) return;
+  try {
+    const result = await api(`/movies/${movie.id}/trailer`);
+    if (selected !== movie || !/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(result.trailer?.url || '')) return;
+    link.href = result.trailer.url; link.hidden = false;
+  } catch (_) { /* Trailer lookup is optional; playback stays available. */ }
 }
 async function loadDetailCast(movie) {
   const rail = $('detail-cast'); rail.replaceChildren();

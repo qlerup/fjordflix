@@ -15,6 +15,58 @@ import httpx
 _db = None
 _data = None
 _credits_lock = threading.Lock()
+_trailer_lock = threading.Lock()
+
+
+def trailer(info):
+    """Resolve a safe YouTube trailer for existing and newly indexed movies."""
+    mid = info.get('tmdb_id')
+    token, _ = credential()
+    if info.get('media_type') == 'tv' or type(mid) is not int or mid <= 0 or not token:
+        return {'trailer': None}
+    key = f'trailer:movie:{mid}'
+    with _trailer_lock:
+        cached = None
+        if _db:
+            with _db() as conn:
+                row = conn.execute('SELECT value FROM catalog_settings WHERE name=?', (key,)).fetchone()
+            if row:
+                cached = json.loads(row[0])
+                if time.time() - cached['fetched'] < cached['ttl']:
+                    return {'trailer': cached['trailer']}
+        params, headers = {}, {}
+        if re.fullmatch(r'[a-fA-F0-9]{32}', token):
+            params['api_key'] = token
+        else:
+            headers['Authorization'] = 'Bearer ' + token
+        videos = []
+        try:
+            for language in ('da-DK', 'en-US'):
+                response = httpx.get(f'https://api.themoviedb.org/3/movie/{mid}/videos',
+                                     params={**params, 'language': language}, headers=headers,
+                                     timeout=5, follow_redirects=False)
+                response.raise_for_status()
+                for video in response.json().get('results', [])[:100]:
+                    if (isinstance(video, dict) and video.get('site') == 'YouTube'
+                            and video.get('type') == 'Trailer'
+                            and isinstance(video.get('key'), str)
+                            and re.fullmatch(r'[A-Za-z0-9_-]{11}', video['key'])
+                            and video.get('iso_639_1') in ('da', 'en')):
+                        videos.append(video)
+            videos.sort(key=lambda v: (v.get('official') is not True, v.get('iso_639_1') != 'da'))
+            chosen = videos[0] if videos else None
+            result = {'url': 'https://www.youtube.com/watch?v=' + chosen['key'],
+                      'name': str(chosen.get('name') or 'Trailer')[:200]} if chosen else None
+            ttl = 86400 if result else 21600
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+            # A provider outage must never interfere with the film itself.
+            result = cached['trailer'] if cached else None
+            ttl = 300
+        if _db:
+            with _db() as conn:
+                conn.execute('INSERT OR REPLACE INTO catalog_settings VALUES (?,?)',
+                             (key, json.dumps({'fetched': time.time(), 'ttl': ttl, 'trailer': result})))
+        return {'trailer': result}
 
 
 def credits(info):

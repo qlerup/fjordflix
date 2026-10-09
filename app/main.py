@@ -888,6 +888,12 @@ def favorite(mid: str, u=Depends(user)):
     return {'ok': True}
 
 
+@app.get('/api/movies/{mid}/trailer')
+def movie_trailer(mid: str, u=Depends(user)):
+    _, meta = movie(mid)
+    return catalog.trailer(meta.get('catalog', {}))
+
+
 @app.get('/api/movies/{mid}/credits')
 def movie_credits(mid: str, u=Depends(user)):
     _, meta = movie(mid)
