@@ -182,6 +182,12 @@
     var previousSubtitle = selected === m ? selectedSubtitle : null;
     if (selected !== m) { runtime = null; streamProgress = null; lastFailure = ''; lastPlan = null; $('playback-diagnostics').hidden = true; $('diagnostics-toggle').setAttribute('aria-expanded', 'false'); }
     selected = m; message(''); $('detail').hidden = false;
+    $('trailer').hidden = true;
+    if (!m.series_key && serverFeatures.indexOf('trailer-stream-v1') >= 0) {
+      api('/movies/' + m.id + '/trailer').then(function (result) {
+        if (selected === m && result.trailer) $('trailer').hidden = false;
+      }).catch(ignore);
+    }
     text('detail-title', m.title); text('description', (m.catalog || {}).overview || 'Fra dit eget FjordFlix-bibliotek.');
     text('detail-meta', clock(m.duration) + ' · ' + (m.video || '').toUpperCase() + ' · ' + m.height + 'p');
     selectedAudio = null;
@@ -261,9 +267,10 @@
     if (playback.audio_output) text('play-status', $('play-status').textContent + ' · ' + audioDescription(playback.audio_output));
     diagnostics();
   }
-  function position() { return Math.min(selected ? selected.duration : 0, (video.currentTime || 0) + (playback ? playback.offset || 0 : 0)); }
+  function playbackDuration() { return playback && playback.trailer ? (isFinite(video.duration) ? video.duration : 0) : selected ? selected.duration : 0; }
+  function position() { return Math.min(playbackDuration(), (video.currentTime || 0) + (playback ? playback.offset || 0 : 0)); }
   function save() {
-    if (!selected || !playback) return Promise.resolve();
+    if (!selected || !playback || playback.trailer) return Promise.resolve();
     selected.position = position(); return api('/movies/' + selected.id + '/progress', 'POST', {position:selected.position});
   }
   function dispose(old) {
@@ -381,8 +388,36 @@
       startTimer = setTimeout(function () { if (id === generation) recover('Videoen kom ikke i gang.'); }, 25000);
     }).catch(function (error) { if (id === generation) playerError(error.message); }).then(function () { if (id === generation) busy = false; });
   }
+  function startTrailer() {
+    if (busy || !selected) return;
+    busy = true;
+    var id = ++generation, movie = selected, deadline = Date.now() + 450000;
+    $('player').hidden = false; $('detail').hidden = true;
+    text('player-title', 'Trailer · ' + movie.title); text('play-status', 'Serveren gør traileren klar…'); message('');
+    $('toggle').focus(); showControls();
+    function prepare() {
+      if (id !== generation) return Promise.resolve(null);
+      return api('/movies/' + movie.id + '/trailer/prepare', 'POST').then(function (result) {
+        if (id !== generation) return null;
+        if (result.status === 'ready') return api('/movies/' + movie.id + '/trailer/play', 'POST');
+        if (Date.now() > deadline) throw new Error('Traileren tog for lang tid at klargøre. Prøv igen senere.');
+        return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(prepare);
+      });
+    }
+    release().then(prepare).then(function (result) {
+      if (!result) return;
+      if (id !== generation) { dispose(result); return; }
+      playback = result; fallbackStage = ''; lastRequest = null; lastPlan = null;
+      runtime = null; streamProgress = null;
+      video.onloadedmetadata = function () { if (id === generation) { playbackStatus(); playVideo(); } };
+      video.src = result.url; video.load();
+      startTimer = setTimeout(function () { if (id === generation) recover('Traileren kom ikke i gang.'); }, 25000);
+    }).catch(function (error) { if (id === generation) playerError(error.message); })
+      .then(function () { if (id === generation) busy = false; });
+  }
   function recover(reason) {
     if (!playback || $('player').hidden) return;
+    if (playback.trailer) { playerError(reason); release(); return; }
     var at = position();
     lastFailure = reason + (video.error ? ' (mediefejl ' + video.error.code + ')' : ''); diagnostics();
     if (lastRequest && lastRequest.audio_passthrough) {
@@ -402,7 +437,7 @@
   }
   function seek(delta) {
     if (!playback || busy) return;
-    var at = Math.max(0, Math.min(selected.duration - 1, position() + delta));
+    var at = Math.max(0, Math.min(playbackDuration() - 1, position() + delta));
     if (playback.session) start(at, fallbackStage === 'remux' ? 'remux' : fallbackStage === 'transcode'); else video.currentTime = at; showControls();
   }
   $('login-form').onsubmit = function (event) {
@@ -447,6 +482,7 @@
       .catch(function (e) { message(e.message); }).then(function () { $('favorite').disabled = false; $('favorite').focus(); });
   };
   $('play').onclick = function () { start(selected.position < selected.duration - 2 ? selected.position : 0, false); };
+  $('trailer').onclick = startTrailer;
   $('restart').onclick = function () { start(0, false); };
   $('stop').onclick = closePlayer;
   $('toggle').onclick = function () { if (!playback || busy) return; if (video.paused) playVideo(); else video.pause(); showControls(); };
@@ -457,7 +493,7 @@
   video.onstalled = function () { if (playback && !busy) { stalledCount++; diagnostics(); } };
   video.onerror = function () { if (!busy) recover('TV’et kunne ikke afspille formatet.'); };
   video.ontimeupdate = function () {
-    text('timeline', clock(position()) + ' / ' + clock(selected ? selected.duration : 0));
+    text('timeline', clock(position()) + ' / ' + clock(playbackDuration()));
     if (playback && Date.now() - lastSaved > 10000) { lastSaved = Date.now(); save().catch(function (e) { message(e.message); }); }
   };
   video.onended = function () { save().catch(ignore); showControls(); };

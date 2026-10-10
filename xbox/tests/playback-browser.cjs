@@ -38,8 +38,11 @@ async function fixture(browser, options={}) {
     if(req.method()==='OPTIONS') return reply({});
     calls.push({path:p,method:req.method()});
     if(p==='/tv-api/state') return reply({user:{name:'Xbox QA'}});
-    if(p==='/tv-api/info') return reply({features:options.oldServer?[]:options.legacy?['xbox-hevc-fmp4']:['xbox-hevc-fmp4','xbox-hdr10-base','xbox-hevc-transcode','xbox-matroska-audio']});
+    if(p==='/tv-api/info') return reply({features:options.oldServer?[]:options.legacy?['xbox-hevc-fmp4']:['xbox-hevc-fmp4','xbox-hdr10-base','xbox-hevc-transcode','xbox-matroska-audio','trailer-stream-v1']});
     if(p==='/tv-api/movies') return reply([movie]);
+    if(p.endsWith('/trailer')) return reply({trailer:{url:'https://www.youtube.com/watch?v=abcdefghijk'}});
+    if(p.endsWith('/trailer/prepare')) return reply({status:options.pendingTrailer?'preparing':'ready'});
+    if(p.endsWith('/trailer/play')) return reply({trailer:true,mode:'Trailer',session:null,media_ticket:'trailer-ticket',url:origin+'/trailer.mp4',height:720,offset:0});
     if(p.endsWith('/tracks')) return reply(movie.tracks);
     if(p.endsWith('/poster')||p.endsWith('/backdrop')) return route.fulfill({status:404,headers});
     if(p.endsWith('/plan')) {
@@ -154,6 +157,30 @@ function assertStages(plays,quality) {
     assert.equal(pending.plays.length,0,'closing during preflight prevents playback session creation');
     assert.equal(await pending.page.locator('#player').isHidden(),true);await pending.close();
     console.log('PASS cancellation: closing a pending playback plan creates no /play request or session');
+    const trailer=await fixture(browser);
+    await trailer.page.locator('#trailer').click();
+    await trailer.page.waitForFunction(()=>document.getElementById('video').dataset.testSource?.endsWith('/trailer.mp4'));
+    await trailer.page.locator('#video').evaluate(video=>{
+      Object.defineProperty(video,'duration',{configurable:true,value:150});
+      video.currentTime=50;video.dispatchEvent(new Event('timeupdate'));
+    });
+    assert.equal(await trailer.page.locator('#timeline').innerText(),'0:50 / 2:30');
+    await trailer.page.locator('#forward').click();
+    assert.equal(await trailer.page.locator('#video').evaluate(video=>video.currentTime),80);
+    await trailer.page.locator('#stop').click();
+    assert.equal(trailer.calls.filter(call=>call.path.endsWith('/progress')).length,0,'trailer does not save movie progress');
+    assert.equal(trailer.plays.length,0,'trailer does not start the movie');
+    assert.ok(trailer.calls.some(call=>call.path==='/tv-api/media/revoke'));
+    await trailer.start('original');await trailer.loaded(1);
+    assert.equal(trailer.plays[0].start,120,'movie still resumes at its original saved position');
+    await trailer.close();
+    const preparing=await fixture(browser,{pendingTrailer:true});
+    await preparing.page.locator('#trailer').click();
+    await preparing.page.waitForFunction(()=>document.getElementById('play-status').textContent.includes('klar'));
+    await preparing.page.locator('#stop').click();await preparing.page.waitForTimeout(1700);
+    assert.ok(!preparing.calls.some(call=>call.path.endsWith('/trailer/play')),'closing stops preparation polling before playback');
+    await preparing.close();
+    console.log('PASS trailer stream: own timeline/seeking, revoke, cancellation and unchanged movie resume');
     const buffering=await fixture(browser);await buffering.start('1080');await buffering.loaded(1);
     await buffering.page.locator('#video').evaluate(video=>{
       Object.defineProperty(video,'buffered',{configurable:true,value:{length:1,start:()=>0,end:()=>8}});

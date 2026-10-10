@@ -101,6 +101,9 @@ def issue(result, request, mid, db, *, airplay=False, duration=0, force=False):
         return result
     ticket = secrets.token_urlsafe(32)
     sid = result.get('session')
+    trailer = result.get('trailer_id')
+    if trailer:
+        sid = 'trailer-' + trailer
     now = time.time()
     ttl = AIRPLAY_TTL if airplay else TTL
     until = now + min(86400, max(3600, duration + 3600)) if airplay else 0
@@ -109,6 +112,8 @@ def issue(result, request, mid, db, *, airplay=False, duration=0, force=False):
         conn.execute('INSERT INTO media_grants(token,login,movie,stream,expires,airplay_until) VALUES (?,?,?,?,?,?)',
                      (key(ticket), key(request.cookies.get('fjordflix_session', '')), mid, sid, now+ttl, until))
     path = f"streams/{sid}/{result.get('playlist', 'index.m3u8')}" if sid else f'movies/{mid}/file'
+    if trailer:
+        path = f'trailers/{trailer}/file'
     # Relative same-origin URLs let Safari resolve the public HTTPS origin even
     # when a reverse proxy talks plain HTTP to this server.
     base = '' if local_request(request) else direct

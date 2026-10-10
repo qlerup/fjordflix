@@ -5,3 +5,4 @@ httpx==0.28.1
 pytest==9.0.2
 qrcode==8.2
 websockets==15.0.1
+yt-dlp[default,deno]==2026.8.19

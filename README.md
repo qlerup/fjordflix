@@ -6,6 +6,8 @@ Privat streamingserver med dansk brugerflade, mørkt biografdesign og reel FFmpe
 
 ## Start og første film
 
+Trailere hentes på serveren og leveres som H.264/AAC MP4 til browseren, Windows-appens trailermodal og Xbox-appens afspiller. Første visning venter på hentning og konvertering; gentagelser bruger en midlertidig cache i `/data/trailers` (24 timer efter seneste brug, højst 20 trailere og to klargøringer samtidig). Serverens Docker-image skal genbygges for at installere yt-dlp og Deno. YouTube kan afvise hentning fra visse serveradresser; klienten viser da en fejl. Filmens gemte position ændres ikke. Xbox kræver appversion 0.1.13 eller nyere; Windows bruger den opdaterede servervisning.
+
 Browseren og den opdaterede Xbox-klient henter tekstundertekster løbende, mens serveren udtrækker resten og gemmer det færdige spor i cache. Første visning kræver derfor ikke, at hele filmfilen er gennemlæst. Ved genoptagelse langt inde i en endnu ikke klargjort film kan der fortsat være ventetid, indtil udtrækningen når de relevante tekstlinjer. Xbox-klienten skal opdateres sammen med serveren for at bruge denne funktion.
 
 Kræver Docker med Linux-containere. Den medfølgende Compose-fil er sat op til NVIDIA GPU-adgang. På en maskine uden NVIDIA GPU skal linjen `gpus: all` fjernes fra `compose.yaml`; appen bruger derefter CPU-transcoding.

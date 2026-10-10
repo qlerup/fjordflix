@@ -1,5 +1,9 @@
 # FjordFlix til Xbox
 
+## 0.1.13: trailere fra serveren
+
+**Se trailer** afspiller serverens H.264/AAC MP4 i appens egen afspiller med pause, spoling og controllerbetjening. Opdater serveren sammen med appen. Første visning kan vente på klargøring; afspilningen ændrer ikke filmens gemte position.
+
 ## 0.1.11: original TrueHD/DTS-lyd
 
 Kræver også den nye FjordFlix-server (`xbox-matroska-audio`). Xbox-appen leverer
@@ -22,7 +26,7 @@ Xbox 360 og den oprindelige Xbox understøttes ikke.
 
 ## Færdige filer
 
-- `dist/FjordFlix-Xbox_0.1.11.appx`: signeret installationspakke til Developer Mode.
+- `dist/FjordFlix-Xbox_0.1.13.appx`: signeret installationspakke til Developer Mode.
 - `dist/FjordFlix-Xbox.cer`: offentligt udviklercertifikat, hvis installationsværktøjet beder om det.
 - `dist/SHA256SUMS.txt`: kontrolsum for APPX-filen.
 - `dist/app/`: alle filer, der er pakket i appen.

@@ -65,7 +65,7 @@ async function loadDetailTrailer(movie) {
   if (!link) {
     link = document.createElement('button'); link.id = 'trailer-link'; link.className = 'secondary'; link.type = 'button';
     link.textContent = '▷ Se trailer';
-    link.onclick = () => openTrailer(link.dataset.url, movie.title);
+    link.onclick = () => openTrailer(movie, link.dataset.url);
     $('play-button').after(link);
   }
   link.hidden = true; delete link.dataset.url;
@@ -74,26 +74,58 @@ async function loadDetailTrailer(movie) {
     const result = await api(`/movies/${movie.id}/trailer`);
     if (selected !== movie || !/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(result.trailer?.url || '')) return;
     link.dataset.url = result.trailer.url;
-    link.onclick = () => openTrailer(link.dataset.url, movie.title);
+    link.onclick = () => openTrailer(movie, link.dataset.url);
     link.hidden = false;
   } catch (_) { /* Trailer lookup is optional; playback stays available. */ }
 }
-function openTrailer(url, title) {
-  const key = url?.match(/^https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})$/)?.[1];
-  if (!key) return;
+let trailerGeneration = 0, trailerTicket, trailerHeartbeat;
+async function openTrailer(movie, url) {
   const dialog = $('trailer-dialog');
-  $('trailer-title').textContent = 'Trailer · ' + title;
+  const generation = ++trailerGeneration;
+  $('trailer-title').textContent = 'Trailer · ' + movie.title;
   $('trailer-youtube').href = url;
-  const frame = document.createElement('iframe');
-  frame.title = 'Trailer til ' + title;
-  frame.referrerPolicy = 'strict-origin-when-cross-origin';
-  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-  frame.allowFullscreen = true;
-  frame.src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&playsinline=1&rel=0`;
-  $('trailer-player').replaceChildren(frame);
+  const status = document.createElement('p'); status.setAttribute('role', 'status');
+  status.className = 'trailer-status'; status.textContent = 'Serveren gør traileren klar…';
+  $('trailer-player').replaceChildren(status);
   dialog.showModal();
+  try {
+    const deadline = Date.now() + 450000;
+    while (generation === trailerGeneration && dialog.open) {
+      const result = await api(`/movies/${movie.id}/trailer/prepare`, 'POST');
+      if (generation !== trailerGeneration || !dialog.open) return;
+      if (result.status === 'ready') break;
+      if (Date.now() > deadline) throw new Error('Traileren tog for lang tid at klargøre. Prøv igen senere.');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+    if (generation !== trailerGeneration || !dialog.open) return;
+    const result = await api(`/movies/${movie.id}/trailer/play`, 'POST');
+    if (generation !== trailerGeneration || !dialog.open) {
+      await api('/media/revoke', 'POST', {ticket:result.media_ticket}).catch(() => {}); return;
+    }
+    trailerTicket = result.media_ticket;
+    const player = document.createElement('video'); player.controls = true; player.playsInline = true;
+    player.setAttribute('aria-label', 'Trailer til ' + movie.title);
+    player.src = result.url;
+    player.onerror = () => { if (generation === trailerGeneration) {
+      status.textContent = 'Traileren kunne ikke afspilles. Prøv igen senere.';
+      $('trailer-player').replaceChildren(status);
+    }};
+    $('trailer-player').replaceChildren(player);
+    player.play().catch(() => {});
+    trailerHeartbeat = setInterval(() => api('/media/heartbeat', 'POST', {ticket:result.media_ticket}).catch(error => {
+      if (generation !== trailerGeneration) return;
+      player.pause(); status.textContent = error.message; $('trailer-player').replaceChildren(status);
+      clearInterval(trailerHeartbeat);
+    }), 30000);
+  } catch (error) { if (generation === trailerGeneration && dialog.open) status.textContent = error.message; }
 }
 document.getElementById('trailer-dialog').addEventListener('close', () => {
+  ++trailerGeneration;
+  clearInterval(trailerHeartbeat);
+  const player = $('trailer-player').querySelector('video');
+  if (player) { player.pause(); player.removeAttribute('src'); player.load(); }
+  if (trailerTicket) api('/media/revoke', 'POST', {ticket:trailerTicket}).catch(() => {});
+  trailerTicket = null;
   $('trailer-player').replaceChildren();
   $('trailer-youtube').removeAttribute('href');
 });

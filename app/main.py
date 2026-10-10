@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
-from app import transcoding, active_streams
+from app import transcoding, active_streams, trailers
 from app.quality import hdr10_base as compatible_hdr10_base
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -894,6 +894,40 @@ def movie_trailer(mid: str, u=Depends(user)):
     return catalog.trailer(meta.get('catalog', {}))
 
 
+def trailer_id(mid):
+    _, meta = movie(mid)
+    info = catalog.trailer(meta.get('catalog', {})).get('trailer') or {}
+    match = re.fullmatch(r'https://www\.youtube\.com/watch\?v=([A-Za-z0-9_-]{11})', info.get('url', ''))
+    if not match:
+        raise HTTPException(404, 'Der er ingen trailer til denne titel.')
+    return match[1]
+
+
+@app.post('/api/movies/{mid}/trailer/prepare')
+def trailer_prepare(mid: str, u=Depends(user)):
+    result = trailers.prepare(DATA, trailer_id(mid))
+    if result['status'] == 'error':
+        raise HTTPException(503, 'Traileren kunne ikke hentes fra YouTube. Prøv igen senere.')
+    return result
+
+
+@app.post('/api/movies/{mid}/trailer/play')
+def trailer_play(mid: str, request: Request, u=Depends(user)):
+    key = trailer_id(mid)
+    trailers.file(DATA, key).touch()
+    return media.issue({'trailer_id': key, 'trailer': True, 'session': None,
+                        'mode': 'Trailer', 'height': 720, 'offset': 0}, request, mid, db, force=True)
+
+
+@app.api_route('/media/{ticket}/trailers/{key}/file', methods=['GET', 'HEAD'])
+def trailer_file(ticket: str, key: str):
+    trailers.valid(key)
+    media.validate(ticket, db, session_user, sid='trailer-' + key)
+    path = trailers.file(DATA, key)
+    path.touch()
+    return FileResponse(path, media_type='video/mp4')
+
+
 @app.get('/api/movies/{mid}/credits')
 def movie_credits(mid: str, u=Depends(user)):
     _, meta = movie(mid)
@@ -978,7 +1012,7 @@ class Playback(BaseModel):
 
 def playback_capabilities():
     """Optional TV API features; older clients retain the default playback path."""
-    return {'playback_profiles': ['default', 'xbox'], 'features': ['xbox-hevc-fmp4', 'phone-login-v1', 'xbox-hdr10-base', 'xbox-hevc-transcode', 'xbox-matroska-audio']}
+    return {'playback_profiles': ['default', 'xbox'], 'features': ['xbox-hevc-fmp4', 'phone-login-v1', 'xbox-hdr10-base', 'xbox-hevc-transcode', 'xbox-matroska-audio', 'trailer-stream-v1']}
 
 
 def decide(meta, data):

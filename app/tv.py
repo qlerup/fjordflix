@@ -125,6 +125,30 @@ def attach_tv(app, main):
                 'media_expires_in': media.TTL}
 
 
+    @tv.get('/tv-api/movies/{mid}/trailer')
+    def trailer_info(mid: str, auth=Depends(authorized)):
+        return main.movie_trailer(mid, auth[0])
+
+
+    @tv.post('/tv-api/movies/{mid}/trailer/prepare')
+    def trailer_prepare(mid: str, auth=Depends(authorized)):
+        return main.trailer_prepare(mid, auth[0])
+
+
+    @tv.post('/tv-api/movies/{mid}/trailer/play')
+    def trailer_play(mid: str, auth=Depends(authorized)):
+        result = main.trailer_play(mid, auth[1], auth[0])
+        direct, _ = media.config()
+        base = direct or str(auth[1].base_url).rstrip('/')
+        return {**result, 'url': f"{base}/tv-media/{result['media_ticket']}/trailers/{result['trailer_id']}/file"}
+
+
+    @tv.api_route('/tv-media/{ticket}/trailers/{key}/file', methods=['GET', 'HEAD'])
+    def trailer_file(ticket: str, key: str, request: Request):
+        media_host(request)
+        return main.trailer_file(ticket, key)
+
+
     def media_host(request):
         direct, _ = media.config()
         if direct and (request.headers.get('host', '').lower() != urlparse(direct).netloc.lower()
