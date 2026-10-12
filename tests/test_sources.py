@@ -44,6 +44,7 @@ def mounted(monkeypatch, tmp_path):
     monkeypatch.setattr(main.catalog, 'enrich', lambda *a: {'status': 'disabled', 'media_type': 'movie'})
     monkeypatch.setattr(main.library_sources, 'status', {'running': False, 'added': 0, 'updated': 0, 'errors': []})
     monkeypatch.setattr(main.library_sources, 'rescan', threading.Event())
+    monkeypatch.setattr(main.library_sources, 'ready_files', None)
     return TestClient(main.app), root
 
 
@@ -108,6 +109,74 @@ def test_fjordseed_buffer_is_never_indexed_but_published_movie_is(mounted):
     video.rename(destination/video.name)
     scan()
     assert len(client.get('/api/movies').json()) == 1
+
+
+def test_publishing_marker_hides_complete_episodes_until_entire_move_finishes(mounted):
+    client, root = mounted
+    release = root / 'Serier' / 'release'
+    release.mkdir()
+    marker = release / sources.PUBLISHING_MARKER
+    marker.touch()
+    (release / 'Show.S01E01.mkv').write_bytes(b'complete episode')
+    client.post('/api/admin/library', json={'path': str(root / 'Serier')})
+    scan()
+    assert client.get('/api/movies').json() == []
+    assert not any(str(release) in p for p in main.library_sources.snapshot())
+    marker.unlink()
+    scan()
+    assert len(client.get('/api/movies').json()) == 1
+
+
+def test_watcher_detects_new_stable_files_ignores_buffer_and_retries_busy_scan(mounted, monkeypatch):
+    import asyncio
+    client, root = mounted
+    folder = root / 'Film'
+    client.post('/api/admin/library', json={'path': str(folder)})
+    library = main.library_sources
+    scans, attempts = [], []
+    busy = False
+    def start():
+        attempts.append(True)
+        if busy:
+            return False
+        scans.append(True)
+        scan()
+        return True
+    monkeypatch.setattr(library, 'start', start)
+    video = folder / 'new.mp4'
+    tick = 0
+    scan_count = 0
+    async def sleep(seconds):
+        nonlocal tick, busy, scan_count
+        assert seconds == 5
+        tick += 1
+        if tick == 1:
+            video.write_bytes(b'partial')
+            buffer = folder / '.fjordseed-buffer'
+            buffer.mkdir()
+            (buffer / 'hidden.mp4').write_bytes(b'hidden')
+        elif tick == 2:
+            assert client.get('/api/movies').json() == []
+            video.write_bytes(b'finished video')
+        elif tick == 3:
+            assert client.get('/api/movies').json() == []
+            busy = True
+        elif tick == 4:
+            assert client.get('/api/movies').json() == []
+            busy = False
+        elif tick == 5:
+            assert len(client.get('/api/movies').json()) == 1
+        elif tick == 6:
+            assert len(attempts) == len(scans) + 1
+            # No scan for an unchanged library or ongoing buffer downloads.
+            scan_count = len(scans)
+            (folder / '.fjordseed-buffer' / 'hidden.mp4').write_bytes(b'changed')
+        elif tick == 7:
+            assert len(scans) == scan_count
+            raise asyncio.CancelledError
+    monkeypatch.setattr(sources.asyncio, 'sleep', sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(library.watch())
 
 
 def test_same_file_under_another_mount_path_is_not_indexed_twice(mounted):

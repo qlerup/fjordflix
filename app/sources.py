@@ -6,6 +6,7 @@ import os
 import secrets
 import subprocess
 import threading
+import time
 from pathlib import Path, PurePosixPath
 
 from fastapi import Depends, HTTPException
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from . import catalog, library_cleanup
 
 VIDEO_SUFFIXES = {'.mp4', '.mkv', '.mov', '.webm', '.m4v', '.avi', '.ts'}
+PUBLISHING_MARKER = '.fjordseed-publishing'
 log = logging.getLogger(__name__)
 
 
@@ -30,6 +32,7 @@ class Sources:
         self.host = host
         self.lock = threading.Lock()
         self.rescan = threading.Event()
+        self.ready_files = None
         self.status = {'running': False, 'added': 0, 'updated': 0, 'errors': []}
         with host.db() as conn:
             conn.executescript('''
@@ -223,6 +226,9 @@ class Sources:
                 try:
                     folder = self.allowed(source['path'])
                     for directory, dirs, files in os.walk(folder, followlinks=False, onerror=lambda e: self.error(f'{source["path"]}: {e.strerror}')):
+                        if any((p / PUBLISHING_MARKER).exists() for p in (Path(directory), *Path(directory).parents)):
+                            dirs[:] = []
+                            continue
                         dirs[:] = [d for d in dirs if d != '.fjordseed-buffer' and not (Path(directory) / d).is_symlink()]
                         for name in files:
                             path = Path(directory) / name
@@ -233,6 +239,8 @@ class Sources:
                                 if not path.is_relative_to(folder):
                                     continue
                                 stat = path.stat()
+                                if self.ready_files is not None and self.ready_files.get(str(path)) != (stat.st_size, stat.st_mtime_ns):
+                                    continue
                                 identity = (stat.st_dev, stat.st_ino)
                                 if str(path) not in known and stat.st_ino and identity in identities:
                                     continue
@@ -286,7 +294,49 @@ class Sources:
             if self.rescan.is_set():
                 self.start()
 
+    def snapshot(self):
+        """Stat only: polling also sees changes across bind mounts and network shares."""
+        with self.host.db() as conn:
+            sources = conn.execute('SELECT * FROM library_sources').fetchall()
+        result = {}
+        def failed(error):
+            raise error
+        for source in sources:
+            try:
+                folder = self.allowed(source['path'])
+            except HTTPException:
+                result['source:' + source['id']] = None
+                continue
+            result['source:' + source['id']] = str(folder)
+            for directory, dirs, files in os.walk(folder, followlinks=False, onerror=failed):
+                if any((p / PUBLISHING_MARKER).exists() for p in (Path(directory), *Path(directory).parents)):
+                    dirs[:] = []
+                    continue
+                dirs[:] = [d for d in dirs if d != '.fjordseed-buffer' and not (Path(directory) / d).is_symlink()]
+                for name in files:
+                    path = Path(directory) / name
+                    if path.suffix.lower() not in VIDEO_SUFFIXES or path.is_symlink():
+                        continue
+                    info = path.stat()
+                    result[str(path)] = (info.st_size, info.st_mtime_ns)
+        return result
+
     async def watch(self):
+        previous, scanned = {}, None
+        self.ready_files = {}
+        last_scan = 0
         while True:
-            self.start()
-            await asyncio.sleep(900)
+            try:
+                current = await asyncio.to_thread(self.snapshot)
+                # Ordinary copies must be unchanged across two observations.
+                # Seed moves are explicitly hidden until qBittorrent confirms completion.
+                ready = {path: value for path, value in current.items()
+                         if path in previous and previous[path] == value}
+                self.ready_files = ready
+                if ready != scanned or self.rescan.is_set() or time.monotonic() - last_scan >= 900:
+                    if self.start():
+                        scanned, last_scan = ready, time.monotonic()
+                previous = current
+            except Exception:
+                log.exception('Library change detection failed; retrying next poll')
+            await asyncio.sleep(5)
