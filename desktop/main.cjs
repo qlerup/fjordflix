@@ -44,9 +44,9 @@ function trusted(event, local = false) {
   return event.sender === win.webContents && frame === win.webContents.mainFrame &&
     (local ? frame.url === setup : origin && new URL(frame.url).origin === origin);
 }
-async function api(route, data) {
+async function api(route, data, method = 'POST') {
   const response = await win.webContents.session.fetch(origin + '/api' + route, {
-    method: 'POST', credentials:'include', redirect: 'error', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data), signal:AbortSignal.timeout(15000)
+    method, credentials:'include', redirect: 'error', headers: {'Content-Type':'application/json'}, body: method === 'GET' ? undefined : JSON.stringify(data), signal:AbortSignal.timeout(15000)
   });
   if (!response.ok) throw Error(response.status === 401 ? 'Log ind på FjordFlix igen.' : `Serveren svarede ${response.status}. Opdater FjordFlix-serveren og prøv igen.`);
   return response.json();
@@ -59,6 +59,10 @@ async function finish(run) {
   if (active === run) active = null;
   if (Number.isFinite(run.position)) await api(`/movies/${run.id}/progress`, {position:run.position}).catch(()=>{});
   await api('/media/revoke', {ticket:run.ticket}).catch(()=>{});
+  if (run.nextRequested && run.next && !win.isDestroyed()) {
+    try { await play({id:run.next.id,start:0,audio_track:null,subtitle_track:null}); return; }
+    catch (error) { dialog.showMessageBox(win,{type:'error',message:'Næste afsnit kunne ikke startes.',detail:clean(error.message)}); }
+  }
   if (!win.isDestroyed()) { win.show(); win.focus(); win.webContents.send('native-ended'); }
 }
 async function play(data) {
@@ -66,8 +70,10 @@ async function play(data) {
   launching = true;
   try {
     const chosen = selection(data);
+    const library = await api('/movies', undefined, 'GET').catch(()=>[]);
+    const next = require('./next-episode.js').next(library, library.find(movie=>movie.id===chosen.id));
     const result = await api(`/desktop/movies/${chosen.id}/play`, chosen);
-    const run = {id:chosen.id, ticket:result.media_ticket, position:chosen.start, playbackId:result.playback_id, status:{}}; active = run;
+    const run = {id:chosen.id, next, ticket:result.media_ticket, position:chosen.start, playbackId:result.playback_id, status:{}}; active = run;
     run.diagnostics = createDiagnostics({version:app.getVersion(), title:result.title, start:result.start});
     const report = () => run.playbackId && !run.finished ? api(`/playbacks/${run.playbackId}/heartbeat`, {
       position:run.position, state:run.status['paused-for-cache'] ? 'buffering' : run.status.pause ? 'paused' : 'playing',
@@ -123,6 +129,9 @@ async function play(data) {
           const failure = run.diagnostics.receive(message) || audioFallback.receive(message);
           if (failure) { playbackFailure(run, failure); command(['quit']); }
           if (message.event === 'client-message' && message.args?.[0] === 'fjord-preview-request') run.previews.request(message.args[1],message.args[2]);
+          if (message.event === 'client-message' && message.args?.[0] === 'fjord-next-episode' && run.next && !run.nextRequested) {
+            run.nextRequested = true; command(['quit']);
+          }
           if (message.event === 'property-change' && message.name === 'time-pos' && Number.isFinite(message.data)) run.position=message.data;
           if (message.event === 'property-change' && ['pause','paused-for-cache','aid','sid'].includes(message.name)) {
             run.status[message.name]=message.data;
@@ -130,6 +139,7 @@ async function play(data) {
           }
           if (message.event === 'file-loaded' && sub) command(['sub-add',sub,'select']);
           if (message.event === 'end-file') {
+            if (message.reason === 'eof' && run.next && !run.failureShown) run.nextRequested = true;
             if (['eof','error'].includes(message.reason)) command(['quit']);
           }
         }
@@ -139,6 +149,7 @@ async function play(data) {
       ['demuxer-cache-duration','cache-speed','seeking'].forEach((name,i)=>command(['observe_property',i+20,name]));
       ['pause','paused-for-cache','aid','sid'].forEach((name,i)=>command(['observe_property',i+2,name]));
       command(['script-message','fjord-title',String(result.title || 'FjordFlix')]);
+      command(['script-message','fjord-next-available',run.next ? 'yes' : 'no']);
       command(['loadfile',url,'replace',-1,{start:String(result.start),aid:String(result.audio),sid:String(result.subtitle)}],100);
       run.timer = setInterval(async () => {
         try {

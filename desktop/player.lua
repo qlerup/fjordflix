@@ -7,6 +7,7 @@ local areas, menu, scroll, focus = {}, nil, 0, 0
 local title, last_move, drag = 'FjordFlix', mp.get_time(), nil
 local white, muted, red, panel = 'FFFFFF', 'B7B5BC', '5640F4', '1D1919'
 local draw
+local next_available = false
 local pending_seek, preview_file, preview_target, requested_target
 local preview_serial, preview_request_time = 0, 0
 local function clear_preview()
@@ -107,10 +108,17 @@ draw=function()
     local sw,sh=mp.get_osd_size(); if not sw or sw<1 or sh<1 then return end
     H=720; W=math.max(640,sw/sh*H)
     local px,py=mp.get_mouse_pos(); mx=px/sw*W; my=py/sh*H
-    local visible=pending_seek or menu or drag or focus>0 or prop('pause',false) or mp.get_time()-last_move<3
+    local remaining=prop('duration',0)-(pending_seek or prop('time-pos',0))
+    local next_visible=next_available and prop('duration',0)>0 and remaining>=0 and remaining<=10
+    local visible=next_visible or pending_seek or menu or drag or focus>0 or prop('pause',false) or mp.get_time()-last_move<3
     areas={}
     if not visible then overlay:remove(); mp.commandv('overlay-remove',42); return end
     local a=assdraw.ass_new()
+    if next_visible then
+        button(a,W-460,H-255,420,'Næste afsnit afspilles om '..math.ceil(remaining)..' sek.',function()
+            next_available=false; mp.commandv('script-message','fjord-next-episode')
+        end,'Afspil næste afsnit nu',true)
+    end
     -- Soft scrims keep controls legible without framing the film in a toolbar.
     for i=0,47 do
         box(a,0,i*3,W,3,'000000',string.format('%02X',math.floor(70+i*185/47)))
@@ -245,6 +253,7 @@ mp.add_forced_key_binding('TAB','fjord-tab',function() wake(); focus=focus%math.
 mp.add_forced_key_binding('Shift+TAB','fjord-backtab',function() wake(); focus=(focus-2)%math.max(1,#areas)+1; draw() end)
 mp.add_forced_key_binding('ENTER','fjord-enter',function() if areas[focus] then areas[focus].fn() end; wake() end)
 mp.register_script_message('fjord-title',function(value) title=value; wake() end)
+mp.register_script_message('fjord-next-available',function(value) next_available=value=='yes'; draw() end)
 mp.register_script_message('fjord-preview-ready',function(serial,target,file)
     if tonumber(serial)~=preview_serial then return end
     preview_file=file; preview_target=tonumber(target); draw()

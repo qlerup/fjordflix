@@ -6,7 +6,7 @@ const out = path.join(root, 'dist/app');
 fs.mkdirSync(out, {recursive:true});
 for (const [folder, files] of Object.entries({
   app:['AppxManifest.xml','server-url.js','logo.svg'],
-  tv:['index.html','tv.css','navigation.js','capabilities.js','xbox-platform.js','local-phone-server.js','phone-login.js','tv.js']
+  tv:['index.html','tv.css','navigation.js','capabilities.js','xbox-platform.js','local-phone-server.js','phone-login.js','next-episode.js','tv.js']
 })) {
   for (const file of files) {
     const source = path.join(root, folder, file);

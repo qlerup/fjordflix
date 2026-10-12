@@ -1,6 +1,6 @@
 {
   "name": "fjordflix-desktop",
-  "version": "0.1.1",
+  "version": "0.1.16",
   "private": true,
   "description": "FjordFlix til Windows med original afspilning",
   "author": "FjordFlix",
@@ -21,6 +21,7 @@
       "main.cjs",
       "preload.cjs",
       "validation.cjs",
+      "next-episode.js",
       "playback-diagnostics.cjs",
       "subtitle-options.cjs",
       "audio-options.cjs",

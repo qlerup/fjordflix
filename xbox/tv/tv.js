@@ -1,6 +1,8 @@
-/* Standalone Xbox client. No desktop client or remote scripts. */
+/* Shared standalone TV interface; platform capabilities stay in capabilities.js. */
 (function () {
   'use strict';
+  var isXbox = !!window.XboxPlatform;
+  function localPhoneAvailable() { return !!window.FjordLocalPhoneServer && window.FjordLocalPhoneServer.available(); }
   var $ = function (id) { return document.getElementById(id); };
   var movies = [], selected, filter = 'all', page = 0, playback, generation = 0, busy = false;
   var lastSaved = 0, hideTimer, startTimer, cardFocus, video = $('video');
@@ -33,15 +35,15 @@
     }).catch(function (e) { if (playback === current) playerError(e.message); });
   }
   function diagnostics() {
-    var probe = window.TVCapabilities.diagnostics(), lines = ['FjordFlix Xbox 0.1.11'];
+    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.14' : 'FjordFlix LG 0.1.7'];
     lines.push(probe.source || '');
     lines.push('Lydvej: ' + (probe.audioTransport || '?') + ' · MKV-format: ' + (probe.htmlMatroska || '?'));
     var audioOutput = playback && playback.audio_output || lastPlan && lastPlan.audio_output;
     if (audioOutput) lines.push(audioDescription(audioOutput));
     if (audioOutput && audioOutput.copied) lines.push('Original lyd leveres til afspilleren. HDMI-formatet bekræftes på lydanlægget.');
-    lines.push('HEVC-format: ' + (probe.hevcFormat ? 'inden for grænserne' : 'ikke bekræftet') + ' · Xbox decoder: ' + probe.native + ' · HTML HEVC: ' + (probe.htmlHEVC || '?'));
-    lines.push('Server Xbox/fMP4: ' + (serverFeatures.indexOf('xbox-hevc-fmp4') >= 0 ? 'klar' : 'serveropdatering mangler'));
-    lines.push('4K HEVC-output: ' + (probe.nativeOutput || 'ikke forespurgt') + ' · Server 4K-konvertering: ' + (serverFeatures.indexOf('xbox-hevc-transcode') >= 0 ? 'klar' : 'serveropdatering mangler'));
+    if (isXbox) lines.push('HEVC-format: ' + (probe.hevcFormat ? 'inden for grænserne' : 'ikke bekræftet') + ' · Xbox decoder: ' + probe.native + ' · HTML HEVC: ' + (probe.htmlHEVC || '?'));
+    if (isXbox) lines.push('Server Xbox/fMP4: ' + (serverFeatures.indexOf('xbox-hevc-fmp4') >= 0 ? 'klar' : 'serveropdatering mangler'));
+    if (isXbox) lines.push('4K HEVC-output: ' + (probe.nativeOutput || 'ikke forespurgt') + ' · Server 4K-konvertering: ' + (serverFeatures.indexOf('xbox-hevc-transcode') >= 0 ? 'klar' : 'serveropdatering mangler'));
     if (lastPlan) lines.push('Plan: ' + lastPlan.mode + ' ' + lastPlan.height + 'p · ' + (lastPlan.reason || ''));
     if (playback) lines.push('Afspiller: ' + playback.mode + ' · ' + (playback.encoder || '') + ' · ' + video.videoWidth + 'x' + video.videoHeight);
     samplePlayback();
@@ -100,7 +102,7 @@
   function boot() {
     message('');
     text('address', server);
-    if (!token) { showLogin(); if (!server) $(window.FjordLocalPhoneServer.available() ? 'phone-login' : 'server-address').focus(); return Promise.resolve(); }
+    if (!token) { showLogin(); if (!server) $(localPhoneAvailable() ? 'phone-login' : 'server-address').focus(); return Promise.resolve(); }
     return api('/state').then(function (state) {
       if (!state.user) {
         showLogin();
@@ -245,6 +247,7 @@
   }
   function updateQualityHint() {
     text('quality-hint', $('quality').value === 'original' ? 'Bevarer videoen uden genkodning. Dolby Vision med HDR10-basislag kan leveres som HDR10. Vælg 4K, hvis videoen skal konverteres.' : $('quality').value === '2160' || $('quality').value === 'auto' ? 'Bevarer original video når muligt. Ved nødvendig konvertering bevares 4K med HEVC; HDR bliver SDR. Serverens hastighed afgør, om konverteringen kan følge med.' : 'Serveren tilpasser videoen til højst ' + $('quality').value + 'p.');
+    if (!isXbox) text('quality-hint', 'Original bevarer videoen. Automatisk tilpasser formatet til dit LG-TV; HDR og lyd afhænger af TV’ets formatunderstøttelse.');
     if (!selected) return;
     var id = ++planGeneration;
     text('quality-plan', 'Undersøger afspilning…'); text('quality-reason', '');
@@ -273,6 +276,29 @@
     if (!selected || !playback || playback.trailer) return Promise.resolve();
     selected.position = position(); return api('/movies/' + selected.id + '/progress', 'POST', {position:selected.position});
   }
+  var advancingEpisode = false;
+  function nextEpisode() { return playback && !playback.trailer ? window.FjordEpisodes.next(movies, selected) : null; }
+  function updateNextEpisode(ended) {
+    var next = nextEpisode(), seconds = next ? window.FjordEpisodes.countdown(playbackDuration(), position()) : null;
+    var button = $('next-episode'), wasHidden = button.hidden;
+    button.hidden = seconds === null || busy || advancingEpisode;
+    if (button.hidden) return;
+    button.textContent = 'N\u00e6ste afsnit afspilles om ' + seconds + ' sek.';
+    if (wasHidden) button.focus();
+    if (seconds === 0 && (!video.paused || ended)) advanceEpisode();
+  }
+  function advanceEpisode() {
+    var next = nextEpisode();
+    if (!next || busy || advancingEpisode) return;
+    advancingEpisode = true;
+    var id = generation;
+    $('next-episode').hidden = true;
+    save().catch(ignore).then(function () {
+      if (id !== generation || $('player').hidden) return;
+      openDetail(next); start(0, false);
+    }).then(function () { advancingEpisode = false; }, function (error) { advancingEpisode = false; playerError(error.message); });
+  }
+  $('next-episode').onclick = advanceEpisode;
   function dispose(old) {
     if (!old) return Promise.resolve(); var tasks = [];
     if (old.session) tasks.push(api('/streams/' + old.session, 'DELETE').catch(ignore));
@@ -280,6 +306,7 @@
     return Promise.all(tasks);
   }
   function release() {
+    $('next-episode').hidden = true;
     samplePlayback();
     clearTimeout(startTimer); var old = playback; playback = null;
     clearSubtitles();
@@ -362,10 +389,10 @@
         if (plan.mode === 'Transcoding' && request.quality === 'original') {
           throw new Error('Original video kunne ikke bevares. ' + (plan.reason || '') + ' Vælg tekstundertekster/Fra eller 1080p for konvertering.');
         }
-        if (plan.mode === 'Transcoding' && wants4K && (!request.hevc_output || plan.video_codec !== 'hevc')) {
+        if (isXbox && plan.mode === 'Transcoding' && wants4K && (!request.hevc_output || plan.video_codec !== 'hevc')) {
           throw new Error('4K kunne ikke leveres. Opdater FjordFlix-serveren, og kontrollér 4K HEVC-output under Afspilningsdetaljer. Videoen sænkes ikke til 1080p.');
         }
-        if (plan.mode === 'Direct Stream' && movie.video === 'hevc' && serverFeatures.indexOf('xbox-hevc-fmp4') < 0) {
+        if (isXbox && plan.mode === 'Direct Stream' && movie.video === 'hevc' && serverFeatures.indexOf('xbox-hevc-fmp4') < 0) {
           throw new Error('FjordFlix-serveren skal opdateres til Xbox/fMP4 for at bevare denne HEVC-video. Opdater både server og app.');
         }
         return api('/movies/' + movie.id + '/play', 'POST', request);
@@ -374,14 +401,14 @@
       if (!result) return;
       if (id !== generation) { dispose(result); return; }
       var wants4K = ($('quality').value === '2160' || $('quality').value === 'auto') && (movie.width > 1920 || movie.height > 1080);
-      if (result.mode === 'Transcoding' && (lastRequest.quality === 'original' || wants4K && (!lastRequest.hevc_output || result.video_codec !== 'hevc'))) {
+      if (result.mode === 'Transcoding' && (lastRequest.quality === 'original' || isXbox && wants4K && (!lastRequest.hevc_output || result.video_codec !== 'hevc'))) {
         dispose(result); throw new Error('Serveren forsøgte videokonvertering ved Original. Opdater serveren, eller vælg 1080p.');
       }
       runtime = null; streamProgress = null; waitingCount = 0; stalledCount = 0;
       playback = result; playbackStatus(); streamHeartbeat();
       video.onloadedmetadata = function () { if (id !== generation) return; playbackStatus(); if (!result.session && at) video.currentTime = at; playVideo(); };
       if (result.session && result.transport !== 'matroska' && !video.canPlayType('application/vnd.apple.mpegurl')) {
-        playerError('Denne browser mangler native HLS. Test konverteret video i Xbox-appen.'); release(); return;
+        playerError('Denne browser mangler native HLS. Test konverteret video i TV-appen.'); release(); return;
       }
       video.src = result.url; video.load();
       loadSubtitles(movie, result, id);
@@ -453,7 +480,7 @@
   });
   $('phone-login').onclick = function () {
     message('');
-    if (window.FjordLocalPhoneServer.available()) { window.TVPhoneLogin.start(); return; }
+    if (localPhoneAvailable()) { window.TVPhoneLogin.start(); return; }
     try { server = window.FjordServerURL($('server-address').value, $('login-https').checked); }
     catch (error) { message(error.message); $('server-address').focus(); return; }
     token = ''; remember(); window.TVPhoneLogin.start(server);
@@ -494,9 +521,10 @@
   video.onerror = function () { if (!busy) recover('TV’et kunne ikke afspille formatet.'); };
   video.ontimeupdate = function () {
     text('timeline', clock(position()) + ' / ' + clock(playbackDuration()));
+    updateNextEpisode(false);
     if (playback && Date.now() - lastSaved > 10000) { lastSaved = Date.now(); save().catch(function (e) { message(e.message); }); }
   };
-  video.onended = function () { save().catch(ignore); showControls(); };
+  video.onended = function () { save().catch(ignore); updateNextEpisode(true); showControls(); };
   $('player').onmousemove = showControls;
   window.TVNavigation.activity = function () { if (!$('player').hidden) showControls(); };
   window.TVNavigation.back = function () {
@@ -504,7 +532,8 @@
     else if (!$('player').hidden) closePlayer();
     else if (!$('detail').hidden) $('detail-back').click();
     else if ($('search').value) { $('search').value = ''; page = 0; render(); $('search').focus(); }
-    else window.XboxPlatform.requestExit();
+    else if (isXbox) window.XboxPlatform.requestExit();
+    else if (window.confirm('Vil du lukke FjordFlix?')) window.close();
   };
   document.addEventListener('keydown', function (event) {
     if ($('player').hidden) return;
@@ -523,7 +552,7 @@
     if (token) { api('/logout', 'POST').catch(ignore); }
     token = ''; remember(); movies = []; clearImages(); $('grid').textContent = ''; showLogin(); $('server-address').focus();
   };
-  window.XboxPlatform.suspend = function () {
+  if (isXbox) window.XboxPlatform.suspend = function () {
     ++generation; busy = false; video.pause();
     var pendingSave = save().catch(ignore), pendingRelease = release();
     $('player').hidden = true;

@@ -1,0 +1,13 @@
+{
+  "id": "dk.fjordflix.tv",
+  "version": "0.1.7",
+  "vendor": "FjordFlix",
+  "type": "web",
+  "main": "index.html",
+  "title": "FjordFlix",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "resolution": "1920x1080",
+  "requiredACG": [],
+  "disableBackHistoryAPI": true
+}

@@ -1,5 +1,9 @@
 # FjordFlix til Windows
 
+Version 0.1.16 viser en klikbar nedtælling til næste afsnit i de sidste ti
+sekunder af en serie. Næste afsnit starter automatisk ved slutningen, også
+på tværs af sæsoner. Nedtællingen følger afspilningen og står stille ved pause.
+
 Windows 10/11, x64. Installer med `FjordFlix-Setup.exe`, indtast serverens
 http(s)-adresse og log ind. Serveren skal have desktop-API'et fra samme udgivelse.
 Installationen kræver ikke en separat installation af mpv eller administratoradgang.

@@ -11,7 +11,7 @@ const os = require('node:os');
 const net = require('node:net');
 const {spawn} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
-const xboxRoot = path.resolve(__dirname, '..');
+const xboxRoot = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..');
 const serverRoot = fs.existsSync(path.resolve(xboxRoot,'../app/main.py')) ? path.resolve(xboxRoot,'..') : path.resolve(xboxRoot, '../fjordflix');
 const python = process.env.FJORDFLIX_TEST_PYTHON || path.join(serverRoot, '.venv/Scripts/python.exe');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

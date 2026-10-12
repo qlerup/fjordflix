@@ -1,5 +1,15 @@
 # FjordFlix til Xbox
 
+## 0.1.14: automatisk næste afsnit
+
+I de sidste ti sekunder vises **Næste afsnit afspilles om … sek.** Tryk A/OK
+eller klik for at skifte straks; ellers skiftes ved slutningen. Nedtællingen
+følger videoens tid og står stille ved pause og buffering. Næste afsnit findes
+i samme serie efter sæson- og afsnitsnummer. Film og sidste afsnit viser ingen
+knap. Den gamle streams ressourcer frigives, og næste afsnit starter fra nul.
+
+Færdig pakke: `dist/FjordFlix-Xbox_0.1.14.appx`.
+
 ## 0.1.13: trailere fra serveren
 
 **Se trailer** afspiller serverens H.264/AAC MP4 i appens egen afspiller med pause, spoling og controllerbetjening. Opdater serveren sammen med appen. Første visning kan vente på klargøring; afspilningen ændrer ikke filmens gemte position.

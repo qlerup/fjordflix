@@ -1,0 +1,17 @@
+{
+  "name": "fjordflix-lg-app",
+  "version": "0.1.7",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "test:browser": "node tests/browser.cjs && node tests/subtitles-browser.cjs && node tests/trailer-browser.cjs",
+    "build": "node scripts/build.cjs",
+    "package": "npm run build && ares-package dist/app --outdir dist --no-minify",
+    "test:next": "node tests/next-episode-browser.cjs"
+  },
+  "devDependencies": {
+    "@webos-tools/cli": "3.2.6",
+    "acorn": "8.18.0",
+    "playwright": "1.63.0"
+  }
+}
