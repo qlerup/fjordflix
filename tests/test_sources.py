@@ -93,6 +93,23 @@ def scan(reindex_source=None):
     assert not main.library_sources.status['running']
 
 
+def test_fjordseed_buffer_is_never_indexed_but_published_movie_is(mounted):
+    client, root = mounted
+    buffer = root/'Film'/'.fjordseed-buffer'/'torrent-id'
+    buffer.mkdir(parents=True)
+    video = buffer/'Ready.mp4'
+    video.write_bytes(b'complete synthetic video')
+    assert client.post('/api/admin/library', json={'path':str(buffer)}).status_code == 400
+    assert client.post('/api/admin/library', json={'path':str(root/'Film')}).status_code == 201
+    scan()
+    assert client.get('/api/movies').json() == []
+    destination = root/'Film'/'published'
+    destination.mkdir()
+    video.rename(destination/video.name)
+    scan()
+    assert len(client.get('/api/movies').json()) == 1
+
+
 def test_deleted_movie_removes_catalog_artwork_subtitles_and_history(mounted):
     client, root = mounted
     video = root / 'Film' / 'Film.mp4'

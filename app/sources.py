@@ -180,6 +180,8 @@ class Sources:
         if not path.is_absolute():
             raise HTTPException(400, 'Vælg en absolut mappesti.')
         path = path.resolve()
+        if '.fjordseed-buffer' in path.parts:
+            raise HTTPException(400, 'FjordSeeds buffermappe kan ikke bruges som bibliotek.')
         if not any(path.is_relative_to(root) for root in self.roots()):
             raise HTTPException(400, 'Mappen ligger uden for de tilgængelige biblioteksdrev.')
         if not path.is_dir():
@@ -211,7 +213,7 @@ class Sources:
                 try:
                     folder = self.allowed(source['path'])
                     for directory, dirs, files in os.walk(folder, followlinks=False, onerror=lambda e: self.error(f'{source["path"]}: {e.strerror}')):
-                        dirs[:] = [d for d in dirs if not (Path(directory) / d).is_symlink()]
+                        dirs[:] = [d for d in dirs if d != '.fjordseed-buffer' and not (Path(directory) / d).is_symlink()]
                         for name in files:
                             path = Path(directory) / name
                             if path.suffix.lower() not in VIDEO_SUFFIXES or path.is_symlink():
