@@ -110,6 +110,28 @@ def test_fjordseed_buffer_is_never_indexed_but_published_movie_is(mounted):
     assert len(client.get('/api/movies').json()) == 1
 
 
+def test_same_file_under_another_mount_path_is_not_indexed_twice(mounted):
+    import os
+    client, root = mounted
+    original = main.MEDIA / 'original.mp4'
+    original.write_bytes(b'video')
+    mid = 'a' * 32
+    main.index_movie(original, 'Original title', mid, True)
+    alias = root / 'Film' / 'different-name.mp4'
+    os.link(original, alias)  # Same device/inode, as with two bind-mount paths.
+    distinct = root / 'Film' / 'another-film.mp4'
+    distinct.write_bytes(b'video')  # Equal size/content alone must not deduplicate.
+    client.post('/api/admin/library', json={'path':str(alias.parent)})
+    scan()
+    scan()
+    with main.db() as conn:
+        rows = conn.execute('SELECT id,title,path FROM movies').fetchall()
+        assert len(rows) == 2
+        assert dict(next(r for r in rows if r['id'] == mid)) == {
+            'id':mid,'title':'Original title','path':str(original)}
+        assert not conn.execute('SELECT 1 FROM library_files WHERE movie_id=?',(mid,)).fetchone()
+
+
 def test_deleted_movie_removes_catalog_artwork_subtitles_and_history(mounted):
     client, root = mounted
     video = root / 'Film' / 'Film.mp4'

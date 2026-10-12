@@ -207,6 +207,16 @@ class Sources:
                 sources = conn.execute('SELECT * FROM library_sources').fetchall()
                 known = {str(Path(r['path']).resolve()): dict(r) for r in conn.execute(
                     'SELECT m.id,m.path,f.fingerprint FROM movies m LEFT JOIN library_files f ON f.movie_id=m.id')}
+            # Bind mounts expose one physical file under multiple absolute paths.
+            # resolve() only follows symlinks, so also compare filesystem identity.
+            identities = {}
+            for existing_path in known:
+                try:
+                    info = Path(existing_path).stat()
+                    if info.st_ino:
+                        identities[(info.st_dev, info.st_ino)] = existing_path
+                except OSError:
+                    pass  # An unavailable source cannot establish file identity.
             for source in sources:
                 if reindex_source is not None and source['id'] != reindex_source:
                     continue
@@ -223,6 +233,9 @@ class Sources:
                                 if not path.is_relative_to(folder):
                                     continue
                                 stat = path.stat()
+                                identity = (stat.st_dev, stat.st_ino)
+                                if str(path) not in known and stat.st_ino and identity in identities:
+                                    continue
                                 fingerprint = f'{stat.st_size}:{stat.st_mtime_ns}'
                                 old = known.get(str(path))
                                 if old and reindex_source is None and (old['fingerprint'] is None or old['fingerprint'] == fingerprint):
@@ -243,6 +256,8 @@ class Sources:
                                     self.host.index_movie(path, catalog.file_title(path), mid,
                                                           True, source=(source['id'], fingerprint))
                                     known[str(path)] = {'id': mid, 'fingerprint': fingerprint}
+                                    if stat.st_ino:
+                                        identities[identity] = str(path)
                                     self.status['added'] += 1
                             except (OSError, ValueError, subprocess.TimeoutExpired, HTTPException) as exc:
                                 self.error(f'{path.name}: {getattr(exc, "detail", str(exc))}')
