@@ -97,13 +97,18 @@ $('auth-form').onsubmit = async (event) => {
         label.append(input); $('auth-submit').before(label); input.focus();
       }
       $('auth-error').textContent = result.error; return;
-    } $('password').value = ''; await boot(); }
+    }
+    if (result.ok !== true) throw new Error('Login kunne ikke gennemføres. Genindlæs siden, og prøv igen.');
+    if (!await boot()) throw new Error('Login blev godkendt, men sessionen kunne ikke åbnes. Kontrollér, at cookies er tilladt, og prøv igen.');
+    $('password').value = '';
+    ['first-login-email', 'first-login-password', 'first-login-password-confirm'].forEach(id => $(id)?.parentElement.remove());
+  }
   catch (error) { $('auth-error').textContent = error.message; }
   finally { $('auth-submit').disabled = false; }
 };
 async function boot() {
   state = await api('/state');
-  if (!state.user) { showAuth(); return; }
+  if (!state.user) { showAuth(); return false; }
   $('auth').hidden = true; $('shell').hidden = false;
   if (window.fjordDesktop) {
     updateWindowButton(true);
@@ -122,6 +127,7 @@ async function boot() {
   await refresh();
   restoreDetailRoute();
   if (state.user.admin && window.FjordOnboarding) await window.FjordOnboarding.open();
+  return true;
 }
 async function refresh() { library = await api('/movies'); render(); }
 function render() {
