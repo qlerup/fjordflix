@@ -472,7 +472,16 @@
     event.preventDefault(); message(''); $('login-submit').disabled = true; $('phone-login').disabled = true;
     try { server = window.FjordServerURL($('server-address').value, $('login-https').checked); } catch (e) { message(e.message); $('login-submit').disabled = false; $('phone-login').disabled = false; return; }
     token = ''; remember();
-    api('/login', 'POST', {name:$('username').value, password:$('password').value}).then(function (result) { token = result.token; remember(); $('password').value = ''; return boot(); })
+    api('/login', 'POST', {name:$('username').value, password:$('password').value, first_login_email:$('first-login-email') ? $('first-login-email').value : ''}).then(function (result) {
+      if (result.email_required) {
+        if (!$('first-login-email')) {
+          var label = document.createElement('label'); label.textContent = 'Email til din FjordHub-konto';
+          var field = document.createElement('input'); field.id = 'first-login-email'; field.type = 'email'; field.required = true; field.autocomplete = 'email';
+          label.appendChild(field); $('login-submit').parentNode.insertBefore(label, $('login-submit')); field.focus();
+        }
+        message(result.error); return;
+      }
+      token = result.token; remember(); $('password').value = ''; return boot(); })
       .catch(function (e) { message(e.message); }).then(function () { $('login-submit').disabled = false; $('phone-login').disabled = false; });
   };
   window.TVPhoneLogin.setup(function (value, address) {

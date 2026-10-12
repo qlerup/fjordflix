@@ -30,6 +30,7 @@ class Approval(BaseModel):
     user_code: str = Field(min_length=8, max_length=9)
     name: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=128)
+    first_login_email: str = Field(default="", max_length=254)
 
 
 def hashed(value):
@@ -138,7 +139,9 @@ def attach_pairing(tv, main, page_app=None):
         # Reuse local/Hub credential checks and throttling. This private response
         # and its Set-Cookie never reach the phone; only the digest is retained.
         private_response = Response()
-        main.login(main.LoginCredentials(name=data.name, password=data.password), private_response, request)
+        result = main.login(main.LoginCredentials(name=data.name, password=data.password, first_login_email=data.first_login_email), private_response, request)
+        if result.get('email_required'):
+            return result
         cookie = SimpleCookie()
         cookie.load(private_response.headers['set-cookie'])
         proof = main.digest(cookie['fjordflix_session'].value)

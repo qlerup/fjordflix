@@ -47,7 +47,9 @@ def attach_tv(app, main):
     @tv.post('/tv-api/login')
     def login(data: main.LoginCredentials, request: Request):
         response = Response()
-        main.login(data, response, request)  # Existing Argon2/Hub verification and throttle.
+        result = main.login(data, response, request)  # Existing credential checks.
+        if result.get('email_required'):
+            return result
         cookie = SimpleCookie()
         cookie.load(response.headers['set-cookie'])
         return {'token': cookie['fjordflix_session'].value, 'expires_in': 7 * 86400}

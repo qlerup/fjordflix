@@ -81,7 +81,15 @@ function showAuth() {
 $('auth-switch').onclick = () => { authMode = authMode === 'register' ? 'login' : 'register'; $('auth-error').textContent = ''; showAuth(); };
 $('auth-form').onsubmit = async (event) => {
   event.preventDefault(); $('auth-submit').disabled = true; $('auth-error').textContent = '';
-  try { await api(`/${authMode}`, 'POST', {name: $('username').value, password: $('password').value, invite: $('invite').value.trim()}); $('password').value = ''; await boot(); }
+  try { const result = await api(`/${authMode}`, 'POST', {name: $('username').value, password: $('password').value, invite: $('invite').value.trim(), first_login_email: $('first-login-email')?.value || ''});
+    if (result.email_required) {
+      if (!$('first-login-email')) {
+        const label = document.createElement('label'); label.textContent = 'Email til din FjordHub-konto';
+        const input = document.createElement('input'); input.id = 'first-login-email'; input.type = 'email'; input.autocomplete = 'email'; input.required = true;
+        label.append(input); $('auth-submit').before(label); input.focus();
+      }
+      $('auth-error').textContent = result.error; return;
+    } $('password').value = ''; await boot(); }
   catch (error) { $('auth-error').textContent = error.message; }
   finally { $('auth-submit').disabled = false; }
 };

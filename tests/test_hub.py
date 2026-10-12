@@ -98,3 +98,14 @@ def test_hub_key_only_goes_to_configured_backend(monkeypatch):
         assert hub.call('/api/hub/apps/users',method='GET')['ok']
         assert request.call_args.kwargs['headers']=={'X-Hub-Key':'test-app-key'}
         assert request.call_args.kwargs['params']=={'app_id':'fjordflix'}
+
+
+def test_email_completion_does_not_issue_browser_or_tv_session(managed):
+    managed[0]['email_required'] = True
+    with TestClient(main.app) as client:
+        for url in ('/api/login', '/tv-api/login'):
+            result = client.post(url, json={'name':'Hub Alice','password':'sixsix'})
+            assert result.status_code == 200
+            assert result.json()['email_required']
+            assert 'token' not in result.json()
+            assert 'set-cookie' not in result.headers

@@ -43,3 +43,14 @@ test('expired sessions cannot serve the form or submit credentials',async()=>{
   try{Date.now=()=>now+300001;assert.equal((await session.handle(req())).status,410);}
   finally{Date.now=original;}
 });
+
+test('email completion keeps the phone flow open without accepting a session',async()=>{
+  let accepted=0,attempt=0;
+  const session=local.session({secret,origin,login:()=>++attempt===1?{email_required:true,error:'Enter email'}:{token:'secret'},accept:()=>accepted++});
+  const first=await session.handle(req());
+  assert.equal(JSON.parse(first.body).email_required,true);
+  assert.equal(first.complete,undefined);assert.equal(accepted,0);
+  const second=await session.handle(req());
+  assert.equal(JSON.parse(second.body).ok,true);
+  second.complete();assert.equal(accepted,1);
+});

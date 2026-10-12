@@ -60,7 +60,7 @@
     }
     const name = $('username').value.trim();
     if (!name) { error('Skriv dit brugernavn.', $('username')); $('username').focus(); return; }
-    const payload = {user_code:formatted(normalized), name, password:$('password').value};
+    const payload = {user_code:formatted(normalized), name, password:$('password').value, first_login_email:$('first-login-email')?.value || ''};
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     let focusField;
@@ -71,6 +71,14 @@
         headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), signal:controller.signal
       });
       const result = await response.json().catch(() => null);
+      if (result?.email_required) {
+        if (!$('first-login-email')) {
+          const label = document.createElement('label'); label.textContent = 'Email til din FjordHub-konto';
+          const field = document.createElement('input'); field.id = 'first-login-email'; field.type = 'email'; field.required = true; field.autocomplete = 'email';
+          label.append(field); $('pair-form').prepend(label); field.focus();
+        }
+        error(result.error, $('first-login-email')); return;
+      }
       if (!response.ok) {
         let message;
         if (response.status === 401) {

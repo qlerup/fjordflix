@@ -243,6 +243,7 @@ class Credentials(BaseModel):
 
 
 class LoginCredentials(BaseModel):
+    first_login_email: str = Field(default="", max_length=254)
     name: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=128)
 
@@ -331,7 +332,7 @@ def login(data: LoginCredentials, response: Response, request: Request):
     check_login_limit(request)
     if hub.managed():
         try:
-            result = hub.call('/api/hub/apps/authenticate', {'username':data.name.strip(), 'password':data.password})
+            result = hub.call('/api/hub/apps/authenticate', {'username':data.name.strip(), 'password':data.password, 'first_login_email':data.first_login_email})
         except HTTPException as exc:
             if exc.status_code == 401:
                 record_login_failure(request)
@@ -339,6 +340,8 @@ def login(data: LoginCredentials, response: Response, request: Request):
         profile = result.get('user')
         if not isinstance(profile, dict):
             raise HTTPException(503, 'FjordHub returnerede en ugyldig bruger.')
+        if profile.get('email_required'):
+            return {'email_required': True, 'error': profile.get('email_error') or 'Indtast din email ved første login.'}
         if profile.get('must_change_password'):
             raise HTTPException(403, 'Skift først din midlertidige adgangskode i FjordHub.')
         profile = hub.current(hub.identity(profile)[0], force=True)
