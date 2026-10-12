@@ -244,6 +244,8 @@ class Credentials(BaseModel):
 
 class LoginCredentials(BaseModel):
     first_login_email: str = Field(default="", max_length=254)
+    first_login_password: str = Field(default="", max_length=128)
+    first_login_password_confirm: str = Field(default="", max_length=128)
     name: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=128)
 
@@ -332,7 +334,7 @@ def login(data: LoginCredentials, response: Response, request: Request):
     check_login_limit(request)
     if hub.managed():
         try:
-            result = hub.call('/api/hub/apps/authenticate', {'username':data.name.strip(), 'password':data.password, 'first_login_email':data.first_login_email})
+            result = hub.call('/api/hub/apps/authenticate', {'username':data.name.strip(), 'password':data.password, 'first_login_email':data.first_login_email, 'first_login_password':data.first_login_password, 'first_login_password_confirm':data.first_login_password_confirm})
         except HTTPException as exc:
             if exc.status_code == 401:
                 record_login_failure(request)
@@ -340,10 +342,10 @@ def login(data: LoginCredentials, response: Response, request: Request):
         profile = result.get('user')
         if not isinstance(profile, dict):
             raise HTTPException(503, 'FjordHub returnerede en ugyldig bruger.')
-        if profile.get('email_required'):
-            return {'email_required': True, 'error': profile.get('email_error') or 'Indtast din email ved første login.'}
-        if profile.get('must_change_password'):
-            raise HTTPException(403, 'Skift først din midlertidige adgangskode i FjordHub.')
+        if profile.get('email_required') or profile.get('must_change_password'):
+            return {'onboarding_required':True, 'email_required':bool(profile.get('email_required')),
+                    'password_required':bool(profile.get('must_change_password')),
+                    'error':profile.get('email_error') or 'Første login: Udfyld oplysningerne og vælg din egen adgangskode.'}
         profile = hub.current(hub.identity(profile)[0], force=True)
         clear_login_failures(request)
         session(response, sync_hub_user(profile))

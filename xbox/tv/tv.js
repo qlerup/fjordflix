@@ -472,9 +472,17 @@
     event.preventDefault(); message(''); $('login-submit').disabled = true; $('phone-login').disabled = true;
     try { server = window.FjordServerURL($('server-address').value, $('login-https').checked); } catch (e) { message(e.message); $('login-submit').disabled = false; $('phone-login').disabled = false; return; }
     token = ''; remember();
-    api('/login', 'POST', {name:$('username').value, password:$('password').value, first_login_email:$('first-login-email') ? $('first-login-email').value : ''}).then(function (result) {
-      if (result.email_required) {
-        if (!$('first-login-email')) {
+    api('/login', 'POST', {name:$('username').value, password:$('password').value, first_login_email:$('first-login-email') ? $('first-login-email').value : '', first_login_password:$('first-login-password') ? $('first-login-password').value : '', first_login_password_confirm:$('first-login-password-confirm') ? $('first-login-password-confirm').value : ''}).then(function (result) {
+      if (result.onboarding_required) {
+      if (result.password_required && !$('first-login-password')) {
+        [['first-login-password','Ny personlig adgangskode'],['first-login-password-confirm','Gentag ny adgangskode']].forEach(function (item) {
+          var label = document.createElement('label'); label.textContent = item[1];
+          var field = document.createElement('input'); field.id = item[0]; field.type = 'password'; field.required = true; field.minLength = 6; field.maxLength = 128; field.autocomplete = 'new-password';
+          label.appendChild(field); $('login-submit').parentNode.insertBefore(label, $('login-submit'));
+        });
+      }
+
+        if (result.email_required && !$('first-login-email')) {
           var label = document.createElement('label'); label.textContent = 'Email til din FjordHub-konto';
           var field = document.createElement('input'); field.id = 'first-login-email'; field.type = 'email'; field.required = true; field.autocomplete = 'email';
           label.appendChild(field); $('login-submit').parentNode.insertBefore(label, $('login-submit')); field.focus();

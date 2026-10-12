@@ -72,7 +72,9 @@ def test_managed_auth_roles_revocation_and_history(managed):
 def test_managed_outage_and_forced_password_change(managed):
     with TestClient(main.app) as client:
         managed[0]['must_change_password']=True
-        assert client.post('/api/login',json={'name':'Hub Alice','password':'sixsix'}).status_code==403
+        result = client.post('/api/login',json={'name':'Hub Alice','password':'sixsix'})
+        assert result.json()['password_required']
+        assert 'set-cookie' not in result.headers
         assert client.get('/hub-login?token=single-use').status_code==403
         managed[0]['must_change_password']=False
         assert client.post('/api/login',json={'name':'Hub Alice','password':'sixsix'}).status_code==200

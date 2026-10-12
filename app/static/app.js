@@ -81,9 +81,17 @@ function showAuth() {
 $('auth-switch').onclick = () => { authMode = authMode === 'register' ? 'login' : 'register'; $('auth-error').textContent = ''; showAuth(); };
 $('auth-form').onsubmit = async (event) => {
   event.preventDefault(); $('auth-submit').disabled = true; $('auth-error').textContent = '';
-  try { const result = await api(`/${authMode}`, 'POST', {name: $('username').value, password: $('password').value, invite: $('invite').value.trim(), first_login_email: $('first-login-email')?.value || ''});
-    if (result.email_required) {
-      if (!$('first-login-email')) {
+  try { const result = await api(`/${authMode}`, 'POST', {name: $('username').value, password: $('password').value, invite: $('invite').value.trim(), first_login_email: $('first-login-email')?.value || '', first_login_password:$('first-login-password')?.value || '', first_login_password_confirm:$('first-login-password-confirm')?.value || ''});
+    if (result.onboarding_required) {
+      if (result.password_required && !$('first-login-password')) {
+        [['first-login-password','Ny personlig adgangskode'],['first-login-password-confirm','Gentag ny adgangskode']].forEach(function (item) {
+          var label = document.createElement('label'); label.textContent = item[1];
+          var field = document.createElement('input'); field.id = item[0]; field.type = 'password'; field.required = true; field.minLength = 6; field.maxLength = 128; field.autocomplete = 'new-password';
+          label.appendChild(field); $('auth-submit').parentNode.insertBefore(label, $('auth-submit'));
+        });
+      }
+
+      if (result.email_required && !$('first-login-email')) {
         const label = document.createElement('label'); label.textContent = 'Email til din FjordHub-konto';
         const input = document.createElement('input'); input.id = 'first-login-email'; input.type = 'email'; input.autocomplete = 'email'; input.required = true;
         label.append(input); $('auth-submit').before(label); input.focus();

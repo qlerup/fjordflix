@@ -60,7 +60,7 @@
     }
     const name = $('username').value.trim();
     if (!name) { error('Skriv dit brugernavn.', $('username')); $('username').focus(); return; }
-    const payload = {user_code:formatted(normalized), name, password:$('password').value, first_login_email:$('first-login-email')?.value || ''};
+    const payload = {user_code:formatted(normalized), name, password:$('password').value, first_login_email:$('first-login-email')?.value || '', first_login_password:$('first-login-password')?.value || '', first_login_password_confirm:$('first-login-password-confirm')?.value || ''};
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
     let focusField;
@@ -71,13 +71,21 @@
         headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), signal:controller.signal
       });
       const result = await response.json().catch(() => null);
-      if (result?.email_required) {
-        if (!$('first-login-email')) {
+      if (result?.onboarding_required) {
+      if (result.password_required && !$('first-login-password')) {
+        [['first-login-password','Ny personlig adgangskode'],['first-login-password-confirm','Gentag ny adgangskode']].forEach(function (item) {
+          var label = document.createElement('label'); label.textContent = item[1];
+          var field = document.createElement('input'); field.id = item[0]; field.type = 'password'; field.required = true; field.minLength = 6; field.maxLength = 128; field.autocomplete = 'new-password';
+          label.appendChild(field); $('pair-form').appendChild(label);
+        });
+      }
+
+        if (result.email_required && !$('first-login-email')) {
           const label = document.createElement('label'); label.textContent = 'Email til din FjordHub-konto';
           const field = document.createElement('input'); field.id = 'first-login-email'; field.type = 'email'; field.required = true; field.autocomplete = 'email';
           label.append(field); $('pair-form').prepend(label); field.focus();
         }
-        error(result.error, $('first-login-email')); return;
+        error(result.error, $('first-login-password') || $('first-login-email')); return;
       }
       if (!response.ok) {
         let message;

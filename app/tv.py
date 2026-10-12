@@ -48,7 +48,7 @@ def attach_tv(app, main):
     def login(data: main.LoginCredentials, request: Request):
         response = Response()
         result = main.login(data, response, request)  # Existing credential checks.
-        if result.get('email_required'):
+        if result.get('onboarding_required'):
             return result
         cookie = SimpleCookie()
         cookie.load(response.headers['set-cookie'])

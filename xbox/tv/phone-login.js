@@ -120,8 +120,8 @@
     return root.FjordLocalPhoneServer.start({
       login:function (data) {
         var address = root.FjordServerURL(data.server);
-        return request(address, '/login', {name:data.name,password:data.password,first_login_email:data.first_login_email || ''}).then(function (result) {
-          if (result.email_required) return result;
+        return request(address, '/login', {name:data.name,password:data.password,first_login_email:data.first_login_email || '',first_login_password:data.first_login_password || '',first_login_password_confirm:data.first_login_password_confirm || ''}).then(function (result) {
+          if (result.onboarding_required) return result;
           if (!/^[A-Za-z0-9_-]{43}$/.test(result.token || '')) throw new Error('Serveren returnerede et ugyldigt login-svar.');
           return {server:address,token:result.token};
         });

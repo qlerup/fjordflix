@@ -53,7 +53,7 @@
       } catch (error) { return Promise.resolve(response(400, {error:'Udfyld server, brugernavn og adgangskode.'})); }
       busy = true;
       return Promise.resolve().then(function () { return options.login(data); }).then(function (result) {
-        if (result.email_required) { busy = false; return response(200, result); }
+        if (result.onboarding_required || result.email_required) { busy = false; return response(200, result); }
         data.password = ''; busy = false;
         if (!valid()) { if (options.revoke) options.revoke(result); return response(410, {error:'Login blev annulleret eller udløb. Lav en ny QR-kode.'}); }
         active = false;

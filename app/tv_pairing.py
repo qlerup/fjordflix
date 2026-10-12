@@ -31,6 +31,8 @@ class Approval(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=128)
     first_login_email: str = Field(default="", max_length=254)
+    first_login_password: str = Field(default="", max_length=128)
+    first_login_password_confirm: str = Field(default="", max_length=128)
 
 
 def hashed(value):
@@ -139,8 +141,8 @@ def attach_pairing(tv, main, page_app=None):
         # Reuse local/Hub credential checks and throttling. This private response
         # and its Set-Cookie never reach the phone; only the digest is retained.
         private_response = Response()
-        result = main.login(main.LoginCredentials(name=data.name, password=data.password, first_login_email=data.first_login_email), private_response, request)
-        if result.get('email_required'):
+        result = main.login(main.LoginCredentials(name=data.name, password=data.password, first_login_email=data.first_login_email, first_login_password=data.first_login_password, first_login_password_confirm=data.first_login_password_confirm), private_response, request)
+        if result.get('onboarding_required'):
             return result
         cookie = SimpleCookie()
         cookie.load(private_response.headers['set-cookie'])
