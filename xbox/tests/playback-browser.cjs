@@ -21,6 +21,7 @@ async function fixture(browser, options={}) {
     HTMLMediaElement.prototype.load=function(){this.currentTime=0;};
     HTMLMediaElement.prototype.pause=function(){};
     HTMLMediaElement.prototype.play=function(){return Promise.resolve();};
+    Object.defineProperty(HTMLMediaElement.prototype,'readyState',{configurable:true,get(){return 3;}});
     Object.defineProperty(HTMLMediaElement.prototype,'src',{configurable:true,
       get(){return this.dataset.testSource||'';},set(value){this.dataset.testSource=value;}});
   });
@@ -44,6 +45,7 @@ async function fixture(browser, options={}) {
     if(p.endsWith('/trailer/prepare')) return reply({status:options.pendingTrailer?'preparing':'ready'});
     if(p.endsWith('/trailer/play')) return reply({trailer:true,mode:'Trailer',session:null,media_ticket:'trailer-ticket',url:origin+'/trailer.mp4',height:720,offset:0});
     if(p.endsWith('/tracks')) return reply(movie.tracks);
+    if(p.endsWith('/seek-preview')) return route.fulfill({headers,contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==','base64')});
     if(p.endsWith('/poster')||p.endsWith('/backdrop')) return route.fulfill({status:404,headers});
     if(p.endsWith('/plan')) {
       const request=req.postDataJSON();plans.push(request);
@@ -181,6 +183,16 @@ function assertStages(plays,quality) {
     assert.ok(!preparing.calls.some(call=>call.path.endsWith('/trailer/play')),'closing stops preparation polling before playback');
     await preparing.close();
     console.log('PASS trailer stream: own timeline/seeking, revoke, cancellation and unchanged movie resume');
+    const seeking=await fixture(browser);await seeking.start('1080');await seeking.loaded(1);
+    await seeking.page.locator('#video').evaluate(v=>v.dispatchEvent(new Event('playing')));
+    await seeking.page.locator('#forward').click();await seeking.loaded(2);
+    assert.equal(seeking.plays[1].start,150);
+    assert.match(await seeking.page.locator('#timeline').textContent(),/^2:30/);
+    await seeking.page.waitForFunction(()=>!document.getElementById('seek-preview').hidden);
+    await seeking.page.locator('#video').evaluate(v=>v.dispatchEvent(new Event('playing')));
+    assert.equal(await seeking.page.locator('#seek-preview').isVisible(),false);
+    await seeking.close();
+    console.log('PASS TV seek: target position survives stream reset, authenticated snapshot clears on playing');
     const buffering=await fixture(browser);await buffering.start('1080');await buffering.loaded(1);
     await buffering.page.locator('#video').evaluate(video=>{
       Object.defineProperty(video,'buffered',{configurable:true,value:{length:1,start:()=>0,end:()=>8}});

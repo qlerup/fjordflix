@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
-from fastapi import FastAPI, Request, Response, HTTPException, Depends
+from fastapi import FastAPI, Request, Response, HTTPException, Depends, Query
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -37,6 +37,7 @@ LOCK = threading.RLock()
 GPU = False
 ATTEMPTS = {}
 LOGIN_FAILURES = {}
+PREVIEW_SLOTS = threading.BoundedSemaphore(2)
 
 
 def db():
@@ -866,6 +867,29 @@ def episode_still(mid: str, u=Depends(user)):
         except (OSError, subprocess.TimeoutExpired):
             pass
     return FileResponse(frame) if frame.exists() else poster(mid, u)
+
+
+@app.get('/api/movies/{mid}/seek-preview')
+def seek_preview(mid: str, position: float = Query(0, ge=0, le=172800), u=Depends(user)):
+    row, meta = movie(mid)
+    target = min(position, max(0, meta.get('duration', 0) - 0.1))
+    if not PREVIEW_SLOTS.acquire(blocking=False):
+        raise HTTPException(429, 'Stillbilledet afventer en ledig plads.')
+    try:
+        result = subprocess.run([
+            'ffmpeg', '-v', 'error', '-nostdin', '-threads', '1', '-filter_threads', '1',
+            '-protocol_whitelist', 'file,pipe', '-ss', str(target), '-i', row['path'],
+            '-map', '0:v:0', '-frames:v', '1', '-an',
+            '-vf', 'scale=960:540:force_original_aspect_ratio=decrease',
+            '-threads', '1', '-f', 'image2pipe', '-c:v', 'mjpeg', 'pipe:1',
+        ], capture_output=True, timeout=8)
+        if result.returncode or not result.stdout.startswith(b'\xff\xd8'):
+            raise HTTPException(503, 'Stillbilledet kunne ikke hentes.')
+        return Response(result.stdout, media_type='image/jpeg', headers={'Cache-Control':'private, no-store'})
+    except (OSError, subprocess.TimeoutExpired):
+        raise HTTPException(503, 'Stillbilledet kunne ikke hentes.')
+    finally:
+        PREVIEW_SLOTS.release()
 
 
 @app.get('/api/movies/{mid}/file')

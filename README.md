@@ -1,5 +1,7 @@
 # FjordFlix beta 0.1
 
+Spoling viser nu den valgte position gennem streamskift og et stillbillede, indtil videoen er klar. Webafspilleren og LG 0.1.8/Xbox 0.1.15 bruger serverens nye seek-preview-endpoint; opdat?r server og TV-app sammen. Windows 0.1.17 bruger sin lokale previewdekoder og afviser billeder, der ankommer efter genoptaget afspilning.
+
 Logoer og appikoner: [Se den komplette ikonpakke og anvendelse](app/static/logos/README_logo.md).
 
 Privat streamingserver med dansk brugerflade, mørkt biografdesign og reel FFmpeg-transcoding.

@@ -1,6 +1,7 @@
 #player-dialog{width:min(1360px,96vw);max-width:none;padding:0;border:1px solid #ffffff18;border-radius:16px;background:#030407;overflow:hidden;aspect-ratio:16/9;max-height:94dvh;box-shadow:0 32px 120px #000b}
 #player-dialog .video-wrap{position:absolute;inset:0;min-height:0;display:grid;place-items:center}
 #player-dialog video{width:100%;height:100%;max-height:none;object-fit:contain}
+#player-dialog #player-seek-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#030407;pointer-events:none}
 #player-dialog .player-overlay{position:absolute;left:0;right:0;z-index:2;transition:opacity .25s}
 #player-dialog .player-top{top:0;padding:24px 28px 65px;gap:16px;background:linear-gradient(#000b,transparent);align-items:center}
 .player-heading{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}

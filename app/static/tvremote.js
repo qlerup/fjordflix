@@ -83,8 +83,7 @@ function handleRemoteCommand(event) {
   if(event.type === 'play' && $('player-dialog').open) { if(video.paused) video.play().catch(()=>toast('Tryk én gang på afspilleren på pc’en for at tillade afspilning.')); else video.pause(); }
   if(event.type === 'seek' && playback && !switching) {
     const target = Math.max(0,Math.min(selected.duration-0.1,position()+event.delta));
-    if(playback.mode === 'Direct Play') video.currentTime = target;
-    else startPlayback(target).catch(e=>showPlayerError(e.message));
+    seekPlayer(target);
   }
   if(event.type === 'volume') { video.volume = Math.max(0,Math.min(1,video.volume+event.delta)); }
   if(event.type === 'quality') {

@@ -1,5 +1,7 @@
 # FjordFlix til Xbox
 
+Spoling: Tidslinjen holder den valgte position under klarg?ring, og et stillbillede vises, indtil videoen er klar. Forsinkede billeder fra tidligere spoling afvises. Opdat?r serveren sammen med TV-appen for billeder fra det valgte tidspunkt.
+
 ## 0.1.14: automatisk næste afsnit
 
 I de sidste ti sekunder vises **Næste afsnit afspilles om … sek.** Tryk A/OK
@@ -36,7 +38,7 @@ Xbox 360 og den oprindelige Xbox understøttes ikke.
 
 ## Færdige filer
 
-- `dist/FjordFlix-Xbox_0.1.13.appx`: signeret installationspakke til Developer Mode.
+- `dist/FjordFlix-Xbox_0.1.15.appx`: signeret installationspakke til Developer Mode.
 - `dist/FjordFlix-Xbox.cer`: offentligt udviklercertifikat, hvis installationsværktøjet beder om det.
 - `dist/SHA256SUMS.txt`: kontrolsum for APPX-filen.
 - `dist/app/`: alle filer, der er pakket i appen.

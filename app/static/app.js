@@ -322,6 +322,7 @@ async function release() {
 }
 async function startPlayback(position = 0, fallback = false, forceCpu = false) {
   const generation = ++playGeneration; switching = true;
+  beginPlayerSeek(position);
   await release();
   $('player-title').textContent = selected.title; $('player-error').textContent = ''; $('player-loading').textContent = 'Gør filmen klar…'; $('player-loading').hidden = false;
   badge('actual-badge', 'Forbereder'); $('playback-info').textContent = '';
@@ -359,7 +360,7 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     }
     else { showPlayerError('Denne browser understøtter ikke HLS. Prøv en nyere browser.'); }
     FjordTracks.attach(result).catch(e => { if (e.name !== 'AbortError' && generation === playGeneration) toast(e.message); });
-  } finally { switching = false; }
+  } finally { if(generation===playGeneration){switching = false;flushPlayerSeek();} }
 }
 video.onplaying = () => { $('player-loading').hidden = true; if(playback) { playback.health?.playing(); badge('actual-badge', playback.mode); } };
 video.onwaiting = () => { if(playback) { playback.health?.waiting(); $('player-loading').hidden = false; $('player-loading').textContent = 'Bufferer…'; } };

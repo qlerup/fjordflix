@@ -1,5 +1,7 @@
 # FjordFlix til Windows
 
+Spoling: Tidslinjen holder den valgte position under klarg?ring, og et stillbillede vises, indtil videoen er klar. Forsinkede billeder fra tidligere spoling afvises. Windows bruger fortsat sin lokale mpv-previewdekoder.
+
 Version 0.1.16 viser en klikbar nedtælling til næste afsnit i de sidste ti
 sekunder af en serie. Næste afsnit starter automatisk ved slutningen, også
 på tværs af sæsoner. Nedtællingen følger afspilningen og står stille ved pause.

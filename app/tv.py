@@ -5,7 +5,7 @@ import time
 import logging
 import re
 from urllib.parse import urlparse
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from app import media, tv_pairing
 
@@ -81,6 +81,11 @@ def attach_tv(app, main):
     @tv.get('/tv-api/movies/{mid}/backdrop')
     def backdrop(mid: str, auth=Depends(authorized)):
         return main.backdrop(mid, auth[0])
+
+
+    @tv.get('/tv-api/movies/{mid}/seek-preview')
+    def seek_preview(mid: str, position: float = Query(0, ge=0, le=172800), auth=Depends(authorized)):
+        return main.seek_preview(mid, position, auth[0])
 
 
     @tv.post('/tv-api/movies/{mid}/favorite')

@@ -30,6 +30,41 @@ function playerIcon(button, name) {
 }
 playerDialog.querySelectorAll('[data-icon]').forEach(b=>playerIcon(b,b.dataset.icon));
 let playerIdleTimer, playerScrubbing=false;
+let playerSeek=null, queuedPlayerSeek=null;
+const seekPreview=document.createElement('img');
+seekPreview.id='player-seek-preview';seekPreview.alt='';seekPreview.hidden=true;
+playerDialog.querySelector('.video-wrap').append(seekPreview);
+function clearPlayerSeek() {
+  playerSeek=null;seekPreview.hidden=true;seekPreview.removeAttribute('src');
+}
+function beginPlayerSeek(target) {
+  const pending={target};playerSeek=pending;
+  // Freeze the visible frame before release() empties the video element.
+  try {
+    if(video.readyState>=2 && video.videoWidth) {
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.min(960,video.videoWidth);canvas.height=Math.round(canvas.width*video.videoHeight/video.videoWidth);
+      canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+      seekPreview.src=canvas.toDataURL('image/jpeg',.8);seekPreview.hidden=false;
+    }
+  } catch { /* Cross-origin playback may disallow canvas capture. */ }
+  if(seekPreview.hidden){seekPreview.src=FjordLibrary.artwork(selected,'backdrop');seekPreview.hidden=false;}
+  const image=new Image();
+  image.onload=()=>{if(playerSeek===pending && playerDialog.open){seekPreview.src=image.src;seekPreview.hidden=false;}};
+  image.src=`/api/movies/${encodeURIComponent(selected.id)}/seek-preview?position=${target}`;
+  updatePlayerTimeline();
+}
+function finishPlayerSeek() {
+  if(!playerSeek || switching || !playback || video.seeking || video.readyState<2 || queuedPlayerSeek!==null) return;
+  if(Math.abs(position()-playerSeek.target)>2) return;
+  clearPlayerSeek();updatePlayerTimeline();
+}
+function flushPlayerSeek() {
+  if(queuedPlayerSeek===null || !playerDialog.open)return;
+  const target=queuedPlayerSeek;queuedPlayerSeek=null;
+  seekPlayer(target);
+}
+for(const event of ['playing','seeked','timeupdate'])video.addEventListener(event,finishPlayerSeek);
 function wakePlayerControls() {
   playerDialog.classList.remove('controls-hidden');
   clearTimeout(playerIdleTimer);
@@ -42,7 +77,8 @@ function wakePlayerControls() {
 }
 function updatePlayerTimeline() {
   if(playerScrubbing) return;
-  const value=position(), duration=selected?.duration || 0;
+  const value=playerSeek?.target ?? position(), duration=selected?.duration || 0;
+  $('timeline').max=duration;
   $('timeline').value=value;
   $('timeline').style.setProperty('--played',`${duration ? value/duration*100 : 0}%`);
   $('timeline-time').textContent=`${clock(value)} / ${clock(duration)}`;
@@ -55,9 +91,10 @@ function togglePlayer() {
   wakePlayerControls();
 }
 function seekPlayer(value) {
-  if(!playback || switching) return;
+  if(!Number.isFinite(value) || (!playback && !switching && !playerSeek)) return;
   const target=Math.max(0,Math.min((selected?.duration || 0)-0.1,value));
-  if(playback.mode==='Direct Play') video.currentTime=target;
+  if(switching){queuedPlayerSeek=target;beginPlayerSeek(target);return;}
+  if(playback?.mode==='Direct Play') {beginPlayerSeek(target);video.currentTime=target;}
   else startPlayback(target).catch(e=>showPlayerError(e.message));
   wakePlayerControls();
 }
@@ -111,7 +148,7 @@ $('timeline').oninput=()=>{
 $('timeline').onchange=()=>{playerScrubbing=false;seekPlayer(Number($('timeline').value));};
 $('timeline').addEventListener('blur',()=>{playerScrubbing=false;updatePlayerTimeline();});
 for(const name of ['pointermove','pointerdown','keydown','focusin']) playerDialog.addEventListener(name,wakePlayerControls);
-playerDialog.addEventListener('close',()=>{clearTimeout(playerIdleTimer);playerScrubbing=false;playerDialog.classList.remove('controls-hidden');unlockPlayerOrientation();});
+playerDialog.addEventListener('close',()=>{clearTimeout(playerIdleTimer);playerScrubbing=false;queuedPlayerSeek=null;clearPlayerSeek();playerDialog.classList.remove('controls-hidden');unlockPlayerOrientation();});
 document.addEventListener('fullscreenchange',()=>{
   const full=!!document.fullscreenElement;
   if (!full) unlockPlayerOrientation();

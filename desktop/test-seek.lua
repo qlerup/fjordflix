@@ -6,12 +6,13 @@ local function test()
     local keys,events,messages={}, {}, {}
     local now,mx,my=10,640,605
     local rendered='', last_request, bitmap, tick
+    local updates=0
     local fake={}
     function fake.get_time() return now end
     function fake.get_property_native(k,fallback) if props[k]~=nil then return props[k] end; return fallback end
     function fake.get_osd_size() return 1280,720 end
     function fake.get_mouse_pos() return mx,my end
-    function fake.create_osd_overlay() return {update=function(self) rendered=self.data end,remove=function() end} end
+    function fake.create_osd_overlay() return {update=function(self) rendered=self.data; updates=updates+1 end,remove=function() end} end
     function fake.command_native(c) if c[1]=='escape-ass' then return c[2] end; if c.name=='overlay-add' then bitmap=c end end
     function fake.commandv(c,...)
         local a={...}
@@ -42,6 +43,9 @@ local function test()
     assert(rendered:find('Gør klar',1,true),'old restart cannot finish a newer seek')
     props['time-pos']=50;events['playback-restart']()
     assert(not rendered:find('Gør klar',1,true),'ready frame clears loading state')
+    local before=updates
+    messages['fjord-preview-ready'](last_request[2],last_request[3],'late.bgra')
+    assert(updates==before,'a late snapshot must be ignored after playback resumes')
 end
 local ok,err=pcall(test)
 if not ok then real.msg.error(tostring(err)) else real.msg.info('PASS: optimistic timeline, pending preview, rapid seeks and stale completion') end

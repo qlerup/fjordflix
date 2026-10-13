@@ -10,6 +10,53 @@
   var server = '', token = '', images = [], imageGeneration = 0, backdropURL;
   var serverFeatures = [], fallbackStage = '', lastRequest, lastFailure = '', lastPlan;
   var runtime = null, streamProgress = null, waitingCount = 0, stalledCount = 0;
+  var seekTarget = null, queuedSeek = null, previewSerial = 0, previewXHR = null, previewURL = null;
+  var seekImage = document.createElement('img');
+  seekImage.id = 'seek-preview'; seekImage.alt = ''; seekImage.hidden = true;
+  $('player').insertBefore(seekImage, $('player-controls'));
+  function clearSeek() {
+    seekTarget = null; previewSerial++;
+    if (previewXHR) { previewXHR.abort(); previewXHR = null; }
+    seekImage.hidden = true; seekImage.removeAttribute('src');
+    if (previewURL) { URL.revokeObjectURL(previewURL); previewURL = null; }
+  }
+  function beginSeek(at) {
+    seekTarget = at; var serial = ++previewSerial;
+    if (previewXHR) previewXHR.abort();
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.min(960, video.videoWidth); canvas.height = Math.round(canvas.width * video.videoHeight / video.videoWidth);
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        seekImage.src = canvas.toDataURL('image/jpeg', 0.8); seekImage.hidden = false;
+      }
+    } catch (error) { /* Some TV media transports cannot be captured to canvas. */ }
+    if (seekImage.hidden && backdropURL) { seekImage.src = backdropURL; seekImage.hidden = false; }
+    text('timeline', clock(at) + ' / ' + clock(playbackDuration()));
+    var xhr = new XMLHttpRequest(); previewXHR = xhr;
+    xhr.open('GET', server + '/tv-api/movies/' + encodeURIComponent(selected.id) + '/seek-preview?position=' + at);
+    xhr.responseType = 'blob'; xhr.timeout = 10000; xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    xhr.onload = function () {
+      if (serial !== previewSerial || xhr.status !== 200 || $('player').hidden) return;
+      var url = URL.createObjectURL(xhr.response), image = new Image();
+      image.onload = function () {
+        if (serial !== previewSerial) { URL.revokeObjectURL(url); return; }
+        if (previewURL) URL.revokeObjectURL(previewURL);
+        previewURL = url; seekImage.src = url; seekImage.hidden = false;
+      };
+      image.onerror = function () { URL.revokeObjectURL(url); }; image.src = url;
+    };
+    xhr.send();
+  }
+  function finishSeek() {
+    if (seekTarget !== null && !busy && queuedSeek === null && playback && !video.seeking && video.readyState >= 2 && Math.abs(position() - seekTarget) < 2) clearSeek();
+  }
+  function seekTo(at) {
+    if (busy) { queuedSeek = at; beginSeek(at); return; }
+    if (!playback || playback.session) start(at, fallbackStage === 'remux' ? 'remux' : fallbackStage === 'transcode');
+    else { if (!playback.trailer) beginSeek(at); video.currentTime = at; }
+    showControls();
+  }
   function audioDescription(output) {
     if (!output || !output.codec) return '';
     return 'Lyd: ' + output.codec.toUpperCase() + (output.channels ? ' · ' + output.channels + ' kanaler' : '') +
@@ -39,7 +86,7 @@
     }).catch(function (e) { if (playback === current) playerError(e.message); });
   }
   function diagnostics() {
-    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.14' : 'FjordFlix LG 0.1.7'];
+    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.15' : 'FjordFlix LG 0.1.8'];
     lines.push(probe.source || '');
     lines.push('Lydvej: ' + (probe.audioTransport || '?') + ' · MKV-format: ' + (probe.htmlMatroska || '?'));
     var audioOutput = playback && playback.audio_output || lastPlan && lastPlan.audio_output;
@@ -92,6 +139,7 @@
   }
   function clearImages() { ++imageGeneration; images.forEach(function (url) { URL.revokeObjectURL(url); }); images = []; }
   function showLogin() {
+    queuedSeek = null; clearSeek();
     window.TVPhoneLogin.cancel();
     document.body.classList.add('auth-screen');
     ++generation; busy = false; $('login').hidden = false; release(); $('player').hidden = true;
@@ -377,6 +425,7 @@
     if (!force) lastFailure = '';
     var id = ++generation, movie = selected;
     $('player').hidden = false; $('detail').hidden = true; message(''); text('player-title', movie.title); text('play-status', 'Gør filmen klar…');
+    beginSeek(at);
     $('toggle').focus(); showControls();
     release().then(function () {
       if (id !== generation) return null;
@@ -418,10 +467,15 @@
       video.src = result.url; video.load();
       loadSubtitles(movie, result, id);
       startTimer = setTimeout(function () { if (id === generation) recover('Videoen kom ikke i gang.'); }, 25000);
-    }).catch(function (error) { if (id === generation) playerError(error.message); }).then(function () { if (id === generation) busy = false; });
+    }).catch(function (error) { if (id === generation) playerError(error.message); }).then(function () {
+      if (id !== generation) return;
+      busy = false;
+      if (queuedSeek !== null) { var next = queuedSeek; queuedSeek = null; seekTo(next); }
+    });
   }
   function startTrailer() {
     if (busy || !selected) return;
+    queuedSeek = null; clearSeek();
     busy = true;
     var id = ++generation, movie = selected, deadline = Date.now() + 450000;
     $('player').hidden = false; $('detail').hidden = true;
@@ -463,14 +517,15 @@
     } else { playerError(lastFailure + (playback.mode === 'Transcoding' ? ' Den konverterede video kunne ikke afspilles. Se Afspilningsdetaljer.' : ' Original video kunne ikke afspilles. Vælg 1080p for konvertering, eller se Afspilningsdetaljer.')); release(); }
   }
   function closePlayer() {
+    queuedSeek = null; clearSeek();
     ++generation; busy = false; save().catch(function (e) { message(e.message); });
     release(); $('player').hidden = true;
     if (!$('library').hidden) { openDetail(selected); render(); }
   }
   function seek(delta) {
-    if (!playback || busy) return;
-    var at = Math.max(0, Math.min(playbackDuration() - 1, position() + delta));
-    if (playback.session) start(at, fallbackStage === 'remux' ? 'remux' : fallbackStage === 'transcode'); else video.currentTime = at; showControls();
+    if (!playback && seekTarget === null) return;
+    var at = Math.max(0, Math.min(playbackDuration() - 1, (seekTarget !== null ? seekTarget : position()) + delta));
+    seekTo(at);
   }
   $('login-form').onsubmit = function (event) {
     window.TVPhoneLogin.cancel();
@@ -536,13 +591,15 @@
   $('stop').onclick = closePlayer;
   $('toggle').onclick = function () { if (!playback || busy) return; if (video.paused) playVideo(); else video.pause(); showControls(); };
   $('rewind').onclick = function () { seek(-30); }; $('forward').onclick = function () { seek(30); };
-  video.onplaying = function () { clearTimeout(startTimer); message(''); playbackStatus(); showControls(); };
+  video.onplaying = function () { clearTimeout(startTimer); finishSeek(); message(''); playbackStatus(); showControls(); };
+  video.onseeked = finishSeek;
   video.onpause = showControls;
   video.onwaiting = function () { if (playback && !busy) { waitingCount++; text('play-status', 'Bufferer…'); diagnostics(); } };
   video.onstalled = function () { if (playback && !busy) { stalledCount++; diagnostics(); } };
   video.onerror = function () { if (!busy) recover('TV’et kunne ikke afspille formatet.'); };
   video.ontimeupdate = function () {
-    text('timeline', clock(position()) + ' / ' + clock(playbackDuration()));
+    finishSeek();
+    text('timeline', clock(seekTarget !== null ? seekTarget : position()) + ' / ' + clock(playbackDuration()));
     updateNextEpisode(false);
     if (playback && Date.now() - lastSaved > 10000) { lastSaved = Date.now(); save().catch(function (e) { message(e.message); }); }
   };
