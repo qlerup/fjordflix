@@ -53,7 +53,6 @@ const FjordPlaybackHealth = {
         parts.push(`Bufferstop: ${s.waits}`);
         if (s.recoveries) parts.push(`Genoprettelsesforsøg: ${s.recoveries}`);
         if (s.segment) parts.push(`Segment hentet: ${s.segment.seconds.toFixed(2)} s / ${s.segment.duration.toFixed(2)} s video`);
-        if (s.errors.length) parts.push(`HLS: ${s.errors.at(-1).detail}`);
         return parts.join(' · ');
       }
     };
