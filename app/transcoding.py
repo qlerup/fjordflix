@@ -95,6 +95,15 @@ def _works(path, inputs, filters, encoder='h264_nvenc'):
 @lru_cache(maxsize=32)
 def _probe(path, size, modified, height, cpu_filters, hdr, encoder):
     if hdr:
+        # Scale 10-bit frames before tone mapping: no CPU scaler and much less
+        # data to transfer for 4K -> 1080p. Probe the whole chain on this source.
+        gpu_inputs = ('-init_hw_device', 'opencl=ocl:,device_type=gpu,device_vendor=NVIDIA',
+                      '-filter_hw_device', 'ocl', '-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda')
+        gpu_filters = (f'scale_cuda=-2:{height}:format=p010le,hwdownload,format=p010le,hwupload,'
+                       'tonemap_opencl=tonemap=hable:desat=0:t=bt709:p=bt709:m=bt709:r=tv:format=nv12,'
+                       'hwdownload,format=nv12')
+        if _works(path, gpu_inputs, gpu_filters, encoder):
+            return gpu_inputs, gpu_filters
         # CUDA decodes to software frames for OpenCL upload. The expensive HDR
         # conversion runs on the NVIDIA GPU; CPU scaling remains after download.
         opencl_inputs = ('-init_hw_device', 'opencl=ocl:,device_type=gpu,device_vendor=NVIDIA',
@@ -121,7 +130,7 @@ def accelerated_filters(path, height, cpu_filters, *, enabled, hdr=False, burn=F
     except OSError:
         return (), cpu_filters
     inputs, filters = _probe(str(path), stat.st_size, stat.st_mtime_ns, height, cpu_filters, hdr, encoder)
-    if bitmap and '-hwaccel_output_format' in inputs:
+    if bitmap and '-hwaccel_output_format' in inputs and not hdr:
         # CPU subtitle compositing needs software frames after GPU scaling.
         filters += ',hwdownload,format=nv12'
     return inputs, filters

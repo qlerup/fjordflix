@@ -1,6 +1,6 @@
 {
   "id": "dk.fjordflix.tv",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "vendor": "FjordFlix",
   "type": "web",
   "main": "index.html",

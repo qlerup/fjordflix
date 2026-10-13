@@ -64,7 +64,7 @@ def test_hdr_keeps_cpu_tonemapping_with_gpu_decode(video, monkeypatch):
     args, filters = transcoding.accelerated_filters(video, 1080, 'tonemap,scale', enabled=True, hdr=True)
     assert args == ('-hwaccel', 'cuda')
     assert filters == 'tonemap,scale'
-    assert len(commands) == 2
+    assert len(commands) == 3
 
 
 def test_hdr_prefers_gpu_tonemapping_and_preserves_sdr_output_colors(video, monkeypatch):
@@ -75,13 +75,31 @@ def test_hdr_prefers_gpu_tonemapping_and_preserves_sdr_output_colors(video, monk
     assert 'device_vendor=NVIDIA' in args[1]
     assert 'tonemap_opencl=' in filters and 't=bt709:p=bt709:m=bt709:r=tv' in filters
     assert 'hwdownload,format=nv12' in filters
-    assert 'scale=-2:2160' in filters
+    assert 'scale_cuda=-2:2160:format=p010le' in filters
+    assert filters.index('scale_cuda=') < filters.index('tonemap_opencl=')
+    assert 'scale=' not in filters
     assert len(commands) == 1
 
 
 def test_hdr_falls_back_when_both_gpu_probes_fail(video, monkeypatch):
     monkeypatch.setattr(transcoding.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=1, stderr=b'GPU unavailable'))
     assert transcoding.accelerated_filters(video, 2160, 'cpu-tonemap', enabled=True, hdr=True) == ((), 'cpu-tonemap')
+
+
+def test_hdr_unsupported_cuda_scaling_keeps_working_opencl_path(video, monkeypatch):
+    def run(cmd, **kw):
+        filters = cmd[cmd.index('-vf') + 1]
+        return SimpleNamespace(returncode=int('scale_cuda=' in filters), stderr=b'Unsupported GPU scaling')
+    monkeypatch.setattr(transcoding.subprocess, 'run', run)
+    args, filters = transcoding.accelerated_filters(video, 1080, 'cpu', enabled=True, hdr=True)
+    assert 'tonemap_opencl=' in filters and 'scale=-2:1080' in filters
+
+
+def test_hdr_bitmap_downloads_once_after_gpu_tonemap(video, monkeypatch):
+    monkeypatch.setattr(transcoding.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0))
+    _, filters = transcoding.accelerated_filters(video, 1080, 'cpu', enabled=True, hdr=True, burn=True, bitmap=True)
+    assert filters.endswith('hwdownload,format=nv12')
+    assert filters.count('hwdownload,format=nv12') == 1
 
 
 def test_bitmap_burn_preserves_gpu_scaling_and_downloads_for_overlay(video, monkeypatch):

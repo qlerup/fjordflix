@@ -6,6 +6,7 @@ import re
 import shutil
 import signal
 import subprocess
+import time
 
 from app import transcoding, hls_subtitles
 
@@ -203,13 +204,52 @@ def delivered(job, filename):
         # Prefetching may advance this watermark, but it is bounded by the client
         # buffer. HEAD requests must never advance it.
         job['delivered'] = max(job.get('delivered', 0), segments[filename])
+        job.setdefault('recent_segments', {})[filename] = time.monotonic()
+
+
+def cleanup(job, position):
+    """Retire only committed media behind a managed client's actual playhead.
+
+    Keep the EVENT timeline intact for timestamps and GPU/CPU continuation.
+    Managed seeks open a new job; AirPlay and old clients retain all segments.
+    """
+    if (position is None or not job.get('cleanup_allowed') or job.get('error') or
+            job.get('transport') == 'matroska' or os.getenv('TRANSCODE_CLEANUP', '1') != '1'):
+        return
+    segments, encoded = playlist_info(playlist(job))
+    played = min(max(0, position - job['offset']), encoded, job.get('delivered', 0))
+    cutoff = played - max(60, float(os.getenv('TRANSCODE_RETAIN_SECONDS', '180')))
+    entries = list(segments.items())
+    now = time.monotonic()
+    recent = job.setdefault('recent_segments', {})
+    removed = 0
+    for index, (name, start) in enumerate(entries):
+        end = entries[index + 1][1] if index + 1 < len(entries) else encoded
+        if end >= cutoff:
+            break
+        if not re.fullmatch(r'(?:cpu_)?segment\d+\.(?:ts|m4s)', name):
+            continue
+        if now - recent.get(name, float('-inf')) < 60:
+            continue
+        path = job['folder'] / name
+        try:
+            size = path.stat().st_size
+            path.unlink()
+            removed += size
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            log.warning('Could not retire HLS segment %s: %s', name, exc)
+            continue
+        recent.pop(name, None)
+    job['reclaimed_bytes'] = job.get('reclaimed_bytes', 0) + removed
 
 
 def status(job):
     result = transcoding.progress(job['folder'])
     if 'encoded_seconds' in result:
         result['encoded_seconds'] += job.get('encoded_base', 0)
-    result.update(paused=bool(job.get('paused')), encoder=job.get('encoder'))
+    result.update(paused=bool(job.get('paused')), encoder=job.get('encoder'), reclaimed_bytes=job.get('reclaimed_bytes', 0))
     if job.get('error'):
         result['error'] = job['error']['message']
         result['cpu_required'] = bool(job.get('cpu_required'))

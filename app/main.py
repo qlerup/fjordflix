@@ -13,7 +13,7 @@ import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Annotated
 from urllib.parse import urlparse
 
 from argon2 import PasswordHasher
@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
-from app import transcoding, active_streams, trailers, stream_control
+from app import transcoding, active_streams, trailers, stream_control, encoding_quality
 from app.quality import hdr10_base as compatible_hdr10_base
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -1123,7 +1123,9 @@ def video_plan(meta, data):
             target = min(target, 2160)
             if meta.get('width', 0) > 0:
                 target = min(target, max(2, int(3840 * meta['height'] / meta['width']) // 2 * 2))
-            return {'mode':'Transcoding','height':target,'width':int(meta.get('width',0)*target/meta['height'])//2*2,'mbps':25,'video_codec':'hevc','dynamic_range':'SDR',
+            target, mbps = encoding_quality.output(meta, target, 25, codec='hevc', xbox=True, box=2160,
+                                                  bandwidth=data.bandwidth if data.quality == 'auto' else 0)
+            return {'mode':'Transcoding','height':target,'width':int(meta.get('width',0)*target/meta['height'])//2*2,'mbps':mbps,'video_codec':'hevc','dynamic_range':'SDR',
                     'reason':reason + ' Videoen konverteres til kompatibel HEVC i op til 4K; HDR konverteres til SDR.'}
         # Xbox's native H.264 fallback is Full HD, including wide cinema frames.
         # A 1080px height alone would still produce 2580px-wide 2.39:1 video.
@@ -1134,6 +1136,11 @@ def video_plan(meta, data):
         mbps = min(mbps, 8)
         if meta['height'] > max_height:
             reason += ' Xbox bruger højst 1080p (1920 × 1080) ved H.264-konvertering. Original 4K kræver kompatibel Direct Play eller Direct Stream.'
+    box = int(quality) if quality.isdigit() else (2160 if data.quality == 'original' else 1080)
+    if data.client_profile == 'xbox':
+        box = min(box, 1080)
+    target, mbps = encoding_quality.output(meta, target, mbps, xbox=data.client_profile == 'xbox', box=box,
+                                          bandwidth=data.bandwidth if data.quality == 'auto' else 0)
     return {'mode': 'Transcoding', 'height': target, 'mbps': mbps, 'reason': reason}
 
 
@@ -1265,7 +1272,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             shutil.rmtree(folder, ignore_errors=True)
             raise HTTPException(503, 'Serverens FFmpeg kunne ikke startes.')
         JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time(), 'idle_timeout': media.AIRPLAY_TTL if data.airplay else 120,
-                     'offset': offset, 'encoder': encoder}
+                     'offset': offset, 'encoder': encoder, 'cleanup_allowed': not data.airplay}
         if use_gpu and result['mode'] == 'Transcoding':
             JOBS[sid]['cpu_command'] = transcoding.cpu_command(cmd, hardware_inputs, ','.join(filters), bitmap=bitmap,
                                                               subtitle_index=subtitle['index'] if bitmap else None)
@@ -1442,12 +1449,13 @@ def media_revoke(data: MediaTicket, request: Request, u=Depends(user)):
 
 
 @app.post('/api/streams/{sid}/heartbeat')
-def heartbeat(sid: str, u=Depends(user)):
+def heartbeat(sid: str, u=Depends(user), position: Annotated[float | None, Query(ge=0, le=1e8, allow_inf_nan=False)] = None):
     with LOCK:
         job = JOBS.get(sid)
         if not job or job['user'] != u['id']:
             raise HTTPException(404)
         job['touch'] = time.time()
+        stream_control.cleanup(job, position)
         stream_control.tick(job, DATA)
         status = stream_control.status(job)
         if job.get('error') and not job.get('cpu_required'):

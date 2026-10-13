@@ -34,7 +34,7 @@ def test_xbox_hevc_conversion_keeps_4k_including_cinema_aspect(quality):
     result = main.decide(hevc_meta(height=1608),data)
     assert result['mode'] == 'Transcoding'
     assert result['video_codec'] == 'hevc' and result['height'] == 1608
-    assert result['mbps'] == 25
+    assert result['mbps'] == 15.03  # HEVC and the smaller cinema image need fewer bits.
     lower = main.decide(hevc_meta(),data.model_copy(update={'quality':'1080'}))
     assert lower['height'] == 1080 and 'video_codec' not in lower
     with pytest.raises(main.HTTPException):
@@ -84,7 +84,9 @@ def test_stream_progress_is_owner_scoped_and_private(tv_client, tmp_path):
         assert client.post(f'/tv-api/streams/{sid}/heartbeat').status_code == 401
         response = client.post(f'/tv-api/streams/{sid}/heartbeat',headers=headers)
         assert response.status_code == 200
-        assert response.json() == {'ok':True,'transcoding':{'finished':False,'speed':0.75,'encoded_seconds':6,'paused':False,'encoder':None}}
+        assert response.json() == {'ok':True,'transcoding':{'finished':False,'speed':0.75,'encoded_seconds':6,'paused':False,'encoder':None,'reclaimed_bytes':0}}
+        for position in ('-1', 'nan', 'inf', 'invalid'):
+            assert client.post(f'/tv-api/streams/{sid}/heartbeat?position={position}',headers=headers).status_code == 422
         assert str(tmp_path) not in response.text
         with pytest.raises(main.HTTPException) as foreign:
             main.heartbeat(sid, {'id':'someone-else'})
@@ -111,9 +113,9 @@ def test_xbox_wide_video_stays_inside_1920_by_1080_and_manual_lower_quality_surv
     plan = main.decide(meta, main.Playback(client_profile='xbox', quality='original'))
     assert plan['height'] == 804  # 3840:1608 -> 1920:804, not 2580:1080.
     lower = main.decide(meta, main.Playback(client_profile='xbox', quality='720'))
-    assert (lower['height'], lower['mbps']) == (720, 4)
+    assert (lower['height'], lower['mbps']) == (536, 3.21)  # Fit within 1280 x 720.
     default = main.decide(meta, main.Playback(quality='original'))
-    assert (default['height'], default['mbps']) == (1608, 25)
+    assert (default['height'], default['mbps']) == (1608, 20.04)
 
 
 def test_bitmap_burn_reason_takes_precedence_over_decoder_reason():

@@ -392,7 +392,8 @@ $('player-close').onclick = closePlayer;
 $('player-dialog').addEventListener('cancel', event => { event.preventDefault(); closePlayer(); });
 setInterval(() => {
   const current = playback;
-  if(current?.session) api(`/streams/${current.session}/heartbeat`, 'POST').then(status => {
+  const played = !switching && !playerSeek && !video.seeking && video.readyState >= 2 ? `?position=${position()}` : '';
+  if(current?.session) api(`/streams/${current.session}/heartbeat${played}`, 'POST').then(status => {
     if (playback !== current || current.mode !== 'Transcoding') return;
     const progress = status.transcoding;
     if (progress?.cpu_required) {

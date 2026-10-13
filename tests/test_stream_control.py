@@ -66,6 +66,102 @@ def test_completed_job_is_not_destroyed_when_disk_becomes_low(job, monkeypatch):
     assert 'error' not in job and (job['folder']/'index.m3u8').exists()
 
 
+def test_cleanup_uses_played_position_not_prefetch_and_preserves_timeline(job, monkeypatch):
+    monkeypatch.setenv('TRANSCODE_RETAIN_SECONDS', '60')
+    monkeypatch.setattr(control.time, 'monotonic', lambda: 1000)
+    text = manifest(120, end=True)
+    (job['folder']/'index.m3u8').write_text(text)
+    for name in control.playlist_info(text)[0]:
+        (job['folder']/name).write_bytes(b'segment')
+    (job['folder']/'init.mp4').write_bytes(b'init')
+    job.update(cleanup_allowed=True, delivered=238, recent_segments={'segment00000.ts':999})
+    control.cleanup(job, 30 + 10)  # Client prefetched the film, but has played 10s.
+    assert (job['folder']/'segment00001.ts').exists()
+    control.cleanup(job, 30 + 100)
+    assert (job['folder']/'segment00000.ts').exists()  # Recent request protected.
+    assert not (job['folder']/'segment00001.ts').exists()
+    assert (job['folder']/'segment00019.ts').exists()  # Segment ending at cutoff.
+    assert (job['folder']/'init.mp4').exists()
+    assert control.playlist(job) == text and job['reclaimed_bytes'] > 0
+    reclaimed = job['reclaimed_bytes']
+    control.cleanup(job, 30 + 100)
+    assert job['reclaimed_bytes'] == reclaimed  # Pause is idempotent.
+
+
+@pytest.mark.parametrize('allowed,position,enabled,transport', [
+    (False,200,'1',None), (True,None,'1',None), (True,200,'0',None), (True,200,'1','matroska')])
+def test_cleanup_excludes_airplay_legacy_disabled_and_matroska(job, monkeypatch, allowed, position, enabled, transport):
+    monkeypatch.setenv('TRANSCODE_CLEANUP', enabled)
+    job.update(cleanup_allowed=allowed, transport=transport, delivered=200)
+    path = job['folder']/'segment00000.ts'
+    path.write_bytes(b'keep')
+    control.cleanup(job, position)
+    assert path.exists()
+
+
+def test_cleanup_cpu_continuation_keeps_manifest_offsets_and_init(job, monkeypatch):
+    monkeypatch.setenv('TRANSCODE_RETAIN_SECONDS', '60')
+    prefix = manifest(40)
+    cpu = manifest(60, 'cpu_segment', 40, True)
+    (job['folder']/'cpu.m3u8').write_text(cpu)
+    job.update(prefix=prefix, encoded_base=80, cleanup_allowed=True, delivered=198)
+    control.publish_cpu(job)
+    for name in control.playlist_info(control.playlist(job))[0]:
+        (job['folder']/name).write_bytes(b'data')
+    control.cleanup(job, job['offset'] + 160)
+    assert not (job['folder']/'segment00039.ts').exists()
+    assert not (job['folder']/'cpu_segment00040.ts').exists()
+    assert (job['folder']/'cpu_segment00060.ts').exists()
+    control.publish_cpu(job)
+    segments, duration = control.playlist_info(control.playlist(job))
+    assert duration == 200 and segments['cpu_segment00060.ts'] == 120
+    assert '#EXT-X-DISCONTINUITY' in control.playlist(job)
+
+
+def test_real_cleanup_then_backward_seek_starts_decodable_stream(tmp_path, monkeypatch):
+    if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
+        pytest.skip('Real FFmpeg required')
+    from app import main
+    from starlette.requests import Request
+    source = tmp_path/'source.mp4'
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=160x90:r=5:d=90',
+                    '-c:v','libx264','-preset','ultrafast','-y',str(source)],check=True,capture_output=True,timeout=15)
+    meta = main.probe(source)
+    monkeypatch.setattr(main,'DATA',tmp_path)
+    (tmp_path/'streams').mkdir()
+    monkeypatch.setattr(main,'GPU',False)
+    monkeypatch.setattr(main,'movie',lambda _: ({'id':'fixture','title':'Seek','path':str(source)},meta))
+    monkeypatch.setattr(main.media,'issue',lambda result,*args,**kwargs: result)
+    monkeypatch.setattr(main.active_streams,'begin',lambda result,*args,**kwargs: result)
+    monkeypatch.setenv('TRANSCODE_RETAIN_SECONDS','60')
+    request = Request({'type':'http','method':'POST','headers':[]})
+    owner = {'id':'owner','name':'Owner'}
+    sessions = []
+    try:
+        first = main.play('fixture',main.Playback(quality='480'),request,owner)
+        sessions.append(first['session'])
+        job = main.JOBS[first['session']]
+        job['process'].wait(timeout=15)
+        names = list(control.playlist_info(control.playlist(job))[0])
+        control.delivered(job,names[-1])
+        main.heartbeat(first['session'],owner,85)
+        assert not (job['folder']/names[0]).exists()
+        assert (job['folder']/names[-1]).exists()
+        # The same /play flow used by web and TV seeks starts at the requested
+        # source timestamp even when the previous job has retired those bytes.
+        back = main.play('fixture',main.Playback(quality='480',start=4),request,owner)
+        sessions.append(back['session'])
+        assert back['session'] != first['session'] and back['offset'] == 4
+        new = main.JOBS[back['session']]
+        new['process'].wait(timeout=15)
+        assert (new['folder']/'segment00000.ts').exists()
+        subprocess.run(['ffmpeg','-v','error','-xerror','-i',str(new['folder']/'index.m3u8'),
+                        '-f','null','-'],check=True,capture_output=True,timeout=15)
+    finally:
+        for sid in sessions:
+            main.stop_job(sid)
+
+
 def test_media_head_does_not_advance_buffer_and_foreign_user_cannot_control_job(job, monkeypatch):
     from app import main
     from starlette.requests import Request

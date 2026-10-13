@@ -192,8 +192,8 @@ def attach_tv(app, main):
 
 
     @tv.post('/tv-api/streams/{sid}/heartbeat')
-    def heartbeat(sid: str, auth=Depends(authorized)):
-        return main.heartbeat(sid, auth[0])
+    def heartbeat(sid: str, auth=Depends(authorized), position: float | None = Query(None, ge=0, le=1e8, allow_inf_nan=False)):
+        return main.heartbeat(sid, auth[0], position)
 
 
     @tv.delete('/tv-api/streams/{sid}')

@@ -209,7 +209,7 @@ def test_hdr_transcoding_preserves_resolution_without_upscaling(height, quality)
     assert plan['mode'] == 'Transcoding'
     assert plan['height'] == height
     if height > 1080:
-        assert plan['mbps'] == 25
+        assert plan['mbps'] == (25 if height == 2160 else 19.96)
 
 def test_hdr_hevc_remux_preserves_video_and_surround_audio(tv_client):
     import subprocess

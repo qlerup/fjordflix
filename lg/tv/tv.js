@@ -76,7 +76,8 @@
   function streamHeartbeat() {
     if (!playback || !playback.session) return;
     var current = playback;
-    api('/streams/' + current.session + '/heartbeat', 'POST').then(function (result) {
+    var played = !busy && seekTarget === null && !video.seeking && video.readyState >= 2 ? '?position=' + position() : '';
+    api('/streams/' + current.session + '/heartbeat' + played, 'POST').then(function (result) {
       if (playback !== current) return;
       if (result.transcoding && result.transcoding.cpu_required) {
         start(position(), false, true); return;
@@ -86,7 +87,7 @@
     }).catch(function (e) { if (playback === current) playerError(e.message); });
   }
   function diagnostics() {
-    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.15' : 'FjordFlix LG 0.1.8'];
+    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.16' : 'FjordFlix LG 0.1.9'];
     lines.push(probe.source || '');
     lines.push('Lydvej: ' + (probe.audioTransport || '?') + ' · MKV-format: ' + (probe.htmlMatroska || '?'));
     var audioOutput = playback && playback.audio_output || lastPlan && lastPlan.audio_output;

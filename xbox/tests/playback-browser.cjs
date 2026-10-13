@@ -16,6 +16,9 @@ async function fixture(browser, options={}) {
   const planStarted = new Promise(resolve=>markPlanStarted=resolve);
   page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{
+    const interval=window.setInterval;
+    window.testHeartbeat=function(){};
+    window.setInterval=function(callback,delay){if(delay===10000)window.testHeartbeat=callback;return interval(callback,delay);};
     localStorage.setItem('fjordflix.connection',JSON.stringify({server:'https://playback.test',token:'t'.repeat(43)}));
     HTMLMediaElement.prototype.canPlayType=function(){return 'probably';};
     HTMLMediaElement.prototype.load=function(){this.currentTime=0;};
@@ -37,7 +40,7 @@ async function fixture(browser, options={}) {
     const req=route.request(),p=new URL(req.url()).pathname;
     const reply=data=>route.fulfill({headers,contentType:'application/json',body:JSON.stringify(data)});
     if(req.method()==='OPTIONS') return reply({});
-    calls.push({path:p,method:req.method()});
+    calls.push({path:p,query:new URL(req.url()).search,method:req.method()});
     if(p==='/tv-api/state') return reply({user:{name:'Xbox QA'}});
     if(p==='/tv-api/info') return reply({features:options.oldServer?[]:options.legacy?['xbox-hevc-fmp4']:['xbox-hevc-fmp4','xbox-hdr10-base','xbox-hevc-transcode','xbox-matroska-audio','trailer-stream-v1']});
     if(p==='/tv-api/movies') return reply([movie]);
@@ -189,8 +192,14 @@ function assertStages(plays,quality) {
     assert.equal(seeking.plays[1].start,150);
     assert.match(await seeking.page.locator('#timeline').textContent(),/^2:30/);
     await seeking.page.waitForFunction(()=>!document.getElementById('seek-preview').hidden);
+    const pendingHeartbeat=seeking.page.waitForResponse(r=>r.url().includes('/streams/stream-2/heartbeat'));
+    await seeking.page.evaluate(()=>window.testHeartbeat());await pendingHeartbeat;
+    assert.equal(seeking.calls.filter(c=>c.path==='/tv-api/streams/stream-2/heartbeat').at(-1).query,'');
     await seeking.page.locator('#video').evaluate(v=>v.dispatchEvent(new Event('playing')));
     assert.equal(await seeking.page.locator('#seek-preview').isVisible(),false);
+    const playedHeartbeat=seeking.page.waitForResponse(r=>r.url().includes('/streams/stream-2/heartbeat?position='));
+    await seeking.page.evaluate(()=>window.testHeartbeat());await playedHeartbeat;
+    assert.equal(seeking.calls.filter(c=>c.path==='/tv-api/streams/stream-2/heartbeat').at(-1).query,'?position=150');
     await seeking.close();
     console.log('PASS TV seek: target position survives stream reset, authenticated snapshot clears on playing');
     const buffering=await fixture(browser);await buffering.start('1080');await buffering.loaded(1);
