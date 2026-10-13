@@ -87,7 +87,7 @@
     }).catch(function (e) { if (playback === current) playerError(e.message); });
   }
   function diagnostics() {
-    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.16' : 'FjordFlix LG 0.1.9'];
+    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.17' : 'FjordFlix LG 0.1.10'];
     lines.push(probe.source || '');
     lines.push('Lydvej: ' + (probe.audioTransport || '?') + ' · MKV-format: ' + (probe.htmlMatroska || '?'));
     var audioOutput = playback && playback.audio_output || lastPlan && lastPlan.audio_output;
@@ -140,6 +140,7 @@
   }
   function clearImages() { ++imageGeneration; images.forEach(function (url) { URL.revokeObjectURL(url); }); images = []; }
   function showLogin() {
+    window.TVWishes.sync(null, api);
     queuedSeek = null; clearSeek();
     window.TVPhoneLogin.cancel();
     document.body.classList.add('auth-screen');
@@ -157,6 +158,7 @@
     text('address', server);
     if (!token) { showLogin(); if (!server) $(localPhoneAvailable() ? 'phone-login' : 'server-address').focus(); return Promise.resolve(); }
     return api('/state').then(function (state) {
+      window.TVWishes.sync(state.user, api);
       if (!state.user) {
         showLogin();
         text('login-description', state.setup ? 'Opret først server og bruger i FjordFlix fra din computer.' : state.managed ? 'Log ind med din FjordHub-bruger.' : 'Log ind med din FjordFlix-bruger.');
@@ -608,6 +610,7 @@
   $('player').onmousemove = showControls;
   window.TVNavigation.activity = function () { if (!$('player').hidden) showControls(); };
   window.TVNavigation.back = function () {
+    if (window.TVWishes.back()) return;
     if (window.TVPhoneLogin.active()) { window.TVPhoneLogin.cancel(); $('phone-login').focus(); }
     else if (!$('player').hidden) closePlayer();
     else if (!$('detail').hidden) $('detail-back').click();

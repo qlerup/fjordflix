@@ -57,7 +57,17 @@ def attach_tv(app, main):
 
     @tv.get('/tv-api/state')
     def state(auth=Depends(authorized)):
-        return {'user': auth[0]}
+        return {'user': main.wishes_service.profile(auth[0])}
+
+
+    @tv.get('/tv-api/wishes')
+    def wishes(page: int = Query(1, ge=1, le=100000), auth=Depends(authorized)):
+        return main.wishes_service.listing(auth[0], page)
+
+
+    @tv.post('/tv-api/wishes', status_code=201)
+    def send_wish(data: main.wishes.Wish, auth=Depends(authorized)):
+        return main.wishes_service.create(auth[0], data)
 
 
     @tv.post('/tv-api/logout')

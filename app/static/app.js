@@ -108,6 +108,7 @@ $('auth-form').onsubmit = async (event) => {
 };
 async function boot() {
   state = await api('/state');
+  window.FjordWishes?.sync(state.user);
   if (!state.user) { showAuth(); return false; }
   $('auth').hidden = true; $('shell').hidden = false;
   if (window.fjordDesktop) {
@@ -125,6 +126,7 @@ async function boot() {
   userNote.hidden = !state.managed;
   userNote.textContent = 'Konti, adgangskoder og roller styres i FjordHub → Brugere. Listen viser de brugere, der har adgang til FjordFlix.';
   await refresh();
+  window.FjordWishes?.sync(state.user);
   restoreDetailRoute();
   if (state.user.admin && window.FjordOnboarding) await window.FjordOnboarding.open();
   return true;
@@ -420,7 +422,7 @@ setInterval(() => {
 window.addEventListener('pagehide', () => { if(playback && selected) { fetch(`/api/movies/${selected.id}/progress`, {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify({position:position()}),keepalive:true}); if(playback.session && !airplayActive()) fetch(`/api/streams/${playback.session}`, {method:'DELETE',keepalive:true}); } });
 
 setupUploads();
-$('admin-open').onclick = async () => { try { const data = await api('/admin'); $('server-stats').innerHTML = `<div><strong>${data.gpu ? 'NVIDIA NVENC' : 'CPU'}</strong>Transcoding-motor · ${data.gpu ? 'GPU-test bestået' : 'softwarekonvertering'}</div><div><strong>${data.free_gb} GB</strong>Ledig serverplads</div><div><strong>${data.streams} / ${data.max_streams}</strong>Aktive konverteringssessioner</div><div><strong>${data.users.length}</strong>Brugere på serveren</div>`; $('users-list').innerHTML = data.users.map(u => `<div class="user-row">${escapeHtml(u.name)}<span>${u.admin ? 'Administrator' : 'Bruger'}</span></div>`).join(''); $('admin-dialog').showModal(); } catch(e) { toast(e.message); } };
+$('admin-open').onclick = async () => { try { const data = await api('/admin'); $('server-stats').innerHTML = `<div><strong>${data.gpu ? 'NVIDIA NVENC' : 'CPU'}</strong>Transcoding-motor · ${data.gpu ? 'GPU-test bestået' : 'softwarekonvertering'}</div><div><strong>${data.free_gb} GB</strong>Ledig serverplads</div><div><strong>${data.streams} / ${data.max_streams}</strong>Aktive konverteringssessioner</div><div><strong>${data.users.length}</strong>Brugere på serveren</div>`; FjordWishes.users(data.users); $('admin-dialog').showModal(); } catch(e) { toast(e.message); } };
 $('create-invite').onclick = async () => { try { const result = await api('/invites','POST'); $('invite-result').hidden = false; $('invite-code').value = result.token; } catch(e) { toast(e.message); } };
 $('copy-invite').onclick = async () => { try { await navigator.clipboard.writeText($('invite-code').value); toast('Invitationskoden er kopieret.'); } catch { $('invite-code').select(); toast('Markér og kopiér invitationskoden.'); } };
 async function loadMediaSettings() {

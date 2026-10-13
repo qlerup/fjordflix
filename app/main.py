@@ -326,7 +326,7 @@ def state(request: Request):
         if exc.status_code not in (401,403):
             raise
         current = None
-    return {'setup': setup, 'user': current, 'gpu': GPU, 'managed': hub.managed()}
+    return {'setup': setup, 'user': wishes_service.profile(current), 'gpu': GPU, 'managed': hub.managed()}
 
 
 @app.post('/api/setup')
@@ -444,7 +444,7 @@ def dashboard(u=Depends(admin)):
     disk = shutil.disk_usage(DATA)
     with LOCK:
         active = len(JOBS)
-    return {'users': users, 'gpu': GPU, 'streams': active, 'free_gb': round(disk.free / 1024**3, 1), 'max_streams': int(os.getenv('MAX_TRANSCODES', 3))}
+    return {'users': wishes_service.annotate_users(users), 'gpu': GPU, 'streams': active, 'free_gb': round(disk.free / 1024**3, 1), 'max_streams': int(os.getenv('MAX_TRANSCODES', 3))}
 
 
 @app.get('/api/admin/media')
@@ -1487,6 +1487,8 @@ def index():
     return FileResponse(Path(__file__).parent / 'static' / 'index.html')
 
 
+from app import wishes
+wishes_service = wishes.register(sys.modules[__name__])
 from app.tv import attach_tv
 
 attach_tv(app, sys.modules[__name__])

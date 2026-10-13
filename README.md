@@ -1,5 +1,7 @@
 # FjordFlix beta 0.1
 
+Under **Indstillinger → Brugere** kan administratoren slå **Kan sende ønsker** til for hver bruger. Brugeren får menupunktet **Ønsker**, hvor film og serier kan ønskes med en bemærkning, og egne ønsker og svar kan følges. Administratorer har altid adgang og ser alle ønsker; i web/Windows kan de svare og vælge Modtaget, Opfyldt eller Afvist. LG 0.1.10 og Xbox 0.1.17 understøtter indsendelse og visning. Opdater serveren og TV-apps, og genindlæs siden eller åbn appen igen efter ændrede rettigheder. Rettigheden styres lokalt i FjordFlix, også for FjordHub-brugere, og gemmes sammen med ønskerne i appens database. Der kan være højst 20 ubesvarede ønsker pr. bruger; identiske åbne ønsker fra samme bruger afvises.
+
 Spoling viser nu den valgte position gennem streamskift og et stillbillede, indtil videoen er klar. Webafspilleren og LG 0.1.8/Xbox 0.1.15 bruger serverens nye seek-preview-endpoint; opdat?r server og TV-app sammen. Windows 0.1.17 bruger sin lokale previewdekoder og afviser billeder, der ankommer efter genoptaget afspilning.
 
 Logoer og appikoner: [Se den komplette ikonpakke og anvendelse](app/static/logos/README_logo.md).

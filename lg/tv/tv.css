@@ -39,3 +39,4 @@
 
 .next-episode{position:absolute;right:5%;bottom:180px;z-index:20;padding:20px 28px;background:#ec344e;color:white;border:2px solid white;border-radius:10px;font-size:22px}.next-episode:focus{outline:4px solid white;outline-offset:5px}
 #seek-preview{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;pointer-events:none;background:#000}
+#wishes-panel{z-index:30;background:#101017;padding:48px 8%;overflow:auto}#wishes-panel form{max-width:760px;display:block}#wishes-panel label{display:block;margin:18px 0}#wishes-panel input,#wishes-panel select{display:block;width:100%;margin-top:8px}#wishes-panel .wish-card{padding:20px 0;border-top:1px solid #444;max-width:900px;white-space:pre-wrap;overflow-wrap:break-word}#wishes-panel>button{margin:12px}#wishes-panel h1{margin:20px 0}

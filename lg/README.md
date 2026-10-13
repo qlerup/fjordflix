@@ -1,4 +1,4 @@
-# FjordFlix LG webOS 0.1.9
+# FjordFlix LG webOS 0.1.10
 
 Spoling: Tidslinjen holder den valgte position under klarg?ring, og et stillbillede vises, indtil videoen er klar. Forsinkede billeder fra tidligere spoling afvises. Opdat?r serveren sammen med TV-appen for billeder fra det valgte tidspunkt.
 
@@ -27,7 +27,7 @@ formattest; Xbox' TrueHD/DTS-passthrough er ikke et løfte om LG-understøttelse
 
 Opdatér FjordFlix-serveren. TV-API, telefonlogin og trailere er indbygget i
 serveren; den gamle `compose.tv.yaml`/`fjordflix_tv.py`-udvidelse skal ikke bruges.
-Installér `dist/dk.fjordflix.tv_0.1.9_all.ipk` gennem LG Developer Mode eller webOS
+Installér `dist/dk.fjordflix.tv_0.1.10_all.ipk` gennem LG Developer Mode eller webOS
 Studio. `dist/app` er det samlede Studio-projekt. Se `TEST-PAA-LG-TV.md`.
 
 ## Byg og test

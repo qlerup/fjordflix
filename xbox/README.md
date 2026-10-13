@@ -38,7 +38,7 @@ Xbox 360 og den oprindelige Xbox understøttes ikke.
 
 ## Færdige filer
 
-- `dist/FjordFlix-Xbox_0.1.16.appx`: signeret installationspakke til Developer Mode.
+- `dist/FjordFlix-Xbox_0.1.17.appx`: signeret installationspakke til Developer Mode.
 - `dist/FjordFlix-Xbox.cer`: offentligt udviklercertifikat, hvis installationsværktøjet beder om det.
 - `dist/SHA256SUMS.txt`: kontrolsum for APPX-filen.
 - `dist/app/`: alle filer, der er pakket i appen.

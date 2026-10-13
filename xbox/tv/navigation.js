@@ -46,13 +46,15 @@
       if (!current.readOnly) return;
     }
     if (key === 13 && current && current.type === 'checkbox') { event.preventDefault(); current.click(); return; }
-    if (key === 461 || key === 27) { event.preventDefault(); window.TVNavigation.back(); return; }
+    if (key === 461 || key === 27) { event.preventDefault(); if (!window.TVWishes || !window.TVWishes.back()) window.TVNavigation.back(); return; }
     if ([37, 38, 39, 40].indexOf(key) < 0) return;
     // Leave horizontal cursor movement and native select interaction to the TV keyboard.
     if (current && current.tagName === 'SELECT') return;
+    var wishPanel = document.getElementById('wishes-panel');
     var root = document.getElementById('player');
     if (!root || root.hidden) root = document.getElementById('detail');
     if (!root || root.hidden) root = document;
+    if (wishPanel && !wishPanel.hidden) root = wishPanel;
     var items = Array.prototype.filter.call(root.querySelectorAll('button,input,select,a[href]'), visible);
     if (!items.length) return;
     event.preventDefault();
