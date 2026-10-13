@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from test_tv import tv_client, login, main
@@ -78,12 +79,12 @@ def test_stream_progress_is_owner_scoped_and_private(tv_client, tmp_path):
         uid = conn.execute('SELECT id FROM users WHERE name=?', (credentials['name'],)).fetchone()[0]
     sid = 'diagnostic-test'
     (tmp_path / 'progress.txt').write_text('out_time_us=6000000\nspeed=0.75x\nprogress=continue\n')
-    main.JOBS[sid] = {'user':uid, 'folder':tmp_path, 'touch':0}
+    main.JOBS[sid] = {'user':uid, 'folder':tmp_path, 'touch':0, 'process':SimpleNamespace(poll=lambda:0)}
     try:
         assert client.post(f'/tv-api/streams/{sid}/heartbeat').status_code == 401
         response = client.post(f'/tv-api/streams/{sid}/heartbeat',headers=headers)
         assert response.status_code == 200
-        assert response.json() == {'ok':True,'transcoding':{'finished':False,'speed':0.75,'encoded_seconds':6}}
+        assert response.json() == {'ok':True,'transcoding':{'finished':False,'speed':0.75,'encoded_seconds':6,'paused':False,'encoder':None}}
         assert str(tmp_path) not in response.text
         with pytest.raises(main.HTTPException) as foreign:
             main.heartbeat(sid, {'id':'someone-else'})

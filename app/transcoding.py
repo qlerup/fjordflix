@@ -7,6 +7,26 @@ from functools import lru_cache
 log = logging.getLogger(__name__)
 
 
+def cpu_command(command, hardware_inputs, filters, *, bitmap=False, subtitle_index=None):
+    """Keep transport, audio and codec choice while removing all GPU work."""
+    result = list(command)
+    if hardware_inputs:
+        index = result.index('-i') - len(hardware_inputs)
+        del result[index:index + len(hardware_inputs)]
+    option = '-filter_complex' if bitmap else '-vf'
+    result[result.index(option) + 1] = bitmap_overlay(filters, subtitle_index) if bitmap else filters
+    hevc = result[result.index('-c:v') + 1] == 'hevc_nvenc'
+    result[result.index('-c:v') + 1] = 'libx265' if hevc else 'libx264'
+    result[result.index('-preset') + 1] = 'ultrafast' if hevc else 'veryfast'
+    if '-forced-idr' in result:
+        index = result.index('-forced-idr')
+        del result[index:index + 2]
+    if hevc:
+        result[result.index('-c:v'):result.index('-c:v')] = [
+            '-x265-params', 'level-idc=5.1:repeat-headers=1:pools=4:frame-threads=2']
+    return result
+
+
 @lru_cache(maxsize=2)
 def hevc_encoder(gpu):
     # H.264 NVENC support does not imply that HEVC NVENC works on this GPU.

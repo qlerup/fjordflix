@@ -5,7 +5,7 @@ import subprocess
 
 STAMP = r'(?:\d+:)?\d{2}:\d{2}\.\d{3}'
 TIMING = re.compile(rf'^({STAMP}) --> ({STAMP})(?: .*)?$')
-SEGMENT = re.compile(r'^segment(\d+)\.ts$')
+SEGMENT = re.compile(r'^(?:cpu_)?segment(\d+)\.ts$')
 
 
 def seconds(stamp):
@@ -65,17 +65,21 @@ def rendition_playlist(video_playlist):
 
 def segment_text(state, video_playlist, number):
     elapsed, duration = 0.0, None
+    cpu_start = None
     for line in video_playlist.splitlines():
         if line.startswith('#EXTINF:'):
             duration = float(line.split(':', 1)[1].split(',')[0])
         match = SEGMENT.fullmatch(line)
         if match and duration is not None:
+            if line.startswith('cpu_') and cpu_start is None:
+                cpu_start = elapsed
             if int(match[1]) == number:
                 start, end = state['origin'] + elapsed, state['origin'] + elapsed + duration
                 blocks = [block for a, b, block in state['cues'] if a < end and b > start]
                 # Repeat spanning cues, with their full timestamps, in every
                 # intersecting segment as required by RFC 8216 section 3.5.
-                return f"WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:{state['mpegts']}\n\n" + '\n\n'.join(blocks) + '\n'
+                clock = state.get('cpu_mpegts', state['mpegts']) if cpu_start is not None else state['mpegts']
+                return f"WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:{clock}\n\n" + '\n\n'.join(blocks) + '\n'
             elapsed += duration
             duration = None
     raise KeyError(number)

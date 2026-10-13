@@ -125,7 +125,7 @@ def test_ass_subtitles_extract_as_text_and_cache_is_reused(client, mkv):
 
 def test_track_routes_require_login(client):
     with main.db() as conn:
-        conn.executescript('CREATE TABLE sessions(token TEXT,user_id TEXT,expires REAL); CREATE TABLE users(id TEXT,name TEXT,admin INTEGER,hub_id TEXT,hub_username TEXT);')
+        conn.executescript('CREATE TABLE sessions(token TEXT,user_id TEXT,expires REAL); CREATE TABLE users(id TEXT,name TEXT,admin INTEGER,hub_id TEXT,hub_username TEXT); CREATE TABLE revoked_sessions(token TEXT PRIMARY KEY,expires REAL);')
     main.app.dependency_overrides.pop(main.user)
     anonymous = TestClient(main.app)
     assert anonymous.get('/api/movies/' + 'a'*32 + '/tracks').status_code == 401

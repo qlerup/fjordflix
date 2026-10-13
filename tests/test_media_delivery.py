@@ -1,6 +1,7 @@
 import json
 import time
 import secrets
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
 from fastapi.testclient import TestClient
@@ -52,7 +53,7 @@ def test_direct_media_scoping_renewal_revocation_and_proxy_block(tmp_path):
             (folder / 'index.m3u8').write_text('#EXTM3U\n#EXTINF:2,\nsegment00000.ts\n')
             (folder / 'segment00000.ts').write_bytes(b'test-segment')
             sid = secrets.token_hex(16)
-            main.JOBS[sid] = {'folder':folder,'user':uid,'touch':time.time()}
+            main.JOBS[sid] = {'folder':folder,'user':uid,'touch':time.time(), 'process':SimpleNamespace(poll=lambda:0)}
             try:
                 request = Request({'type':'http','scheme':'http','server':('192.168.1.110',8097),'path':'/','query_string':b'',
                     'headers':[(b'host',b'192.168.1.110:8097'),(b'cookie',f'fjordflix_session={login}'.encode())]})

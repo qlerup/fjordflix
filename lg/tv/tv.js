@@ -31,6 +31,10 @@
     var current = playback;
     api('/streams/' + current.session + '/heartbeat', 'POST').then(function (result) {
       if (playback !== current) return;
+      if (result.transcoding && result.transcoding.cpu_required) {
+        start(position(), false, true); return;
+      }
+      if (result.transcoding && result.transcoding.encoder) playback.encoder = result.transcoding.encoder;
       streamProgress = result.transcoding || null; diagnostics();
     }).catch(function (e) { if (playback === current) playerError(e.message); });
   }
@@ -367,7 +371,7 @@
   function playVideo() {
     var promise = video.play(); if (promise && promise.catch) promise.catch(function () { showControls(); text('play-status', 'Tryk OK på Pause / afspil for at starte.'); });
   }
-  function start(at, force) {
+  function start(at, force, forceCpu) {
     if (busy) return;
     busy = true; fallbackStage = force === 'remux' ? 'remux' : force ? 'transcode' : '';
     if (!force) lastFailure = '';
@@ -377,6 +381,7 @@
     release().then(function () {
       if (id !== generation) return null;
       var request = window.TVCapabilities(movie, video, $('quality').value, force, {features:serverFeatures}, selectedAudio); request.start = at;
+      request.force_cpu = !!forceCpu;
       if (window.TVCapabilities.diagnostics().requiresOriginalAudio && !request.audio_passthrough) {
         throw new Error('Opdater FjordFlix-serveren for original TrueHD/DTS-lyd på Xbox. Lyden ændres ikke automatisk til stereo.');
       }

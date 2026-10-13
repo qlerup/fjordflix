@@ -320,7 +320,7 @@ async function release() {
   if (old?.media_ticket) await api('/media/revoke', 'POST', {ticket:old.media_ticket}).catch(() => {});
   if (old?.session) await api(`/streams/${old.session}`, 'DELETE').catch(() => {});
 }
-async function startPlayback(position = 0, fallback = false) {
+async function startPlayback(position = 0, fallback = false, forceCpu = false) {
   const generation = ++playGeneration; switching = true;
   await release();
   $('player-title').textContent = selected.title; $('player-error').textContent = ''; $('player-loading').textContent = 'Gør filmen klar…'; $('player-loading').hidden = false;
@@ -333,7 +333,7 @@ async function startPlayback(position = 0, fallback = false) {
     if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
     if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; data.hdr10_base = false; }
-    const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position});
+    const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position, force_cpu:forceCpu});
     if (generation !== playGeneration || !$('player-dialog').open) { if(result.playback_id) await api(`/playbacks/${result.playback_id}/stop`, 'POST'); if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
     playback = result; lastSaved = 0;
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
@@ -394,11 +394,19 @@ setInterval(() => {
   if(current?.session) api(`/streams/${current.session}/heartbeat`, 'POST').then(status => {
     if (playback !== current || current.mode !== 'Transcoding') return;
     const progress = status.transcoding;
+    if (progress?.cpu_required) {
+      startPlayback(position(), false, true).catch(e => showPlayerError(e.message));
+      return;
+    }
+    if (progress?.encoder && progress.encoder !== current.encoder) {
+      current.infoText = current.infoText.replace(current.encoder, progress.encoder);
+      current.encoder = progress.encoder;
+    }
     const speed = progress?.speed;
-    const detail = progress?.finished ? 'Konvertering færdig' : Number.isFinite(speed)
+    const detail = progress?.paused ? 'Konvertering pauset · tilstrækkelig buffer' : progress?.finished ? 'Konvertering færdig' : Number.isFinite(speed)
       ? `Konvertering: ${speed.toFixed(2)}×${speed < 1 ? ' · Under afspilningshastighed; kan give buffering' : ''}` : '';
     current.transcodeInfo = detail;
-  }).catch(() => {});
+  }).catch(e => { if (playback === current) showPlayerError(e.message); });
 }, 10000);
 setInterval(() => {
   if (!playback?.health || switching) return;

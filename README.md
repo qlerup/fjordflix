@@ -115,6 +115,37 @@ Parring og touchpad-trafik går via lokal HTTP/WebSocket i denne test. Brug et b
 - Højst tre samtidige konverteringssessioner. Sessioner slettes, når afspilleren lukkes, eller efter to minutter uden heartbeat.
 - Film og database gemmes i Docker-volumenet `fjordflix_fjordflix-data` og bevares ved containeropdatering.
 
+## Buffer, diskplads og CPU-fallback
+
+HLS-jobs overvåges hvert sekund. FFmpeg pauses som standard, når der er mindst
+180 sekunders færdige segmenter foran det senest hentede segment, og genoptages,
+når forskellen falder til 90 sekunder. Segmentforespørgsler styrer bufferen, så
+TV og AirPlay fortsat virker uden telefonens heartbeat. HEAD-forespørgsler flytter
+ikke positionen. Matroska begrænses allerede af forbindelsens pipe/backpressure.
+
+| Miljøvariabel | Standard | Betydning |
+|---|---|---|
+| `TRANSCODE_BUFFER_SECONDS` | `180` | Buffer foran modtageren; mindst 10 sekunder. Genoptag ved halvdelen. |
+| `TRANSCODE_MIN_FREE_MB` | `2048` | Ledig plads, der skal bevares under aktive jobs. |
+
+Falder diskpladsen under grænsen, stoppes jobbet, dets midlertidige filer fjernes,
+og medieforespørgsler/heartbeat giver HTTP 507 med en forklaring. Afsluttede jobs
+kan fortsat afspilles. En pauset proces genoptages før stop, så oprydning også
+virker, mens FFmpeg er suspenderet.
+
+Fejler NVIDIA-kæden, forsøges CPU én gang med `libx264` eller `libx265`, samme
+opløsning, valgte lydspor og undertekster. Ved fejl før HLS-start genkodes fra det
+oprindelige startpunkt. MPEG-TS fortsætter efter sidste færdige segment med en
+HLS-discontinuity; eksisterende segmenter ændres ikke. AirPlay-tekstspor følger
+den nye streams faktiske tidsstempler. Native fMP4 og Matroska genåbnes af den
+opdaterede TV-/browserklient på CPU ved afspillerens aktuelle position, fordi
+codec-initialiseringen ikke sikkert kan skiftes i den eksisterende forbindelse.
+Det kan give en kort bufferpause. CPU-fejl gentages ikke automatisk.
+
+Testene i `tests/test_stream_control.py` kontrollerer bufferpauser, diskfejl,
+CPU-fallback, underteksttiming og rigtig FFmpeg-afkodning. Kør dem sammen med
+`tests/test_transcoding.py`, `tests/test_airplay.py` og Xbox-afspilningstestene.
+
 ## Praktiske begrænsninger i første beta
 
 - Grundfilen binder til `127.0.0.1:8096`; en lokal override kan tilføje pc’ens netværksadresse til telefon-test.

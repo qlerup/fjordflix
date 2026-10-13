@@ -11,6 +11,8 @@ async function until(check) { for(let i=0;i<100;i++){if(check())return;await tic
 function setup(safari, transcode = false) {
   const html=fs.readFileSync('app/static/index.html','utf8');
   const dom=new JSDOM(html,{url:'http://fjord.test/',runScripts:'outside-only'}), w=dom.window, calls=[];
+  const intervals=[];
+  w.setInterval=(callback,delay)=>{intervals.push({callback,delay});return intervals.length};
   w.matchMedia=()=>({matches:false,addEventListener(){}});
   w.scrollTo=()=>{};
   w.HTMLDialogElement.prototype.showModal=function(){this.open=true};
@@ -42,8 +44,29 @@ function setup(safari, transcode = false) {
   };
   const scripts=[...html.matchAll(/<script defer src="\/static\/([^"?]+)(?:\?[^\"]*)?"/g)].map(m=>fs.readFileSync('app/static/'+m[1],'utf8'));
   w.eval(scripts.join('\n')+'\nwindow.testApi={openDetail,playFromDetail,capabilities,closePlayer,get playback(){return playback},get switching(){return switching},get hls(){return hls},get tracks(){return FjordTracks}};');
-  return {dom,w,calls,api:w.testApi};
+  return {dom,w,calls,intervals,api:w.testApi};
 }
+
+test('CPU recovery reopens at the movie position and disk errors are visible',async()=>{
+  const {dom,w,calls,intervals,api}=setup(true,true);
+  try {
+    await tick();await tick();await api.openDetail(movie);
+    api.playFromDetail(30);await until(()=>api.playback&&!api.switching);
+    w.document.getElementById('video').currentTime=7;
+    const originalFetch=w.fetch;
+    w.fetch=async(path,options)=>path.startsWith('/api/streams/')&&path.endsWith('/heartbeat')
+      ? {ok:true,json:async()=>({transcoding:{cpu_required:true}})} : originalFetch(path,options);
+    for(const interval of intervals.filter(x=>x.delay===10000))interval.callback();
+    await until(()=>calls.filter(c=>c.path.endsWith('/play')).length===2&&!api.switching);
+    const retry=calls.filter(c=>c.path.endsWith('/play')).at(-1).data;
+    assert.equal(retry.force_cpu,true);assert.equal(retry.start,37);
+    w.fetch=async(path,options)=>path.startsWith('/api/streams/')&&path.endsWith('/heartbeat')
+      ? {ok:false,status:507,json:async()=>({detail:'For lidt diskplads'})} : originalFetch(path,options);
+    for(const interval of intervals.filter(x=>x.delay===10000))interval.callback();
+    await until(()=>w.document.getElementById('player-error').textContent.includes('diskplads'));
+    assert.equal(calls.filter(c=>c.path.endsWith('/play')).length,2);
+  }finally{dom.window.close()}
+});
 test('AirPlay uses native HLS and carries selected tracks through changes and background lifecycle',async()=>{
   const {dom,w,calls,api}=setup(true);
   try {

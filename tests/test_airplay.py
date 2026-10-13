@@ -18,7 +18,7 @@ def receiver_setup(client, monkeypatch):
     media.init(main.db)
     login = 'airplay-test-login'
     with main.db() as conn:
-        conn.executescript('CREATE TABLE sessions(token TEXT,user_id TEXT,expires REAL); CREATE TABLE users(id TEXT,name TEXT,admin INTEGER,hub_id INTEGER,hub_username TEXT);')
+        conn.executescript('CREATE TABLE sessions(token TEXT,user_id TEXT,expires REAL); CREATE TABLE users(id TEXT,name TEXT,admin INTEGER,hub_id INTEGER,hub_username TEXT); CREATE TABLE revoked_sessions(token TEXT PRIMARY KEY,expires REAL);')
         conn.execute('INSERT INTO users VALUES (?,?,?,?,?)', ('owner', 'Owner', 1, None, None))
         conn.execute('INSERT INTO sessions VALUES (?,?,?)', (main.digest(login), 'owner', time.time()+86400))
     client.cookies.set('fjordflix_session', login)

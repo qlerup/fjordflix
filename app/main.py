@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
-from app import transcoding, active_streams, trailers
+from app import transcoding, active_streams, trailers, stream_control
 from app.quality import hdr10_base as compatible_hdr10_base
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -76,17 +76,26 @@ def stop_job(key):
     with LOCK:
         job = JOBS.pop(key, None)
         if job:
-            if job['process'].poll() is None:
-                job['process'].terminate()
-                try:
-                    job['process'].wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    job['process'].kill()
-                    job['process'].wait()
+            stream_control.terminate(job)
             job['log'].close()
-            if job['process'].stdout:
-                job['process'].stdout.close()
             shutil.rmtree(job['folder'], ignore_errors=True)
+
+
+def monitor_streams():
+    with LOCK:
+        for sid, job in list(JOBS.items()):
+            try:
+                stream_control.tick(job, DATA)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                stream_control.log.exception('Stream supervision failed')
+                stream_control.fail(job, 503, stream_control.ENCODE_ERROR)
+            active_streams.runtime(sid, job)
+
+
+def check_stream(job):
+    stream_control.tick(job, DATA)
+    if job.get('error'):
+        raise HTTPException(job['error']['code'], job['error']['message'])
 
 
 @asynccontextmanager
@@ -117,10 +126,17 @@ async def lifespan(app):
                 conn.execute('DELETE FROM sessions WHERE expires < ?', (time.time(),))
                 conn.execute('DELETE FROM revoked_sessions WHERE expires < ?', (time.time(),))
     task = asyncio.create_task(cleanup())
+    async def supervise():
+        while True:
+            await asyncio.to_thread(monitor_streams)
+            await asyncio.sleep(1)
+    stream_task = asyncio.create_task(supervise())
     quality_task = asyncio.create_task(refresh_source_quality())
     sources_task = asyncio.create_task(library_sources.watch())
     yield
     task.cancel()
+    stream_task.cancel()
+    await asyncio.gather(stream_task, return_exceptions=True)
     quality_task.cancel()
     sources_task.cancel()
     for key in list(JOBS):
@@ -997,6 +1013,7 @@ def movie_subtitles(mid: str, index: int, u=Depends(user), progressive: bool = F
 
 
 class Playback(BaseModel):
+    force_cpu: bool = False
     client_profile: Literal['default', 'xbox'] = 'default'
     airplay: bool = False
     burn_subtitles: bool = False
@@ -1134,7 +1151,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     if soft:
         filters += ['setpts=PTS-STARTPTS']
     hevc_transcode = result.get('video_codec') == 'hevc'
-    video_encoder = transcoding.hevc_encoder(GPU) if hevc_transcode else ('h264_nvenc' if GPU else 'libx264')
+    video_encoder = transcoding.hevc_encoder(GPU and not data.force_cpu) if hevc_transcode else ('h264_nvenc' if GPU and not data.force_cpu else 'libx264')
     if hevc_transcode and not video_encoder:
         raise HTTPException(503, 'Serverens FFmpeg mangler en fungerende HEVC-encoder til 4K. Videoen sænkes ikke til 1080p.')
     use_gpu = video_encoder in ('h264_nvenc', 'hevc_nvenc')
@@ -1149,9 +1166,9 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         enabled=use_gpu and result['mode'] == 'Transcoding', hdr=bool(meta['hdr']), burn=bool(burn), bitmap=bitmap, soft=soft,
         encoder=video_encoder)
     with LOCK:
-        if len(JOBS) >= int(os.getenv('MAX_TRANSCODES', 3)):
+        if sum(not job.get('error') for job in JOBS.values()) >= int(os.getenv('MAX_TRANSCODES', 3)):
             raise HTTPException(503, 'Serverens stream-pladser er optaget. Prøv igen om lidt.')
-        if shutil.disk_usage(DATA).free < 2 * 1024**3:
+        if shutil.disk_usage(DATA).free < stream_control.reserve_bytes():
             raise HTTPException(507, 'For lidt diskplads til transcoding.')
         sid = secrets.token_hex(16)
         folder = (DATA / 'streams' / sid).resolve()
@@ -1217,20 +1234,47 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                 cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-tag:v', 'hvc1']
             cmd += ['-hls_segment_filename', str(folder / ('segment%05d.m4s' if fmp4 else 'segment%05d.ts')), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE if matroska else subprocess.DEVNULL, stderr=log, cwd=folder)
-        JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time(), 'idle_timeout': media.AIRPLAY_TTL if data.airplay else 120}
+        try:
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE if matroska else subprocess.DEVNULL, stderr=log, cwd=folder)
+        except OSError:
+            log.close()
+            shutil.rmtree(folder, ignore_errors=True)
+            raise HTTPException(503, 'Serverens FFmpeg kunne ikke startes.')
+        JOBS[sid] = {'process': process, 'folder': folder, 'log': log, 'user': u['id'], 'movie_id': mid, 'touch': time.time(), 'idle_timeout': media.AIRPLAY_TTL if data.airplay else 120,
+                     'offset': offset, 'encoder': encoder}
+        if use_gpu and result['mode'] == 'Transcoding':
+            JOBS[sid]['cpu_command'] = transcoding.cpu_command(cmd, hardware_inputs, ','.join(filters), bitmap=bitmap,
+                                                              subtitle_index=subtitle['index'] if bitmap else None)
         if matroska:
             JOBS[sid]['transport'] = 'matroska'
+        elif fmp4:
+            JOBS[sid]['transport'] = 'fmp4'
     if matroska:
         response = media.issue({**result, 'url': f'/api/streams/{sid}/stream.mkv', 'session': sid,
                                 'offset': offset, 'encoder': encoder}, request, mid, db)
         return active_streams.begin(response, row, meta, u, data, audio, subtitle, audio_copy=True)
-    for _ in range(200):
+    deadline = time.monotonic() + 20
+    while True:
+        with LOCK:
+            job = JOBS.get(sid)
+            if not job:
+                raise HTTPException(410, 'Afspilningen er stoppet.')
+            was_retried = job.get('retried')
+            try:
+                check_stream(job)
+            except HTTPException:
+                stop_job(sid)
+                raise
+            if job.get('retried') and not was_retried:
+                deadline = time.monotonic() + 20
+            encoder = job['encoder']
         playlist = folder / 'index.m3u8'
         # Prepare several segments before playback, so Chrome does not exhaust
         # the first two seconds while the next playlist update is pending.
         contents = playlist.read_text() if playlist.exists() else ''
         if contents.count('#EXTINF:') >= 3 or '#EXT-X-ENDLIST' in contents:
+            with LOCK:
+                JOBS[sid]['ready'] = True
             if soft:
                 try:
                     rendition = hls_subtitles.prepare(folder, row['path'], subtitle_file, offset, result['mode'] == 'Direct Stream')
@@ -1245,7 +1289,11 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
                     raise HTTPException(503, 'Tekstsporet kunne ikke klargøres. Prøv indbrændte undertekster under Lyd og tekst.')
             response = media.issue({**result, 'url': f"/api/streams/{sid}/{result.get('playlist', 'index.m3u8')}", 'session': sid, 'offset': offset, 'encoder': encoder}, request, mid, db, airplay=data.airplay, duration=meta['duration'])
             return active_streams.begin(response, row, meta, u, data, audio, subtitle, audio_copy=result['audio_output']['copied'])
-        if process.poll() is not None:
+        if time.monotonic() >= deadline:
+            with LOCK:
+                if stream_control.fallback(job):
+                    deadline = time.monotonic() + 20
+                    continue
             break
         time.sleep(0.1)
     stop_job(sid)
@@ -1264,6 +1312,7 @@ def stream_file(sid, filename, u, request=None):
         job = JOBS.get(sid)
         if not job or job['user'] != u['id']:
             raise HTTPException(404)
+        check_stream(job)
         if job.get('transport') == 'matroska':
             if filename != 'stream.mkv':
                 raise HTTPException(404)
@@ -1277,8 +1326,11 @@ def stream_file(sid, filename, u, request=None):
             job['stream_open'] = True
             job['touch'] = time.time()
             return StreamingResponse(matroska_chunks(sid, job), media_type='video/x-matroska', headers=headers)
-        if not re.fullmatch(r'(index\.m3u8|master\.m3u8|subtitles\.m3u8|subtitle\d+\.vtt|init\.mp4|segment\d+\.(?:ts|m4s))', filename):
+        if not re.fullmatch(r'(index\.m3u8|master\.m3u8|subtitles\.m3u8|subtitle\d+\.vtt|init\.mp4|(?:cpu_)?segment\d+\.(?:ts|m4s))', filename):
             raise HTTPException(404)
+        if not request or request.method != 'HEAD':
+            stream_control.delivered(job, filename)
+            check_stream(job)
         job['touch'] = time.time()
         path = job['folder'] / filename
         if filename == 'subtitles.m3u8' or filename.endswith('.vtt'):
@@ -1303,17 +1355,32 @@ async def matroska_chunks(sid, job):
     finished = False
     try:
         while True:
-            chunk = await asyncio.to_thread(job['process'].stdout.read1, 65536)
+            process = job['process']
+            try:
+                chunk = await asyncio.to_thread(process.stdout.read1, 65536)
+            except (ValueError, OSError):
+                if job['process'] is not process:
+                    continue
+                raise
+            if job['process'] is not process:
+                continue
+            if job.get('error'):
+                raise HTTPException(job['error']['code'], job['error']['message'])
             if not chunk:
-                code = await asyncio.to_thread(job['process'].wait)
+                code = await asyncio.to_thread(process.wait)
                 if code:
-                    raise RuntimeError('Original lyd/video kunne ikke klargøres.')
+                    with LOCK:
+                        check_stream(job)
+                    continue
                 finished = True
                 return
             job['touch'] = time.time()
+            job['bytes_sent'] = True
             yield chunk
     finally:
-        if not finished:
+        # Keep terminal status until the client's heartbeat can show a disk or
+        # encoder error (or request CPU recovery). Failed jobs hold no files.
+        if not finished and not job.get('error'):
             await asyncio.shield(asyncio.to_thread(stop_job, sid))
 
 
@@ -1357,8 +1424,11 @@ def heartbeat(sid: str, u=Depends(user)):
         if not job or job['user'] != u['id']:
             raise HTTPException(404)
         job['touch'] = time.time()
-        folder = job['folder']
-    return {'ok': True, 'transcoding': transcoding.progress(folder)}
+        stream_control.tick(job, DATA)
+        status = stream_control.status(job)
+        if job.get('error') and not job.get('cpu_required'):
+            raise HTTPException(job['error']['code'], job['error']['message'])
+    return {'ok': True, 'transcoding': status}
 
 
 @app.delete('/api/streams/{sid}')

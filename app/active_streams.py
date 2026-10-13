@@ -71,6 +71,15 @@ def remove_session(session):
                 del LIVE[key]
 
 
+def runtime(session, job):
+    with LOCK:
+        for item in LIVE.values():
+            if item['session'] == session:
+                item['encoder'] = job.get('encoder', item['encoder'])
+                if job.get('error'):
+                    item.update(state='error', reason=job['error']['message'])
+
+
 def bind_tv(key, ticket, login):
     from app.media import key as digest
     with LOCK:
