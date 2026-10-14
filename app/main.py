@@ -1273,6 +1273,12 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
             cmd += ['-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file']
             if fmp4:
                 cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4']
+                if data.browser_profile == 1 and data.client_profile == 'default' and not data.airplay and result['mode'] == 'Direct Stream':
+                    # FFmpeg's DASH/sidx continuity adjustment rewrites the first
+                    # PTS of open-GOP fragments, creating duplicate presentation
+                    # times and dropped frames. HLS uses the playlist for indexing;
+                    # omit sidx so copied video keeps its presentation timestamps.
+                    cmd += ['-hls_segment_options', 'movflags=+skip_sidx']
                 if hevc_transcode or result['mode'] == 'Direct Stream' and meta['video'] == 'hevc':
                     cmd += ['-tag:v', data.browser_hevc_tag if data.browser_fmp4 else 'hvc1']
             cmd += ['-hls_segment_filename', str(folder / ('segment%05d.m4s' if fmp4 else 'segment%05d.ts')), str(folder / 'index.m3u8')]
