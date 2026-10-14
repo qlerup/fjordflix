@@ -88,6 +88,19 @@ test('HDR Direct Play and remux require a confirmed display and decoder',async()
   const result=await no.api.detect(hevc,{video:no.video});
   assert.equal(result.direct,false);assert.equal(result.video_copy,false);
 });
+
+test('HDR video output can be confirmed independently of page output',async()=>{
+  const {api,video}=setup({matchMedia:query=>({matches:query==='(video-dynamic-range: high)'})});
+  const result=await api.detect(hevc,{video});
+  assert.equal(result.video_copy,true);
+  assert.match(api.describe(hevc),/video bekræftet · side ikke bekræftet/);
+  const sdr=setup({matchMedia:()=>({matches:false})});
+  const blocked=await sdr.api.detect(hevc,{video:sdr.video});
+  assert.equal(blocked.video_copy,false);
+  assert.equal(sdr.calls.filter(c=>c.video).length,0);
+  assert.match(sdr.api.describe(hevc),/ikke testet: HDR-kontrollen blokerer/);
+  assert.match(blocked.capability_reason,/HDR konverteres til SDR/);
+});
 test('Dolby Vision is never confused with a verified HDR10 base layer',async()=>{
   const {api,video}=setup();
   const base={...hevc,format:'mp4',quality:{...hevc.quality,dynamic_range:'Dolby Vision',dv_profile:7}};

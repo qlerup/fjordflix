@@ -480,8 +480,11 @@ AAC/AC3/EAC3 bevares med bekræftet format og kanalantal; ellers tilpasses lyden
 Windows- og TV-profilerne er uændrede. Safari/AirPlay beholder sin native-HLS-vej.
 
 Manglende/fejlede API-svar er ukendte, ikke automatiske afslag for SDR. Et udtrykkeligt
-unsupported-svar respekteres. HDR kræver bekræftet decoder og HDR-skærm. Dolby Vision
-kan remuxes som HDR10, når basislaget er dokumenteret; ukendte profiler afvises i den
+unsupported-svar respekteres. HDR kræver bekræftet decoder og HDR-skærm.
+HDR-output kontrolleres via både `video-dynamic-range` og `dynamic-range`, så en
+særskilt HDR-videovej også accepteres. Formatkontrollen viser, når videotesten
+springes over på grund af manglende HDR-output, frem for at antyde et codec-afslag.
+Dolby Vision kan remuxes som HDR10, når basislaget er dokumenteret; ukendte profiler afvises i den
 nye browserprofil frem for at risikere forkerte farver. Original kan tilsidesætte en
 smoothness-advarsel, men aldrig unsupported. Det er ikke garanti for fysisk afspilning.
 

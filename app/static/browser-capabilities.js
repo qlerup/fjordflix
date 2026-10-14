@@ -108,9 +108,15 @@
     const hdr = !!movie.hdr || ['HDR10', 'HDR10+', 'HLG', 'Dolby Vision'].includes(q.dynamic_range);
     const base = movie.video === 'hevc' && q.dynamic_range === 'Dolby Vision' && q.dv_bl !== false &&
       (q.dv_profile === 7 || q.dv_profile === 8 && q.dv_bl_signal_compatibility_id === 1);
-    let hdrDisplay = false;
-    try { hdrDisplay = !!env.matchMedia?.('(dynamic-range: high)').matches; } catch (_) { /* Unknown display. */ }
-    const hdrAllowed = !hdr || hdrDisplay && (['HDR10', 'HDR10+', 'HLG'].includes(q.dynamic_range) || base);
+    // Video can use a separate output plane from the page's CSS content.
+    // Either positive query confirms HDR output; absent queries do not.
+    const highRange = feature => {
+      try { return !!env.matchMedia?.(`(${feature}: high)`).matches; } catch (_) { return false; }
+    };
+    const hdrPage = highRange('dynamic-range'), hdrVideo = highRange('video-dynamic-range');
+    const hdrDisplay = hdrVideo || hdrPage;
+    const hdrFormat = ['HDR10', 'HDR10+', 'HLG'].includes(q.dynamic_range) || base;
+    const hdrAllowed = !hdr || hdrDisplay && hdrFormat;
     const variants = codecs(movie), webm = /webm/.test(format), mp4 = /mp4/.test(format);
     const fileVariants = movie.video === 'hevc' ? variants.slice(0, 1) : variants;
     const audioTracks = movie.tracks?.audio || [];
@@ -135,14 +141,15 @@
     const legacyH264 = airplay && movie.video === 'h264' && !hdr && !!file && !blocked.stream;
     let reason = '';
     if (blocked.stream) reason = 'Browseren afviste originalvideoen. Bruger kompatibel videokonvertering.';
-    else if (!hdrAllowed) reason = 'Filmens HDR-format eller skærmens HDR-understøttelse kunne ikke bekræftes.';
+    else if (hdr && !hdrFormat) reason = 'Filmens HDR-format har ikke en bekræftet kompatibel afspilningsvej.';
+    else if (hdr && !hdrDisplay) reason = 'Browseren bekræfter ikke HDR-output på skærmen. Videoens HDR konverteres til SDR.';
     else if (!file && !stream) reason = 'Browseren kunne ikke bekræfte filmens codec, profil og billedrate.';
     else if (!fileAudio) reason = 'Det valgte lydspor skal tilpasses; kompatibel video bevares.';
     const result = {quality, airplay, browser_profile:1, direct, video_copy:copy, browser_fmp4:copy,
       browser_hevc_tag:stream?.codec.startsWith('hev1.') ? 'hev1' : 'hvc1',
       h264:movie.video === 'h264' && (copy || legacyH264), hdr10_base:copy && base,
       audio_copy:copy && streamAudio && !blocked.direct, capability_reason:reason, bandwidth:0, ...request};
-    store(reports, key(movie), {file, stream, hdrDisplay, audio:audio?.codec || 'ingen', result, frameRate:frameRate(movie), blocked});
+    store(reports, key(movie), {file, stream, hdrDisplay, hdrPage, hdrVideo, hdrAllowed, audio:audio?.codec || 'ingen', result, frameRate:frameRate(movie), blocked});
     return result;
   }
   function noteFailure(movie, mode, code) {
@@ -156,11 +163,12 @@
   function describe(movie) {
     const report = reports.get(key(movie));
     if (!report) return '';
-    const route = p => !p ? 'ikke bekræftet' : `${p.codec} · ${p.verified ? 'bekræftet' : 'format understøttet; ydelse ukendt'}${p.smooth === false ? ' · kan hakke' : ''}`;
+    const route = p => !report.hdrAllowed ? 'ikke testet: HDR-kontrollen blokerer' : !p ? 'ikke bekræftet' : `${p.codec} · ${p.verified ? 'bekræftet' : 'format understøttet; ydelse ukendt'}${p.smooth === false ? ' · kan hakke' : ''}`;
     return [`Film: ${movie.width} × ${movie.height} · ${report.frameRate.toFixed(3)} billeder/s`,
       `Direkte fil: ${route(report.file)}`, `HLS/fMP4: ${route(report.stream)}`,
       `Valgt lyd: ${report.audio}${report.result.audio_copy ? ' · kan bevares i HLS' : ''}`,
-      `HDR-skærm: ${report.hdrDisplay ? 'bekræftet' : 'ikke bekræftet'}`, report.result.capability_reason,
+      `HDR-skærm: ${report.hdrDisplay ? 'bekræftet' : 'ikke bekræftet'}`,
+      `HDR-output: video ${report.hdrVideo ? 'bekræftet' : 'ikke bekræftet'} · side ${report.hdrPage ? 'bekræftet' : 'ikke bekræftet'}`, report.result.capability_reason,
       report.blocked.direct ? 'En fejlet afspilningsvej springes over i denne fane i ti minutter.' : '',
       'Netværk: ukendt. Formatkontrol er ikke en hastighedstest.'].filter(Boolean).join('\n');
   }
