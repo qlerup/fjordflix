@@ -29,10 +29,12 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/wishes'
   await page.waitForFunction(()=>!document.querySelector('.wish-permission input').disabled);assert.equal(allowed,true);
   await page.screenshot({path:path.join(out,'admin-permission.png')});
   admin=false;await page.reload();await page.locator('#wishes-sidebar').click();
+  assert.equal(await page.locator('#wish-form').isVisible(),true);
   await page.locator('#wish-form input[name="title"]').fill('The Great Adventure (2026)');
   await page.locator('#wish-form textarea').fill('Gerne med danske undertekster.');await page.locator('#wish-form button[type=submit]').click();
   await page.waitForFunction(()=>document.getElementById('wishes-message').textContent.includes('sendt'));assert.equal(items.length,1);
   admin=true;await page.reload();await page.locator('#wishes-sidebar').click();
+  assert.equal(await page.locator('#wish-form').isVisible(),false);
   await page.locator('.wish-decision select').selectOption('fulfilled',{force:true});await page.locator('.wish-decision textarea').fill('Filmen er klar i biblioteket.');await page.locator('.wish-decision button[type=submit]').click();
   await page.waitForFunction(()=>document.getElementById('wishes-message').textContent.includes('gemt'));assert.equal(items[0].status,'fulfilled');
   admin=false;await page.setViewportSize({width:390,height:844});await page.reload();await page.locator('#wishes-open').click();

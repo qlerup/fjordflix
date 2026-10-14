@@ -65,7 +65,7 @@ class Wishes:
         prefix = 'hub:' if self.main.hub.managed() else 'local:'
         with self.main.db() as conn:
             permissions = dict(conn.execute('SELECT subject,enabled FROM wish_permissions'))
-        return [{**u, 'can_request': bool(u['admin'] or permissions.get(prefix + str(u['id'])))} for u in users]
+        return [{**u, 'can_request': bool(not u['admin'] and permissions.get(prefix + str(u['id'])))} for u in users]
 
     def permission(self, uid, data):
         if self.main.hub.managed():
@@ -90,6 +90,8 @@ class Wishes:
         return {'items': [dict(row) for row in rows[:50]], 'has_more': len(rows) > 50, 'admin': bool(user.get('admin'))}
 
     def create(self, user, data):
+        if user.get('admin'):
+            raise HTTPException(403, 'Administratorer kan kun se og behandle ønsker.')
         with self.main.db() as conn:
             conn.execute('BEGIN IMMEDIATE')
             if not self.allowed(user, conn):

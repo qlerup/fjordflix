@@ -110,6 +110,22 @@ def test_pending_limit_and_pagination(env):
     assert not set(x['id'] for x in first['items']) & set(x['id'] for x in second['items'])
 
 
+def test_admin_can_review_but_cannot_submit_even_with_permission(env, monkeypatch):
+    env.service.permission('one', wishes.Permission(enabled=True))
+    created = env.client.post('/api/wishes', json={'title': 'Brugerens film'})
+    assert created.status_code == 201
+    env.user['admin'] = True
+    assert env.client.get('/api/wishes').json()['admin']
+    assert env.client.post('/api/wishes', json={'title': 'Admin film'}).status_code == 403
+    monkeypatch.setattr(main, 'session_user', lambda _: env.user)
+    assert env.client.post('/tv-api/wishes', headers={'Authorization': 'Bearer ' + 'a'*43},
+                           json={'title': 'Admin TV film'}).status_code == 403
+    assert env.client.put('/api/admin/wishes/' + created.json()['id'],
+                          json={'status': 'fulfilled', 'reply': 'Klar'}).status_code == 200
+    assert len(env.client.get('/api/wishes').json()['items']) == 1
+    assert not env.service.annotate_users([env.user])[0]['can_request']
+
+
 def test_anonymous_and_cross_origin_cannot_send_or_grant(env,monkeypatch):
     env.user['admin']=True
     assert env.client.put('/api/admin/users/one/wishes',json={'enabled':True},headers={'Origin':'https://evil.example'}).status_code==403

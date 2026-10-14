@@ -38,11 +38,12 @@
     }catch(error){if(id===generation)message(error.message);}
   }
   function open(){page=1;el('wishes-title').textContent=current?.admin?'Brugernes ønsker':'Mine ønsker';el('wishes-intro').textContent=current?.admin?'Se ønsker fra brugerne, og giv dem en status eller et svar.':'Savner du en film eller serie? Send et ønske til administratoren.';dialog.showModal();load();}
-  form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button[type=submit]');button.disabled=true;try{await api('/wishes','POST',{title:form.elements.title.value,kind:form.elements.kind.value,note:form.elements.note.value});form.reset();page=1;await load();message('Dit ønske er sendt til administratoren.');}catch(error){message(error.message);}finally{button.disabled=false;}};
+  form.onsubmit=async event=>{event.preventDefault();if(current?.admin)return;const button=form.querySelector('button[type=submit]');button.disabled=true;try{await api('/wishes','POST',{title:form.elements.title.value,kind:form.elements.kind.value,note:form.elements.note.value});form.reset();page=1;await load();message('Dit ønske er sendt til administratoren.');}catch(error){message(error.message);}finally{button.disabled=false;}};
   el('wishes-prev').onclick=()=>{page--;load();};el('wishes-next').onclick=()=>{page++;load();};
   function sync(user){
-    if(current?.id!==user?.id || !user?.can_request){generation++;if(dialog.open)dialog.close();el('wishes-list').replaceChildren();form.reset();}
+    if(current?.id!==user?.id || current?.admin!==user?.admin || !user?.can_request){generation++;if(dialog.open)dialog.close();el('wishes-list').replaceChildren();form.reset();}
     current=user;
+    form.hidden=!!user?.admin || !user?.can_request;
     document.body.classList.toggle('wishes-enabled',!!user?.can_request);
     for(const [parent,id,cls] of [[document.querySelector('header nav'),'wishes-open','nav-button'],[el('library-categories'),'wishes-sidebar','sidebar-view']]){
       if(!parent)continue;
@@ -54,7 +55,7 @@
     const list=el('users-list');list.replaceChildren();
     for(const user of rows){
       const row=node('div',undefined,'user-row'), title=node('div',user.name), role=node('span',user.admin?'Administrator':'Bruger');title.append(role);
-      const label=node('label',undefined,'wish-permission'), checkbox=node('input');checkbox.type='checkbox';checkbox.checked=user.can_request;checkbox.disabled=!!user.admin;checkbox.setAttribute('aria-label','Tillad ønsker for '+user.name);label.append(checkbox,document.createTextNode('Kan sende ønsker'));
+      const label=node('label',undefined,'wish-permission'), checkbox=node('input');checkbox.type='checkbox';checkbox.checked=!!user.can_request&&!user.admin;checkbox.disabled=!!user.admin;checkbox.setAttribute('aria-label','Tillad ønsker for '+user.name);label.append(checkbox,document.createTextNode('Kan sende ønsker'));
       checkbox.onchange=async()=>{const enabled=checkbox.checked;checkbox.disabled=true;try{await api('/admin/users/'+encodeURIComponent(user.id)+'/wishes','PUT',{enabled});toast('Rettigheden er gemt.');}catch(error){checkbox.checked=!enabled;toast(error.message);}finally{checkbox.disabled=false;}};
       row.append(title,label);list.append(row);
     }

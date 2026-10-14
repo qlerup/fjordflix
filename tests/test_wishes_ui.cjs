@@ -37,8 +37,25 @@ test('administrator can grant permission and save status; failed writes restore 
   assert.equal(f.calls[0].path,'/admin/users/one/wishes');assert.equal(f.calls[0].body.enabled,true);
   f.admin(true);f.items([{id:'wish',title:'Film',kind:'movie',sender:'Anna',status:'new',created:1,reply:''}]);
   w.FjordWishes.sync({id:'admin',admin:true,can_request:true});w.document.getElementById('wishes-open').click();await settle();
+  assert.equal(w.document.getElementById('wish-form').hidden,true);
+  w.document.getElementById('wish-form').dispatchEvent(new w.Event('submit',{cancelable:true}));await settle();
+  assert.equal(f.calls.some(c=>c.method==='POST'),false);
   const form=w.document.querySelector('.wish-decision');form.querySelector('select').value='fulfilled';form.querySelector('textarea').value='Den er klar';form.dispatchEvent(new w.Event('submit',{cancelable:true}));await settle();
   assert.equal(f.calls.find(c=>c.path==='/admin/wishes/wish').body.status,'fulfilled');
   f.fail();checkbox.checked=false;checkbox.dispatchEvent(new w.Event('change'));await settle();assert.equal(checkbox.checked,true);assert.equal(checkbox.disabled,false);
+ }finally{f.close();}
+});
+
+test('changing roles closes stale views and restores submission for permitted users',async()=>{
+ const f=fixture(),w=f.w;
+ try{
+  w.FjordWishes.sync({id:'one',admin:true,can_request:true});
+  w.document.getElementById('wishes-open').click();await settle();
+  w.FjordWishes.sync({id:'one',admin:false,can_request:true});
+  assert.equal(w.document.getElementById('wishes-dialog').open,false);
+  assert.equal(w.document.getElementById('wish-form').hidden,false);
+  w.FjordWishes.users([{id:'admin',name:'Admin',admin:true,can_request:true}]);
+  const checkbox=w.document.querySelector('#users-list input');
+  assert.equal(checkbox.checked,false);assert.equal(checkbox.disabled,true);
  }finally{f.close();}
 });
