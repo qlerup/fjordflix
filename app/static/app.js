@@ -11,6 +11,7 @@ if (window.fjordDesktop) {
 }
 let state, library = [], selected, view = 'home', authMode = 'login', hls, playback, lastSaved = 0, switching = false, playGeneration = 0, planGeneration = 0;
 const BUFFER_OPTIONS = [30, 60, 120];
+const browserPlaybackProfile = FjordBrowserProfiles.detect(window);
 function playbackBufferSeconds() {
   try {
     const seconds = Number(localStorage.getItem('fjordflix-buffer-seconds'));
@@ -20,7 +21,7 @@ function playbackBufferSeconds() {
 function savePlaybackBuffer(seconds) {
   if (!BUFFER_OPTIONS.includes(seconds)) throw new Error('Vælg 30, 60 eller 120 sekunder.');
   localStorage.setItem('fjordflix-buffer-seconds', String(seconds));
-  if (hls) Object.assign(hls.config, FjordBrowserBuffer.config(seconds, playback?.mbps, !!window.fjordDesktop));
+  if (hls) Object.assign(hls.config, FjordBrowserBuffer.config(seconds, playback?.mbps, !!window.fjordDesktop, browserPlaybackProfile));
 }
 const video = $('video');
 const airplaySupported = typeof video.webkitShowPlaybackTargetPicker === 'function' && !!video.canPlayType('application/vnd.apple.mpegurl');
@@ -323,7 +324,7 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (!result.session || !useHls && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else if (useHls) {
-      hls = new Hls(FjordBrowserBuffer.config(playbackBufferSeconds(), result.mbps, !!window.fjordDesktop));
+      hls = new Hls(FjordBrowserBuffer.config(playbackBufferSeconds(), result.mbps, !!window.fjordDesktop, browserPlaybackProfile));
       hls.on(Hls.Events.FRAG_LOADED, (_, data) => result.health.fragment(data));
       hls.on(Hls.Events.ERROR, (_, info) => {
         result.health.error(info);

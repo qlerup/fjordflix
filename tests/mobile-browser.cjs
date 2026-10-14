@@ -49,6 +49,8 @@ async function mockApp(page, options = {}) {
     if (art) return route.fulfill({contentType: 'image/svg+xml', body: artwork(art[1], art[2] !== 'poster' || art[1] === '2'.padStart(32, '0'))});
     let data;
     if (endpoint === '/api/state') data = {user: authenticated ? {id: 'qa', name: 'Sofie', admin: options.admin !== false} : null, managed: false, setup: false};
+    else if (endpoint === '/api/auth/access') data = {authenticated};
+    else if (endpoint.endsWith('/trailer')) data = {trailer:null};
     else if (endpoint === '/api/login') {
       if (route.request().postDataJSON().password === 'wrong-password') return route.fulfill({status: 401, contentType: 'application/json', body: JSON.stringify({detail: 'Brugernavn eller adgangskode er forkert.'})});
       authenticated = true; data = {ok: true};
@@ -123,6 +125,11 @@ async function choose(page, id, pattern) {
       const fixture = await mockApp(page);
       await page.goto('http://fjordflix.test');
       await page.locator('#auth-submit').waitFor();
+      assert.ok(await page.evaluate(() => {
+        const profile = FjordBrowserProfiles.detect(window);
+        return profile.id === browserPlaybackProfile.id &&
+          FjordBrowserBuffer.config(60, 68.1, false, profile).maxBufferLength > 0;
+      }), 'detected browser profile is connected to the player buffer policy');
       await snapshot(page, width, 'login');
       await page.locator('#username').fill('Sofie');
       await page.locator('#password').fill('qa-password');
@@ -195,6 +202,8 @@ async function choose(page, id, pattern) {
       await page.locator('#search').fill('');
       await page.locator('#movie-grid .movie-card').first().click();
       await page.waitForFunction(() => document.getElementById('plan-badge').textContent === 'Direct Play');
+      assert.ok((await page.locator('#browser-capabilities-text').textContent()).includes(
+        await page.evaluate(() => browserPlaybackProfile.id)), 'format diagnostics show the active profile');
       assert.ok(page.url().includes('#title/'));
       if (width <= 800) {
         assert.ok(await page.locator('#detail-tracks').isHidden(), 'advanced playback options start collapsed');

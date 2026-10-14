@@ -69,10 +69,19 @@
     return promise;
   }
   function desktopToneMapping() {
-    const agent = env.navigator?.userAgent || '';
-    if (/Android|Mobile|iPhone|iPad|iPod|Oculus|Xbox|webOS|Tizen/i.test(agent)) return false;
-    const edge = /Edg\/(\d+)/.exec(agent);
-    return edge ? Number(edge[1]) >= 121 : /Chrome\/(\d+)/.test(agent) && !/OPR\/|SamsungBrowser\//.test(agent);
+    if (env.fjordDesktop) {
+      // Preserve the desktop app's existing prediction; browser profiles only.
+      const agent = env.navigator?.userAgent || '';
+      if (/Android|Mobile|iPhone|iPad|iPod|Oculus|Xbox|webOS|Tizen/i.test(agent)) return false;
+      const edge = /Edg\/(\d+)/.exec(agent);
+      return edge ? Number(edge[1]) >= 121 : /Chrome\/(\d+)/.test(agent) && !/OPR\/|SamsungBrowser\//.test(agent);
+    }
+    return browserProfile().hdrToSdr === true;
+  }
+  function browserProfile() {
+    const profiles = env.FjordBrowserProfiles || (typeof module !== 'undefined' && module.exports
+      ? require('./browser-profiles.js') : null);
+    return profiles ? profiles.detect(env) : {id:'unknown', label:'Ukendt browser', hdrToSdr:false};
   }
   async function videoProbe(movie, video, codec, mime, route, hdr, quality, toneMapping = false) {
     const contentType = `${mime}; codecs="${codec}"`;
@@ -184,7 +193,9 @@
     const report = reports.get(key(movie));
     if (!report) return '';
     const route = p => !report.hdrAllowed ? 'ikke testet: HDR-kontrollen blokerer' : !p ? 'ikke bekræftet' : `${p.codec} · ${p.verified ? 'bekræftet' : 'format understøttet; ydelse ukendt'}${p.smooth === false ? ' · kan hakke' : ''}`;
-    return [`Film: ${movie.width} × ${movie.height} · ${report.frameRate.toFixed(3)} billeder/s`,
+    const profile = browserProfile();
+    return [`Browserprofil: ${profile.label} (${profile.id})`,
+      `Film: ${movie.width} × ${movie.height} · ${report.frameRate.toFixed(3)} billeder/s`,
       `Direkte fil: ${route(report.file)}`, `HLS/fMP4: ${route(report.stream)}`,
       `Valgt lyd: ${report.audio}${report.result.audio_copy ? ' · kan bevares i HLS' : ''}`,
       `HDR-skærm: ${report.hdrDisplay ? 'bekræftet' : 'ikke bekræftet'}`,

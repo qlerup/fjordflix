@@ -123,6 +123,38 @@ Parring og touchpad-trafik går via lokal HTTP/WebSocket i denne test. Brug et b
 - Højst tre samtidige konverteringssessioner. Sessioner slettes, når afspilleren lukkes, eller efter to minutter uden heartbeat.
 - Film og database gemmes i Docker-volumenet `fjordflix_fjordflix-data` og bevares ved containeropdatering.
 
+## Browserprofiler
+
+`app/static/browser-profiles.js` vælger en navngiven profil for Chrome, Edge,
+Firefox, Safari, Opera og Samsung Internet. Desktop, Android og iOS/iPadOS har
+separate profil-id'er. Profilen vises under **Browserens formatkontrol**.
+Client Hints bruges, når de findes; de specifikke browsernavne kontrolleres før
+Chrome- og Safari-kompatibilitetstokens. Ukendte browsere får en fallbackprofil.
+
+Profilerne styrer bufferbudget og tilladelsen til at undersøge lokal HDR-til-SDR.
+Codec, bitdybde, lyd, HDR og 4K afgøres fortsat af de faktiske format- og
+Media Capabilities-kontroller. Et browsernavn giver aldrig alene Direct Play.
+
+| Profil | HLS-budget foran/bagud | Verifikation |
+| --- | --- | --- |
+| Chrome desktop | 64/32 MiB | Afprøvet i Chrome på Windows med 4K HEVC Main 10/HDR, AAC og ca. 68 Mbit/s; også efter spoling. |
+| Edge desktop | 64/32 MiB | Separat profil, afprøvet i Edge på Windows med samme 4K-klip; 1444 billeder og 0 tabte. |
+| Firefox, Safari, Opera, Samsung, generisk Chromium og ukendt desktop | 48/16 MiB | Separate profiler med forsigtige standarder; ingen påstand om hardwareverifikation. |
+| Mobilprofiler | 48/16 MiB | Forsigtigt udgangspunkt; arver ikke Chromes desktop-HDR-regler. |
+
+Budgetterne omsættes til sekunder efter streamens bitrate og begrænses også af
+brugerens bufferindstilling. HLS kan overskride tidsmålet med et segment, og
+browseren bestemmer sin egen hukommelseskvote. Native HLS/AirPlay bruger deres
+egen buffer. FjordFlix-desktopappen og TV-klienterne beholder deres hidtidige
+afspilningsopsætning.
+
+Chromes fungerende remux består af to rettelser: browserens fMP4-remux udelader
+FFmpegs `sidx`-justering, der ellers kan ændre open-GOP-billedtidsstempler, og
+HLS-bufferen begrænses efter bitrate. Begge bevarer originalvideoens opløsning.
+Ved ændringer i en profil køres `tests/test_browser_profiles.cjs`,
+`tests/test_browser_buffer.cjs` og `tests/test_browser_capabilities.cjs`.
+En ændring af en anden browsers profil skal ikke ændre Chrome-baselinen.
+
 ## Buffer, diskplads og CPU-fallback
 
 HLS-jobs overvåges hvert sekund. FFmpeg pauses som standard, når der er mindst
