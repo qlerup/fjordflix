@@ -1,116 +1,54 @@
-# FjordFlix til Xbox
+# FjordFlix for Xbox
 
-Spoling: Tidslinjen holder den valgte position under klarg?ring, og et stillbillede vises, indtil videoen er klar. Forsinkede billeder fra tidligere spoling afvises. Opdat?r serveren sammen med TV-appen for billeder fra det valgte tidspunkt.
+A standalone JavaScript/UWP TV client for Xbox One, One S, One X, Series S and Series X with current system software. Xbox 360/original Xbox are unsupported. Uses the shared TV UI and server token API. Source version: **0.1.17**.
 
-## 0.1.14: automatisk næste afsnit
+Start with [the console test guide](TEST-PAA-XBOX.md). That separate guide currently remains in Danish.
 
-I de sidste ti sekunder vises **Næste afsnit afspilles om … sek.** Tryk A/OK
-eller klik for at skifte straks; ellers skiftes ved slutningen. Nedtællingen
-følger videoens tid og står stille ved pause og buffering. Næste afsnit findes
-i samme serie efter sæson- og afsnitsnummer. Film og sidste afsnit viser ingen
-knap. Den gamle streams ressourcer frigives, og næste afsnit starter fra nul.
+## Features
 
-Færdig pakke: `dist/FjordFlix-Xbox_0.1.14.appx`.
+- Server/login, movies/series, search, pagination, favorites and resume progress.
+- Audio/text-subtitle/quality selection and diagnostic playback plans.
+- Server-prepared H.264/AAC trailers without changing movie progress.
+- Stable seek position and preview until ready, discarding late images. Update server/client together for the seek-preview API.
+- Click/A/OK starts the next episode immediately in the final ten seconds; otherwise it starts at the end. Pause/buffering stops the countdown. Existing episodes are selected in season/episode order, including across seasons; films/last episodes have no next button.
+- Permitted regular users can submit/follow wishes. Administrators review centrally and cannot submit wishes.
+- First-login required email/password fields, direct login and phone-assisted login.
 
-## 0.1.13: trailere fra serveren
+## Installation artifacts
 
-**Se trailer** afspiller serverens H.264/AAC MP4 i appens egen afspiller med pause, spoling og controllerbetjening. Opdater serveren sammen med appen. Første visning kan vente på klargøring; afspilningen ændrer ikke filmens gemte position.
+`npm run package` produces a Developer Mode APPX, e.g. `dist/FjordFlix-Xbox_0.1.17.appx`, public `dist/FjordFlix-Xbox.cer`, `dist/SHA256SUMS.txt` and packaged `dist/app/`. Use the generated version filename rather than an older README release name.
 
-## 0.1.11: original TrueHD/DTS-lyd
+The architecture-neutral package uses Xbox's JavaScript/UWP runtime without external frameworks, LG tools, Visual Studio or WebView2 installation on the console. It is not a Store release. Signing identity is `FjordFlix.Xbox`, publisher `CN=FjordFlix Development`.
 
-Kræver også den nye FjordFlix-server (`xbox-matroska-audio`). Xbox-appen leverer
-det valgte TrueHD/DTS-spor uændret gennem Matroska til systemafspilleren i stedet
-for AAC-stereo. Kompatibel HEVC/HDR10-video bevares, herunder et bekræftet HDR10-basislag.
-Spoling genstarter streamen på den ønskede position. Streamen gemmes ikke som en
-hel midlertidig film. Ved afspilningsfejl skifter appen ikke lydsporet til stereo.
+## Login from a phone
 
-Afspilningsdetaljer viser det leverede codec og kanalantal. Dette bekræfter
-serverens output, ikke HDMI-signalet: Atmos/DTS-output skal kontrolleres på
-soundbaren/receiveren med Xboxens **Tillad passthrough** slået til.
-Serverens bevarelse af komprimerede lydpakker er testet med FFmpeg; fysisk
-Xbox/HDMI-afspilning af denne transport er endnu ikke verificeret.
+On a physical Xbox, choose Phone login even with empty server fields. The app opens a temporary HTTP page on the console's LAN IPv4 and a selected port. Scan the QR code and enter server address/credentials on the phone. Domains, full HTTP(S) origins and private IP/port addresses are accepted.
 
-Selvstændig UWP-app med samme TV-brugerflade og token-API som FjordFlix til LG.
-Mål: Xbox One, One S, One X, Series S og Series X med opdateret systemsoftware.
-Xbox 360 og den oprindelige Xbox understøttes ikke.
+Both devices must share a reachable LAN; guest-network isolation prevents access. The random one-use page closes on success, cancellation, suspension or after five minutes. It forwards to the server's ordinary TV login, stores no password and requires only a working compatible TV-login API. The app retains server address/token; logout revokes the token, which normally lasts seven days.
 
-**Start med [TEST-PAA-XBOX.md](TEST-PAA-XBOX.md).**
+The earlier server-based QR pairing is retained for the browser simulator. It needs `phone-login-v1`, `/tv-login`, `/static/*`, `tv_pairing.py` and the updated server. That code contains an approval secret, not a password/token; the polling device secret stays in memory, database entries store hashes, and approval is single-use. The phone never receives the Xbox token.
 
-## Færdige filer
+## Navigation
 
-- `dist/FjordFlix-Xbox_0.1.17.appx`: signeret installationspakke til Developer Mode.
-- `dist/FjordFlix-Xbox.cer`: offentligt udviklercertifikat, hvis installationsværktøjet beder om det.
-- `dist/SHA256SUMS.txt`: kontrolsum for APPX-filen.
-- `dist/app/`: alle filer, der er pakket i appen.
+D-pad/left stick navigates; A selects/opens the system keyboard; B returns/cancels; X/Menu pauses; LB/RB skips 30 seconds; Y focuses search. System media buttons/media remotes are connected. Hiding the app pauses playback; UWP suspension attempts to save progress/release resources within its short time budget.
 
-Pakken er arkitekturneutral, har ingen eksterne framework-afhængigheder og bruger
-Xbox' indbyggede JavaScript/UWP-runtime. Der skal ikke installeres LG-værktøjer,
-Visual Studio eller WebView2 separat på Xbox. Ingen app er publiceret til Store.
+## Playback and diagnostics
 
-## Funktioner
+The client tests actual decoder support. Compatible HEVC/MP4 and VP9/WebM can play directly, including 4K where supported. MKV/incompatible audio can use remux with unchanged HEVC. HLS/fMP4 requires `xbox-hevc-fmp4` from `/tv-api/info`; login alone does not prove that feature.
 
-Serveradresse og login, film/serieafsnit, søgning, sideinddeling, favoritter,
-fortsæt-afspilning, lydspor, tekstundertekster og afspilningskvalitet.
-**Log ind via telefonen:** vælg knappen med tomme felter på Xboxen og scan
-QR-koden. Skriv serveradresse og FjordFlix-/FjordHub-login på telefonen og
-tryk **Log ind på Xbox**. Appen åbner biblioteket automatisk. Login-siden udløber efter
-fem minutter; B eller Tilbage annullerer. Almindeligt login på Xbox er stadig muligt.
-Controller: D-pad/venstre stick navigerer, A vælger, B går tilbage, X/Menu pauser,
-LB/RB spoler 30 sekunder, Y fokuserer søgning. A åbner tekstfelter til Xbox-tastaturet.
-Afspilning sættes på pause, når appen skjules; ved UWP-suspendering forsøger appen
-at gemme position og frigive streamingressourcer inden for et kort tidsbudget.
-Media remote og Xbox' systemmedieknapper er tilkoblet.
+Original forbids silent video transcoding. Auto/4K can use confirmed HEVC-output transcoding up to 3840 × 2160 when the client/server support it; H.264 fallback is capped at 1920 × 1080 and 8 Mbit/s, and HEVC at 25 Mbit/s. An incompatible requested 4K plan without a usable HEVC path stops with a reason. Manual lower qualities remain available. See [server setup](SERVER-SETUP.md) and the [server README](../README.md).
 
-Appen husker serveradresse og token, aldrig adgangskoden. Tokenets levetid er
-den eksisterende TV-API's syv dage. Log ud tilbagekalder tokenet på serveren.
+A verified Dolby Vision profile 7/compatible profile 8 HDR10 base may be copied while removing DV RPU/enhancement metadata; unknown profiles are not assumed compatible. Transcoded HDR becomes SDR. Image subtitles require burn-in and may prevent original-video preservation. A library 4K badge describes the source, not actual output.
 
-## Afspilning og status
+The `xbox-matroska-audio` server capability supports original selected TrueHD/DTS through Matroska with compatible HEVC/HDR10. It streams without creating a complete temporary movie; seek restarts at the desired position. Errors do not silently replace original audio with stereo. Delivered codec/channels confirm the server stream, not the HDMI signal; verify the receiver with Xbox Allow passthrough enabled. Dolby Vision/Atmos and every physical console/output chain are not guaranteed.
 
-Appen bevarer understøttet **4K-video**. Den spørger afspilleren om codec-understøttelse.
-Kompatibel 4K HEVC/MP4 afspilles direkte i original opløsning; HEVC i MKV eller med
-et inkompatibelt lydspor kan ompakkes til HLS/fMP4 med original video og konverteret lyd.
-Kompatibel VP9/WebM kan også afspilles direkte. **Original og 4K tillader ikke
-videokonvertering**: en inkompatibel plan stoppes med en forklaring før afspilning.
-Ved afvisning forsøger appen først at tilpasse indpakning og lyd med bevaret video.
-Automatisk kan derefter bruge H.264-konvertering til højst 1920 × 1080 og 8 Mbps.
-Brugeren kan selv vælge 1080p eller 720p. Afspilningsdetaljer på filmsiden viser
-format, decoder-svar, serverunderstøttelse, plan og seneste afspilningsfejl.
+Diagnostics include source/decoder/server plan, recent errors, buffer, dropped frames and conversion speed. Source-preservation/fallback tests and signed APPX checks do not prove hardware decoder/output behavior. Physical Xbox keyboard, native playback, standby, inbound phone page and HDMI still need console testing.
 
-4K afhænger af konsol, filformat og den faktiske UWP-afspiller. Microsoft angiver
-HEVC op til 4K på One S/One X/Series S/X; den oprindelige Xbox One har andre
-hardwaregrænser. H.264 er dokumenteret op til 1080p. Serverens nuværende
-videotranscoding bruger H.264, så 4K-afspilning på Xbox bør bruge kompatibel HEVC
-eller VP9 direkte, eller bevare HEVC-videoen under ompakning. Et manuelt 4K-valg
-stoppes med en forklaring, hvis den originale video ikke kan bevares.
-Serveren kræver FFmpeg for ompakning/konvertering. Billedbaserede undertekster
-kræver indbrænding og kan derfor forhindre, at original HEVC bevares.
-4K-badget i biblioteket beskriver kildefilen, ikke appens afspilningsopløsning.
-HDR10/HLG i kompatibel HEVC bevares ved direkte afspilning eller video-copy;
-HDR-output til TV'et er endnu ikke verificeret. Dolby Vision og Atmos-passthrough
-er ikke garanteret.
+## Server and proxy
 
-APPX er valideret med Microsoft MakeAppx, signeret, og signaturens certifikat er
-kontrolleret. Enhedstests og Chromium-browsertests består, inkl. login, navigation,
-afspilningsfallback og undertekster. **Der er endnu ikke testet på en fysisk Xbox.**
-Xbox-tastatur, native HLS, systemmedieknapper og standby skal derfor verificeres
-på konsollen, før kompatibilitet kan bekræftes.
+Use built-in `/tv-api` and scoped `/tv-media` tickets, with bearer authentication rather than browser cookies. Public media proxies must forward the TV media route and avoid logging tickets. Current Hub membership/central requirements remain server-enforced; complete any required account email update in the updated web app/Hub if the active TV client cannot present that flow. The native decoder policy remains independent of browser profiles.
 
-## Server
-
-Brug samme `/tv-api` og `/tv-media` som LG-appen. **0.1.10 kræver også den opdaterede
-FjordFlix-server for HEVC Direct Stream**: serverens `/tv-api/info` skal indeholde
-`features: ["xbox-hevc-fmp4"]`. Et fungerende login alene bekræfter ikke denne støtte.
-Rettelserne findes i søsterprojektet `fjordflix/app/main.py` og `fjordflix/app/tv.py`.
-Se [SERVER-SETUP.md](SERVER-SETUP.md). Ingen kørende server er opdateret fra dette build.
-
-Telefonlogin kræver desuden `phone-login-v1` i serverens `features`, den nye
-`app/tv_pairing.py` og `app/static/tv-login.html`, `.css` og `.js`. Den bruger serverens
-eksisterende login til lokale brugere og FjordHub. QR-generering sker på din server
-uden eksterne QR-tjenester. QR-koden indeholder kun godkendelseskoden; en separat,
-tilfældig enhedskode holdes i Xbox-appens hukommelse. Telefonen får ingen Xbox-token,
-og databaseposter indeholder kun hashes. Godkendelse kan kun hentes én gang.
-
-## Byg og test
+## Build and test
 
 ```powershell
 npm ci
@@ -118,46 +56,12 @@ npm run build
 npm test
 npm run test:browser
 npm run test:phone
+npm run test:next
 npm run package
 ```
 
-`package` henter Microsofts SDK-pakkeværktøjer fra officiel NuGet, hvis nødvendigt.
-`test:phone` bruger søsterprojektet `fjordflix` og dets `.venv/Scripts/python.exe`
-(eller `FJORDFLIX_TEST_PYTHON`). Testen starter en isoleret lokal server med midlertidige
-brugere, aflæser den faktiske QR-kode og gennemfører login fra en separat mobilbrowser.
-Et selvsigneret certifikat oprettes i den aktuelle brugers personlige certifikatlager
-og genbruges til efterfølgende builds. Det installeres ikke som et betroet rodcertifikat.
-`.signing/` og `.tools/` er lokale byggeoplysninger og skal ikke deles.
-Pakkens signerede identitet er `FjordFlix.Xbox`, udgiver `CN=FjordFlix Development`.
+Packaging obtains Microsoft SDK tools from official NuGet if absent. A reusable self-signed certificate is created in the current user's personal store, not installed as a trusted root. Keep `.signing/`, private keys and `.tools/` out of shared source.
 
-## Microsoft-reference
+Phone fixtures use the server repository/Python environment or `FJORDFLIX_TEST_PYTHON`, temporary users, actual QR decoding and a separate browser. WinRT sockets are simulated through real Node TCP/HTTP; physical-console firewall behavior is not claimed.
 
-- [Xbox Developer Mode](https://learn.microsoft.com/en-us/previous-versions/windows/uwp/xbox-apps/devkit-activation)
-- [Xbox Device Portal](https://learn.microsoft.com/en-us/previous-versions/windows/uwp/xbox-apps/device-portal-xbox)
-- [JavaScript/UWP-manifest](https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/uapmanifestschema/element-f-application)
-- [Xbox-medieformater](https://learn.microsoft.com/en-us/windows/uwp/apps-for-xbox/supported-technologies)
-
-
-## Login fra telefon uden serveradresse på Xbox · 0.1.10
-
-Vælg **Log ind via telefonen** med tomme felter på Xboxen. Appen åbner en
-midlertidig HTTP-side på Xboxens lokale IPv4-adresse og en automatisk valgt port.
-Scan QR-koden på telefonen, og indtast FjordFlix-server, brugernavn og adgangskode.
-Serveradressen kan være et domæne, en fuld http(s)-adresse eller en privat IP med port.
-Telefon og Xbox skal være på samme lokalnetværk; gæstenetværk med klientisolering
-kan ikke forbinde til Xboxen.
-
-Siden lukker efter vellykket login, annullering, app-suspend eller fem minutter.
-QR-adressen har en tilfældig engangshemmelighed. Den lokale side bruger HTTP på
-lokalnetværket. Adgangskoden videresendes til den valgte servers almindelige TV-login
-og gemmes ikke; kun serveradresse og det returnerede Xbox-token gemmes som før.
-En serveropdatering er ikke nødvendig, når det normale TV-login virker.
-
-Den tidligere serverbaserede QR-parring bevares til browser-simulatoren.
-På den rigtige Xbox bruges den lokale side, også når serverfeltet er tomt.
-Kildekoden findes også under `xbox/` i FjordFlix-repositoryet på GitHub.
-
-Test: `npm test`, `npm run test:browser`, `npm run test:phone`.
-Telefon-testen afprøver rigtig TCP/HTTP og browser med WinRT-socket-adapteren
-simuleret via Node. Firewall og indgående forbindelser på fysisk Xbox skal
-verificeres efter installation af APPX.
+References: [Developer Mode](https://learn.microsoft.com/en-us/previous-versions/windows/uwp/xbox-apps/devkit-activation), [Device Portal](https://learn.microsoft.com/en-us/previous-versions/windows/uwp/xbox-apps/device-portal-xbox), [UWP manifest](https://learn.microsoft.com/en-us/uwp/schemas/appxpackage/uapmanifestschema/element-f-application), [Xbox media formats](https://learn.microsoft.com/en-us/windows/uwp/apps-for-xbox/supported-technologies).

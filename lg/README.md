@@ -1,38 +1,29 @@
-# FjordFlix LG webOS 0.1.10
+# FjordFlix for LG webOS
 
-Spoling: Tidslinjen holder den valgte position under klarg?ring, og et stillbillede vises, indtil videoen er klar. Forsinkede billeder fra tidligere spoling afvises. Opdat?r serveren sammen med TV-appen for billeder fra det valgte tidspunkt.
+The LG client lives in `fjordflix/lg` alongside Windows/Xbox. Its build imports the shared TV UI from `xbox/tv`, while retaining Magic Remote navigation, the webOS manifest and device-format checks through `webOS.deviceInfo`. Source version: **0.1.10**.
 
-LG-klienten vedligeholdes nu i `fjordflix/lg` sammen med Windows- og Xbox-koden.
-Bygningen henter den fælles TV-brugerflade fra `xbox/tv`, så LG får kommende
-ændringer i afspiller, bibliotek og diagnostik med. LG beholder egen Magic
-Remote-navigation, webOS-manifest og formatkontrol via `webOS.deviceInfo`.
+## Features
 
-## Nyt i denne version
+- Library, tracks, subtitle selection, server-prepared trailers and explained playback plans.
+- QR-assisted phone login after entering the server address on TV.
+- A final-ten-second next-episode countdown. OK/click starts immediately; otherwise the next existing episode starts at completion, including across seasons. Pause/buffering stops the countdown.
+- Stable seek position and server-generated still previews; late preview responses are ignored. Update server/client together.
+- Diagnostics show buffer, dropped frames and server conversion speed. Compatible video remains unchanged when a different container/audio path is attempted.
+- Original quality does not silently fall back to video transcoding.
+- Authorized regular users can submit and follow media wishes; administrators cannot submit wishes.
+- Shared first-login email/password completion through the server's TV login API.
 
-- Næste afsnit vises med nedtælling i de sidste ti sekunder. OK/klik starter
-  næste afsnit straks; ellers starter det ved slutningen. Pause og buffering
-  standser nedtællingen. Der skiftes også til næste sæson, hvis den findes.
-- Opdateret TV-layout, telefonlogin med QR-kode, serverklargjorte trailere,
-  undertekstvælger, lydspor og forklaring af den valgte afspilningsplan.
-- Afspilningsdiagnostik viser klientens buffer, tabte frames og serverens
-  konverteringshastighed. Understøttet video bevares ved forsøg med ny indpakning.
-- Original kvalitet skifter ikke stiltiende til videokonvertering.
+The Xbox local-phone Windows service and Windows mpv are not installed on LG. HDR/Dolby Vision/audio depend on TV model, source profile and device tests. Xbox TrueHD/DTS preservation is not an LG compatibility promise. Browser profiles do not replace webOS policies.
 
-Telefonlogin på LG kræver, at serveradressen først er indtastet på TV'et.
-Xbox' lokale Windows-netværkstjeneste og mpv fra Windows installeres ikke på LG.
-HDR, Dolby Vision og lyd afhænger fortsat af TV-model, filprofil og enhedens
-formattest; Xbox' TrueHD/DTS-passthrough er ikke et løfte om LG-understøttelse.
+## Install
 
-## Installation
+Update the server; TV APIs, phone login and trailers are bundled, so the former `compose.tv.yaml`/`fjordflix_tv.py` extension is unnecessary. Install the generated IPK, e.g. `dist/dk.fjordflix.tv_0.1.10_all.ipk`, through Developer Mode/webOS Studio. `dist/app` is the assembled Studio project. See [the LG test guide](TEST-PAA-LG-TV.md), which currently remains in Danish.
 
-Opdatér FjordFlix-serveren. TV-API, telefonlogin og trailere er indbygget i
-serveren; den gamle `compose.tv.yaml`/`fjordflix_tv.py`-udvidelse skal ikke bruges.
-Installér `dist/dk.fjordflix.tv_0.1.10_all.ipk` gennem LG Developer Mode eller webOS
-Studio. `dist/app` er det samlede Studio-projekt. Se `TEST-PAA-LG-TV.md`.
+The TV uses bearer login and scoped media tickets. Central Hub account requirements still apply: if an active client cannot show a newly required email-update form, complete it in the updated web app/Hub before resuming TV use.
 
-## Byg og test
+## Build and test
 
-```
+```sh
 npm ci
 npm test
 npm run build
@@ -41,5 +32,4 @@ npm run test:next
 npm run package
 ```
 
-Alle leverede scripts kontrolleres som ES5. Browser- og API-tests bruger
-testdata; der er ikke udført en fysisk test på et LG-TV i denne opdatering.
+Scripts are checked for ES5 compatibility. Browser/API tests use fixtures; these results do not claim a physical LG-TV test for every update. See the [server README](../README.md) for media/proxy prerequisites.

@@ -1,559 +1,195 @@
-# FjordFlix beta 0.1
+# FjordFlix
 
-Under **Indstillinger → Brugere** kan administratoren slå **Kan sende ønsker** til for hver bruger. Brugeren får menupunktet **Ønsker**, hvor film og serier kan ønskes med en bemærkning, og egne ønsker og svar kan følges. Administratorer har altid adgang og ser alle ønsker; i web/Windows kan de svare og vælge Modtaget, Opfyldt eller Afvist. LG 0.1.10 og Xbox 0.1.17 understøtter indsendelse og visning. Opdater serveren og TV-apps, og genindlæs siden eller åbn appen igen efter ændrede rettigheder. Rettigheden styres lokalt i FjordFlix, også for FjordHub-brugere, og gemmes sammen med ønskerne i appens database. Der kan være højst 20 ubesvarede ønsker pr. bruger; identiske åbne ønsker fra samme bruger afvises.
+A private media server with a cinema-style library, movies/series, per-user progress, browser playback, real FFmpeg transcoding and Windows/LG/Xbox clients. The interface currently uses Danish labels. [Artwork](app/static/logos/README_logo.md) and [brand provenance](branding/README.md) are included.
 
-Spoling viser nu den valgte position gennem streamskift og et stillbillede, indtil videoen er klar. Webafspilleren og LG 0.1.8/Xbox 0.1.15 bruger serverens nye seek-preview-endpoint; opdat?r server og TV-app sammen. Windows 0.1.17 bruger sin lokale previewdekoder og afviser billeder, der ankommer efter genoptaget afspilning.
+## Features
 
-Logoer og appikoner: [Se den komplette ikonpakke og anvendelse](app/static/logos/README_logo.md).
+- Upload/import MP4, MKV, MOV, WebM, M4V, AVI and TS; inspect codecs, resolution, bitrate, HDR and audio.
+- Search, Home/Movies/Series, My list and Continue watching per user; season/episode grouping and next-episode navigation.
+- TMDB posters, backgrounds, cast and localized metadata, manual matching/editing and custom images.
+- Multiple audio tracks, extracted streaming text subtitles, image-subtitle burn-in and SubDL/OpenSubtitles downloads.
+- Direct Play, Direct Stream/remux and CPU/NVIDIA transcoding with source-aware quality and diagnostics.
+- Independent browser profiles, capability negotiation, compatible 4K/HDR preservation and bounded HLS buffers.
+- Optional separate direct-video origin, AirPlay, phone remote, native Windows playback and TV-token APIs.
+- User media wishes with administrator replies/statuses and locally assigned submission permission.
+- Shared FjordHub login/SSO, first-login email/password setup and required email updates for active sessions.
 
-Privat streamingserver med dansk brugerflade, mørkt biografdesign og reel FFmpeg-transcoding.
+## First installation
 
-## Start og første film
+Docker must run Linux containers. The standalone `compose.yaml` requests NVIDIA (`gpus: all`); remove that request on a host without a usable NVIDIA GPU for CPU operation.
 
-Trailere hentes på serveren og leveres som H.264/AAC MP4 til browseren, Windows-appens trailermodal og Xbox-appens afspiller. Første visning venter på hentning og konvertering; gentagelser bruger en midlertidig cache i `/data/trailers` (24 timer efter seneste brug, højst 20 trailere og to klargøringer samtidig). Serverens Docker-image skal genbygges for at installere yt-dlp og Deno. YouTube kan afvise hentning fra visse serveradresser; klienten viser da en fejl. Filmens gemte position ændres ikke. Xbox kræver appversion 0.1.13 eller nyere; Windows bruger den opdaterede servervisning.
-
-Browseren og den opdaterede Xbox-klient henter tekstundertekster løbende, mens serveren udtrækker resten og gemmer det færdige spor i cache. Første visning kræver derfor ikke, at hele filmfilen er gennemlæst. Ved genoptagelse langt inde i en endnu ikke klargjort film kan der fortsat være ventetid, indtil udtrækningen når de relevante tekstlinjer. Xbox-klienten skal opdateres sammen med serveren for at bruge denne funktion.
-
-Kræver Docker med Linux-containere. Den medfølgende Compose-fil er sat op til NVIDIA GPU-adgang. På en maskine uden NVIDIA GPU skal linjen `gpus: all` fjernes fra `compose.yaml`; appen bruger derefter CPU-transcoding.
-
-Kør i projektmappen:
-
-```powershell
+```sh
 docker compose up -d --build
 ```
 
-Åbn http://localhost:8096. Opret selv den første administrator. Der er ingen standardadgangskode. Førstegangsopsætningen låses atomisk, så snart administratoren er oprettet.
+Open `http://localhost:8096` and create the first administrator. There is no default password; setup locks atomically after creation. Upload a film or add library folders. Try Original for supported direct playback, or a lower quality to exercise transcoding; the player shows actual method/output/encoder.
 
-1. Tilføj en film via upload eller vælg dine mediemapper under **Indstillinger → Bibliotek**.
-2. Åbn filmen og vælg **Original kvalitet** for at teste Direct Play, hvis browseren understøtter formatet.
-3. Vælg **1080p · 8 Mbit/s** for at teste transcoding. Under afspilning vises faktisk metode, opløsning og encoder.
-4. Brug **Upload film** til egne MP4/MKV/MOV/WebM/M4V/AVI/TS-filer. Filmen bliver tilgængelig for alle oprettede brugere.
-5. Åbn tandhjulet og opret en invitation. Log ud, vælg **Opret bruger**, og brug koden. Invitationen kan bruges én gang inden for syv dage.
+Standalone administrators can issue single-use invitations valid for seven days. Hub-managed accounts are administered centrally rather than through local registration/invitations. Media is available to authorized users of the installation.
 
-## Installation gennem FjordHub
+## FjordHub deployment and accounts
 
-Standardporten i FjordHub er **8097**, så FjordFlix ikke kolliderer med FjordParcel på 8096. En allerede gemt port ændres ikke automatisk; vælg 8097 ved et nyt installationsforsøg, hvis guiden stadig viser 8096. Solo-installationens standard er fortsat 8096.
+The Hub default port is **8097**, avoiding Parcel's 8096. Existing configured ports are not silently changed. Standalone uses `compose.yaml` and its existing volume; Hub explicitly selects `docker-compose.yml`, separate media/data directories and optional GPU overrides/device mapping. `host.docker.internal` provides Hub connectivity on Linux/Docker Desktop. Use different ports for parallel installations.
 
-Opdater FjordHub til en version med FjordFlix-understøttelse, opdater app-kataloget, og vælg **FjordFlix → Installer**. Guiden spørger om port, filmmappe, lokal arbejdsplads, samtidige konverteringer og valgfri NVIDIA GPU. FjordHub skriver forbindelsesoplysninger og en særskilt app-nøgle automatisk.
+Opening through Hub uses single-use SSO; direct login uses the shared account. Users confirm email and replace temporary passwords inside the app when required. Existing sessions are checked with a short membership cache; removed access blocks new media requests and invalidates sessions. Hub outages block protected requests after cache expiry; bytes already transferred cannot be withdrawn.
 
-| Funktion | Solo-installation | Installeret gennem FjordHub |
-| --- | --- | --- |
-| Første administrator | Oprettes i FjordFlix | Styres i FjordHub |
-| Login | Lokal adgangskode | FjordHub-login eller SSO fra Åbn app |
-| Opret brugere og tildel adgang | Invitationer i FjordFlix | FjordHub → Brugere → FjordFlix-adgang |
-| Administratorrettigheder | Lokal administrator | Brugerens app-rolle i FjordHub |
-| Historik og favoritter | Lokal bruger-ID | Stabil FjordHub-ID, også efter navneændring |
-| GPU | Solo-Compose bruger NVIDIA som standard | Valgfri i installationsguiden, ellers CPU |
+Hub administrators can select **Require email update on next opening**. Opening or returning to an updated browser app checks existing logins and presents a non-dismissible email form. Save a valid, unique address to clear the shared requirement across updated apps; confirming an existing valid address is allowed. Password/session identity is retained. Update Hub and Flix together.
 
-I Hub-tilstand lagrer FjordFlix ikke Hub-adgangskoder. Lokal brugeroprettelse og invitationer er slået fra, og lokale konti kan ikke bruges som genvej. App-adgang og roller genkontrolleres med højst fem sekunders cache ved nye forespørgsler. Fjernet adgang afviser efterfølgende medieforespørgsler og ugyldiggør sessionen; allerede overførte videodata kan ikke tilbagekaldes. Ved Hub-nedbrud afvises nye beskyttede forespørgsler, når cachen udløber. Brugere med en midlertidig adgangskode skal først skifte den i FjordHub.
+Matching local/Hub names do not automatically merge identities or migrate solo history. Film files/history are not deleted by switching authentication, but moving old history is a separate task.
 
-Solo-installationen bruger `compose.yaml` og sit eksisterende Docker-volumen. Hub-installationen bruger `docker-compose.yml`, som vælges eksplicit af manifestets `compose_file`, og separate mapper til database/cache og film. En GPU-installation tilføjer `docker-compose.gpu.yml` og FjordHubs automatisk genererede device-fil. `host.docker.internal` gør Hub-API'et tilgængeligt fra app-containeren på både Linux og Docker Desktop. Brug en anden port ved sideløbende solo- og Hub-installation på samme host.
+### Media wishes
 
-FjordLens og FjordFlix kan få adgang til samme NVIDIA GPU samtidig. De deler hukommelse og kapacitet; FjordHub reserverer ikke en særskilt GPU til hver app og giver ingen automatisk prioritetsgaranti. FjordFlix bruger NVENC til indkodning, mens FjordLens typisk bruger CUDA til AI. Start med to samtidige konverteringer og tilpas efter faktisk belastning. Afkodning og skalering kan bruge NVIDIA GPU efter en test på kildefilen. HDR skaleres først i 10-bit på CUDA og tone-mappes derefter på OpenCL. Det undgår CPU-skalering og reducerer de billeder, der overføres mellem GPU og RAM ved nedskalering; kæden er endnu ikke helt uden RAM-overførsler. Hvis den nye kæde ikke fungerer, prøves den tidligere OpenCL-kæde og derefter CPU-tonemapping. Indbrændte undertekster bruger fortsat CPU-filtre. OpenCL kræver et nyt container-build, ikke kun en genstart.
+Administrators enable Can submit wishes for individual regular users under Settings → Users. Enabled users submit movie/series wishes with notes and follow their own replies/statuses. Administrators see all wishes, reply and set Received/Fulfilled/Declined, but **cannot submit wishes themselves**; this is also enforced by the server. The web/Windows admin view omits the submission form.
 
-Transcoding-bitrate beregnes ud fra billedareal, billedrate, kildebitrate og output-codec. Kvalitetsvalget begrænser opløsningen, inklusive bredden på brede film; små kilder opskaleres ikke. 60 fps får større budget end 24 fps, mens HEVC får lavere budget end H.264. Xbox beholder sine grænser på 8 Mbit/s H.264 og 25 Mbit/s HEVC. Auto respekterer en oplyst forbindelseshastighed, men klienterne måler endnu ikke selv forbindelsen; ukendt hastighed sænker ikke automatisk kvaliteten. Kompatibel Direct Play/Direct Stream bevares.
+Permission is local to Flix, including for Hub identities. Each user can have at most 20 unanswered wishes; duplicate open wishes from that user are rejected. Requests/permissions persist in the database. LG 0.1.10 and Xbox 0.1.17 support submission/listing; update server/clients and reopen after permission changes.
 
-Nye web-, LG- og Xbox-klienter sender den faktiske afspilningsposition, når et seek er færdigt. Serveren kan derefter slette afsluttede HLS-segmenter mere end 180 sekunder bag positionen; nyligt efterspurgte segmenter beskyttes i yderligere 60 sekunder. AirPlay og ældre klienter beholder segmenterne. Tilbagespoling via FjordFlix opretter en ny stream ved det ønskede tidspunkt. `TRANSCODE_CLEANUP=0` deaktiverer oprydning; `TRANSCODE_RETAIN_SECONDS` ændrer perioden (mindst 60 sekunder). Indstillingerne sættes i app-containerens environment. Kun midlertidige segmentfiler slettes, aldrig originalmedier. Opdater både server og TV-app for at få denne funktion; Windows' lokale mpv-afspilning opretter ingen server-HLS-segmenter.
+## Library folders and storage
 
-Eksisterende lokale brugere sammenlægges ikke automatisk med Hub-brugere, selv om navnene matcher. Filmfiler og historik slettes ikke, men migration af eksisterende solo-historik til Hub-identiteter er en separat opgave. Cloudflare-opdelingen af web- og videotrafik er endnu ikke implementeret.
+Under Settings → Library → Add folder, select existing drives/subfolders. Sources scan recursively at startup, every 15 minutes and with Scan all folders. Results report new/updated titles and read errors. Overlapping roots are rejected, symlinks are not followed, and the active `.fjordseed-buffer` is excluded so unfinished downloads are not indexed.
 
-## Biblioteksmapper på Proxmox, NAS og lokale drev
+Hub's Proxmox disks/storage inventory includes pools, physical disks/partitions and visible LXC mounts. Required audit permissions are `Datastore.Audit`, `Sys.Audit` and `VM.Audit`; the inventory itself neither formats nor mounts disks. A pool marked mounted does not prove it is readable inside the app. UUID disk mounts are not guessed from device names.
 
-Åbn **Indstillinger → Bibliotek → Tilføj mappe**. Vælg et tilgængeligt drev eller en undermappe, og gentag for film, serier og øvrige samlinger. Alle titler samles i det eksisterende bibliotek. Mapperne scannes rekursivt ved serverstart, hvert 15. minut og med **Scan alle mapper**. Status viser nye titler, opdateringer og læsefejl. Overlappende mapper afvises for at undgå dobbelt indeksering.
-
-**Proxmox-diske og storage** viser både storage-pools (også `local` og `local-lvm`) og fysiske diske med partitioner gennem FjordHubs Proxmox API-forbindelse. Begge apps skal opdateres. Oversigten bruger kun læseadgang: `Datastore.Audit` til storage, `Sys.Audit` til diske og `VM.Audit` til LXC-konfiguration. Der oprettes ingen diske, formateres intet og køres ingen kopiering. En pool med en eksisterende disk monteret i LXC kan bruges, mens en pool uden et tilgængeligt filsystem forklares som krævende tilslutning. PVE's markering »mounted« betyder ikke i sig selv, at filerne er tilgængelige i LXC.
-
-Hub-installationens `docker-compose.yml` deler som standard Docker-værtens `/mnt` skrivebeskyttet med FjordFlix på `/library/server`. Brug `LIBRARY_HOST_ROOT` i installationens `.env`, hvis dine eksisterende LXC-mounts ligger under en anden fælles mappe, fx `/media`. Mappevælgeren viser kun de mapper, appen faktisk kan læse. Del eksisterende mediemapper med LXC og genskab app-containeren efter ændringer af mounts. Proxmox API'et viser lageroversigten; det giver ikke FjordFlix adgang til rå diske eller værtsfilsystemet automatisk. Disk-mounts angivet med UUID gættes ikke sammen med `/dev/sdX`; brug storage-poolen eller listen over LXC-mapper.
-
-FjordFlix læser originalvideoen direkte fra den valgte sti ved indeksering og afspilning; den kopieres ikke til uploadmappen. Database, covers, undertekstcache og midlertidig HLS-konvertering ligger fortsat i `DATA_DIR`. Direct Play, Direct Stream og transcoding bruger samme kildefil. Filnavne med fx `S01E02` grupperes som serier via den eksisterende metadatafunktion.
-
-Docker kan kun vise mapper, der er monteret ind i app-containeren. Kopiér `compose.library.example.yaml` til `compose.library.yaml`, og ret host-stierne til eksisterende mapper på Docker-værten. Eksemplet eksponerer flere mapper skrivebeskyttet under `/library` og afviser manglende host-stier. Start solo-installationen med:
+Hub Compose mounts host `/mnt` read-only at `/library/server`. Set `LIBRARY_HOST_ROOT` if existing LXC mounts use another root, and recreate the container after mount changes. Only mounted/readable folders can be browsed. For standalone additional sources, copy `compose.library.example.yaml` to `compose.library.yaml`, edit existing host paths and run:
 
 ```sh
 docker compose -f compose.yaml -f compose.library.yaml up -d --build
 ```
 
-Ved FjordHub-installation skal samme override inkluderes i appens Compose-opsætning sammen med `docker-compose.yml` og eventuelle GPU-filer. Bevar overriden ved opdateringer. `LIBRARY_ROOTS` er en JSON-liste over absolutte stier **inde i app-containeren**, som administratoren må gennemse; standard er `["/library"]`. Ved kørsel uden Docker sættes variablen til de monterede biblioteksdrev på værten.
+Include the equivalent override explicitly for a Hub install and preserve it across updates. `LIBRARY_ROOTS` is a JSON list of permitted absolute **container** roots, default `["/library"]`. Proxmox storage must first be mounted in the Docker VM/LXC; see [bind mounts](https://github.com/proxmox/pve-docs/blob/master/pct.adoc).
 
-I Proxmox skal lageret først være tilgængeligt i den VM/LXC, hvor Docker kører. For LXC kan en eksisterende host-mappe deles via et bind mount; se [Proxmox' dokumentation om bind mounts](https://github.com/proxmox/pve-docs/blob/master/pct.adoc). For en VM monteres lageret i gæsten, fx gennem en netværksdeling. Proxmox-lagre til virtuelle disk-images er ikke i sig selv browsbare mediemapper. Appen har ingen Proxmox-administratoradgang og monterer ikke drev automatisk.
+External videos are read in place, never copied into upload storage. `DATA_DIR` retains database, covers, subtitle cache and temporary streams. Removing a source removes its index/favorites/history but never original files. Individual external titles cannot use permanent file deletion. Temporarily missing drives/files keep index/history until accessible again; changed files refresh technical data without discarding manual metadata.
 
-Fjernelse af en kilde fjerner dens titler, favoritter og historik fra FjordFlix, men **sletter aldrig originalfilerne**. En enkelt ekstern titel kan ikke slettes via den permanente filmsletning. Manglende filer/drev bevarer indeks og historik, så en midlertidig afbrydelse ikke tømmer biblioteket; afspilning kræver, at filen igen er tilgængelig. Symlinks i scannede mapper følges ikke. Ændrede filer genundersøges uden at fjerne manuelle filmdata eller historik.
+## Uploads, series and metadata
 
-## Ekstra data gennem FjordHub
+Multi-file/drag-and-drop upload queues one file at a time with per-file progress/results and continues after failures. Requests are limited to **2 MiB each** to fit proxy request limits. The server reassembles without altering video; failed requests retry, and Retry resumes the saved offset while the same tab stays open. There is no fixed full-file size limit, but space checks apply. Closing the modal is safe; closing the tab interrupts the queue. Incomplete sessions expire after 48 hours and persist on disk; use the provided single-worker server deployment.
 
-FjordHub kan dele ekstra FjordFlix-data med andre apps via et adgangstoken:
-de 10 senest tilføjede film/serier med posters samt aktive streams. Alle afsnit
-fra samme serie tæller som én titel, sorteret efter seriens nyeste tilføjede
-afsnit. Vælg FjordFlix på
-tokenet i FjordHubs indstillinger og opdater begge apps. Se
-[FjordHubs API-kontrakt](https://github.com/qlerup/fjordhub/blob/main/docs/app-data-integration.md).
-Det interne læse-API kræver appens FjordHub-nøgle; eksterne apps bruger alene
-FjordHubs token og billedproxy.
+Name episodes like `The.Show.S02E10.1080p.mkv`, `The Show s02e10.mp4` or `The Show 2x10.mkv`; `S00E01` means a special. A start year distinguishes remakes. TMDB TV lookup supplies series/episode metadata and separate still images; absent metadata falls back to local grouping/video stills. Home groups series, Movies/Series filter, and seasons/episodes sort numerically. Next episode selects the next existing file, including across seasons. History is per file; favoriting an episode shows its series. Multi-episode files are not split automatically.
 
-## Telefon som fjernbetjening (lokal test)
+### TMDB
 
-Afspilleren bruger egne kontroller med én tidslinje for hele filmen, også ved transcoding. Den har afspil/pause, 10-sekunders spring, lyd, kvalitet og fuld skærm. Kontrollerne skjules efter inaktivitet under afspilning. Mellemrum/K, piletaster, M og F kan bruges, når fokus ikke står i en knap eller et inputfelt. På browsere uden HTML-fuldskærm kan videoens systemafspiller bruges som fallback.
-
-Åbn FjordFlix på pc’en, log ind og tryk **Fjernbetjening** øverst. Scan QR-koden med telefonens kamera og tryk **Forbind til skærmen**. Telefonen skal kunne nå pc’en på det samme lokale netværk. Der installeres ingen app.
-
-- Træk én finger på touchpadden for at flytte FjordFlix-markøren. Tap eller brug **Klik / vælg** for at vælge en film.
-- To fingre scroller. Der er også særskilte knapper til scroll, tilbage, afspil/pause, 10 sekunders spring, kvalitet, lyd og søgning.
-- QR-koden kan bruges én gang og udløber efter tre minutter. En telefon knyttes til én browserfane, ikke alle brugerens skærme.
-- Åbn **Fjernbetjening** igen for at afbryde telefonen eller lave en ny kode. Lukning/genindlæsning af pc-fanen afslutter parringen. En forbindelse varer højst otte timer og kræver, at pc-brugerens login stadig er gyldigt.
-- Telefonen får adgang til navigation og afspilning i FjordFlix. Den får ikke brugerens login-cookie, adgang til administration eller kontrol over Windows. Knapper, der kræver pc’en, fremhæves ikke som klikbare og viser en forklaring ved fjernklik.
-- Ingen Raspberry Pi-image, Wi-Fi-guide eller automatisk QR-visning efter login endnu.
-
-Kopiér `compose.override.example.yaml` til `compose.override.yaml`, og udskift eksempeladressen `192.168.1.100` med pc’ens lokale IP-adresse. Genstart med `docker compose up -d`. QR-koden bruger netværksadressen via `REMOTE_PUBLIC_URL`, mens localhost-adressen stadig virker. Den personlige override-fil ignoreres af Git. Kør `docker compose -f compose.yaml up -d` for opsætning med adgang kun via localhost.
-
-Hvis Windows-firewallen blokerer telefonen, kan `Enable-Local-Remote.ps1 -LocalAddress 192.168.1.100` køres fra en PowerShell startet som administrator. Udskift adressen med pc’ens lokale IP. Reglen tillader kun TCP 8096 til den valgte adresse fra det lokale subnet på et privat netværk. Router- eller Cloudflare-konfiguration er ikke nødvendig til den lokale test.
-
-Parring og touchpad-trafik går via lokal HTTP/WebSocket i denne test. Brug et betroet hjemmenetværk. HTTPS/WSS skal anvendes ved senere adgang over internettet. Mobilbrowserens suspension i baggrunden kan afbryde forbindelsen; den forsøger at genforbinde, når den kommer tilbage.
-
-## Med i betaen
-
-- Login, Argon2-adgangskoder, HttpOnly-sessioncookies og administratoradgang.
-- Administratoroprettelse én gang, invitationer og brugeroversigt.
-- Upload med fremdrift, filkontrol, diskpladskontrol uden fast filstørrelsesgrænse.
-- Automatisk aflæsning af videoformat, opløsning, bitrate, HDR og lydformat samt genererede filmminiaturer.
-- Bibliotek, søgning, Min liste og Se videre pr. bruger.
-- Enhedsvurdering via browserens codec- og Media Capabilities-understøttelse.
-- Direct Play med HTTP byte ranges, Direct Stream med uændret H.264-video og AAC-lyd samt HLS-transcoding til 1080p/720p/480p.
-- NVIDIA NVENC, når en reel encoder-test lykkes; ellers CPU-fallback.
-- Kvalitetsskift og tidslinje, der kan genstarte transcoding ved en ønsket filmposition.
-- Højst tre samtidige konverteringssessioner. Sessioner slettes, når afspilleren lukkes, eller efter to minutter uden heartbeat.
-- Film og database gemmes i Docker-volumenet `fjordflix_fjordflix-data` og bevares ved containeropdatering.
-
-## Browserprofiler
-
-`app/static/browser-profiles.js` vælger en navngiven profil for Chrome, Edge,
-Firefox, Safari, Opera og Samsung Internet. Desktop, Android og iOS/iPadOS har
-separate profil-id'er. Profilen vises under **Browserens formatkontrol**.
-Client Hints bruges, når de findes; de specifikke browsernavne kontrolleres før
-Chrome- og Safari-kompatibilitetstokens. Ukendte browsere får en fallbackprofil.
-
-Profilerne styrer bufferbudget og tilladelsen til at undersøge lokal HDR-til-SDR.
-Codec, bitdybde, lyd, HDR og 4K afgøres fortsat af de faktiske format- og
-Media Capabilities-kontroller. Et browsernavn giver aldrig alene Direct Play.
-
-| Profil | HLS-budget foran/bagud | Verifikation |
-| --- | --- | --- |
-| Chrome desktop | 64/32 MiB | Afprøvet i Chrome på Windows med 4K HEVC Main 10/HDR, AAC og ca. 68 Mbit/s; også efter spoling. |
-| Edge desktop | 64/32 MiB | Separat profil, afprøvet i Edge på Windows med samme 4K-klip; 1444 billeder og 0 tabte. |
-| Firefox, Safari, Opera, Samsung, generisk Chromium og ukendt desktop | 48/16 MiB | Separate profiler med forsigtige standarder; ingen påstand om hardwareverifikation. |
-| Mobilprofiler | 48/16 MiB | Forsigtigt udgangspunkt; arver ikke Chromes desktop-HDR-regler. |
-
-Budgetterne omsættes til sekunder efter streamens bitrate og begrænses også af
-brugerens bufferindstilling. HLS kan overskride tidsmålet med et segment, og
-browseren bestemmer sin egen hukommelseskvote. Native HLS/AirPlay bruger deres
-egen buffer. FjordFlix-desktopappen og TV-klienterne beholder deres hidtidige
-afspilningsopsætning.
-
-Chromes fungerende remux består af to rettelser: browserens fMP4-remux udelader
-FFmpegs `sidx`-justering, der ellers kan ændre open-GOP-billedtidsstempler, og
-HLS-bufferen begrænses efter bitrate. Begge bevarer originalvideoens opløsning.
-
-Firefox desktop kan ved Direct Stream hente ét næste, ukrypteret segment samtidig
-med det aktuelle. Det komprimerede segment har et separat loft på 32 MiB;
-MSE-budgettet er fortsat 48/16 MiB. HLS genbruger den igangværende eller færdige
-hentning og dens faktiske tidsmålinger. Spoling og lukning afbryder overflødige
-hentninger, og en fejlet forhåndshentning følger HLS' normale fejlbehandling ved
-behov. Range-segmenter, kryptering og manglende næste segment bruger normal HLS.
-Video, HDR og kvalitet ændres ikke. Chrome, Edge, mobil, native HLS/AirPlay og
-andre klienter bruger ikke denne forhåndshentning.
-
-En kontrolleret afspilning af 4K HEVC/HDR10-klippet med de 30 hentetider fra en
-Firefox-log havde gentagne bufferstop med almindelig sekventiel HLS. Med ét
-segment forud var der ingen stop efter opstart og 1444 billeder uden tab.
-Testen gentager hver forespørgsels hentetid og er ikke en garanti for forbindelsens
-samlede kapacitet. Native Firefox er også testet med H.264/fMP4; den lokale
-Firefox-version kan ikke verificere den nyere Firefox-versions HEVC-afkodning.
-
-Forhåndshentningens regressionstest: `node --test tests/test_browser_prefetch.cjs`.
-Ved ændringer i en profil køres `tests/test_browser_profiles.cjs`,
-`tests/test_browser_buffer.cjs` og `tests/test_browser_capabilities.cjs`.
-En ændring af en anden browsers profil skal ikke ændre Chrome-baselinen.
-
-## Buffer, diskplads og CPU-fallback
-
-HLS-jobs overvåges hvert sekund. FFmpeg pauses som standard, når der er mindst
-180 sekunders færdige segmenter foran det senest hentede segment, og genoptages,
-når forskellen falder til 90 sekunder. Segmentforespørgsler styrer bufferen, så
-TV og AirPlay fortsat virker uden telefonens heartbeat. HEAD-forespørgsler flytter
-ikke positionen. Matroska begrænses allerede af forbindelsens pipe/backpressure.
-
-| Miljøvariabel | Standard | Betydning |
-|---|---|---|
-| `TRANSCODE_BUFFER_SECONDS` | `180` | Buffer foran modtageren; mindst 10 sekunder. Genoptag ved halvdelen. |
-| `TRANSCODE_MIN_FREE_MB` | `2048` | Ledig plads, der skal bevares under aktive jobs. |
-
-Falder diskpladsen under grænsen, stoppes jobbet, dets midlertidige filer fjernes,
-og medieforespørgsler/heartbeat giver HTTP 507 med en forklaring. Afsluttede jobs
-kan fortsat afspilles. En pauset proces genoptages før stop, så oprydning også
-virker, mens FFmpeg er suspenderet.
-
-Fejler NVIDIA-kæden, forsøges CPU én gang med `libx264` eller `libx265`, samme
-opløsning, valgte lydspor og undertekster. Ved fejl før HLS-start genkodes fra det
-oprindelige startpunkt. MPEG-TS fortsætter efter sidste færdige segment med en
-HLS-discontinuity; eksisterende segmenter ændres ikke. AirPlay-tekstspor følger
-den nye streams faktiske tidsstempler. Native fMP4 og Matroska genåbnes af den
-opdaterede TV-/browserklient på CPU ved afspillerens aktuelle position, fordi
-codec-initialiseringen ikke sikkert kan skiftes i den eksisterende forbindelse.
-Det kan give en kort bufferpause. CPU-fejl gentages ikke automatisk.
-
-Testene i `tests/test_stream_control.py` kontrollerer bufferpauser, diskfejl,
-CPU-fallback, underteksttiming og rigtig FFmpeg-afkodning. Kør dem sammen med
-`tests/test_transcoding.py`, `tests/test_airplay.py` og Xbox-afspilningstestene.
-
-## Praktiske begrænsninger i første beta
-
-- Grundfilen binder til `127.0.0.1:8096`; en lokal override kan tilføje pc’ens netværksadresse til telefon-test.
-- Hardwareacceleration gælder indkodning med NVENC. Dekodning, skalering og HDR-tonemapping foregår på CPU i denne version.
-- Automatisk kvalitet bruger et estimat fra browseren, når det findes; det er ikke en målt gennemstrømning til serveren. Vælg Original manuelt ved en hurtig lokal forbindelse. Ingen løbende adaptiv bitrate under samme afspilning endnu.
-- Enhedsmærket før afspilning er en forventning. Browseren kan ikke kortlægge hele skærm/HDMI/lydkæden. Ved fejl i Direct Play forsøges transcoding.
-- HDR konverteres konservativt til SDR i denne version. FFmpeg-tonemapping er implementeret, men farvegengivelse på rigtige HDR-film og forskellige skærme er endnu ikke visuelt valideret.
-- Lydspor og indlejrede undertekster vælges i filmdetaljer eller under **Lyd og tekst** i afspilleren. Standardlydsporet vælges først, og undertekster starter slået fra. HLS konverterer det valgte lydspor til stereo AAC.
-- SRT, ASS/SSA, WebVTT og MP4-tekstundertekster udtrækkes til WebVTT og vises af browseren uden at kræve videokonvertering. ASS-layout, skrifttyper og effekter bevares ikke fuldt ud. PGS, DVD/VobSub og DVB-undertekster brændes ind og kræver videokonvertering. Ukendte undertekstformater vises som utilgængelige.
-- Eksisterende filers sporlister opdateres i baggrunden ved serverstart eller hentes ved åbning af filmdetaljer. Undertekstfiler caches lokalt under `DATA_DIR/subtitles` og kræver login. Valg af spor bevares ved søgning og kvalitetsskift, men nulstilles, når en anden film eller et andet afsnit åbnes.
-- HLS-filer produceres løbende i én valgt kvalitet. Afspillerens nederste filmtidslinje understøtter spring frem i endnu ikke konverterede dele af filmen. Browserens indbyggede tidslinje viser kun den tilgængelige HLS-del.
-- Upload kan ikke genoptages efter netværksafbrydelse endnu.
-- Kort testvideo validerer funktionalitet, ikke maksimal kapacitet eller langvarig streaming med flere seere. Lokalt betamiljø; internetdrift kræver bl.a. HTTPS og yderligere driftshærdning.
-
-## Drift og test
-
-```powershell
-docker compose ps
-docker compose logs --tail 100 app
-docker compose stop
-docker compose start
-python -m pytest tests/test_integration.py tests/test_legacy_cleanup.py -q
-```
-
-Test køres fra kildekoden med Python-afhængighederne og FFmpeg/FFprobe installeret; tests leveres ikke i appens image. Integrationstesten opretter altid en separat midlertidig database og testfilm og ændrer ikke brugerens bibliotek. Den tester opsætningslås, invitationer, rettigheder, CSRF, byte ranges, reel 4K → 1080p-transcoding, FFprobe-kontrol af output, HLS-adgang, seek, oprydning, upload og isoleret brugerhistorik.
-
-`tests/browser_smoke.py` anvender en separat lokal Playwright-browser og forventer en frisk, midlertidig QA-container på port 8097. Skærmbilleder ligger i `test-results/`. Ingen testkonto oprettes i installationen på 8096.
-
-`tests/test_remote.py` tester engangskoder, udløb, skærmrettigheder, WebSocket-oprindelse, filtrering af kommandoer og oprydning. `tests/browser_remote.py` tester to separate browserkontekster, afkoder den faktisk viste QR-kode med OpenCV og bruger touch-events fra telefonsiden til at vælge og afspille en film på pc-siden.
-
-### Web via Tunnel, video direkte
-
-Administratorer kan vælge **Server → Direkte videoforbindelse**. Webadressen foreslås fra FjordHub; videoadressen kræver en separat, fungerende HTTPS-indgang uden Cloudflare-proxy. Se [opsætning og Docker-konfiguration til Caddy](deploy/direct-media/README.md). Funktionen er slået fra som standard og ændrer ikke automatisk DNS eller routeren.
-
-### Teknisk grundlag
-
-Python/FastAPI, SQLite med WAL, FFmpeg/FFprobe og en lokal kopi af HLS.js. Ingen eksterne webtjenester er nødvendige under brug. Afspilning bruger FFmpegs [HLS-muxer](https://ffmpeg.org/ffmpeg-formats.html#hls-2).
-# Automatiske filmoplysninger (TMDB)
-
-Efter upload søger FjordFlix efter filmen og tilføjer titel, beskrivelse, år,
-genrer, TMDB-rating, cover og baggrundsbillede. Dansk foretrækkes; mangler
-beskrivelsen på dansk, bruges engelsk. Oplysninger og billeder gemmes lokalt.
-Filens tekniske data, afspilning og selve videofilen ændres ikke.
-
-Opret en TMDB-konto og hent **API Read Access Token** eller API-nøglen under
-https://www.themoviedb.org/settings/api. Åbn tandhjulet i FjordFlix →
-**Filmoplysninger · TMDB**, indsæt nøglen, og tryk **Gem API-nøgle**.
-Ændringen gælder straks for nye uploads, uden genstart. Kun administratorer
-kan læse opsætningsstatus, gemme eller fjerne nøglen. Den gemte nøgle sendes
-aldrig tilbage til browseren. Nøglen gemmes i appens lokale database (ikke
-krypteret); beskyt derfor datamappen og backups mod uvedkommende.
-En gemt nøgle har forrang over miljøvariablen. Fjernelse slår opslag fra,
-også hvis en ældre miljøvariabel stadig er sat. Eksisterende filmdata bevares.
-
-Alternativt kan tokenet stadig sættes i installationens lokale `.env`:
+Save an API Read Access Token/API key in Settings → Movie data. The saved key overrides environment configuration and is never returned to the browser, but is stored **unencrypted in the local database**; protect data/backups. Removing it disables lookup even if an older environment default exists. Alternative initial configuration:
 
 ```dotenv
-TMDB_READ_ACCESS_TOKEN=dit_read_access_token
+TMDB_READ_ACCESS_TOKEN=your_read_access_token
 ```
 
-Genopret app-containeren efter ændringen. Begge Compose-filer understøtter
-variablen. Tokenet bruges kun på serveren og må ikke committes til GitHub.
-TMDB kræver accept af sine vilkår; udvikler-API'et er gratis til ikke-kommerciel
-brug med kildeangivelse (https://developer.themoviedb.org/docs/faq).
-Før aktivering skal et godkendt TMDB-logo også tilføjes i appens sektion
-"Om filmdata", jf. https://www.themoviedb.org/about/logos-attribution.
-Kildeangivelsen og den krævede erklæring er allerede indsat.
+Recreate after environment changes; never commit credentials. TMDB terms/attribution apply: [API settings](https://www.themoviedb.org/settings/api), [FAQ](https://developer.themoviedb.org/docs/faq), [logo attribution](https://www.themoviedb.org/about/logos-attribution). Follow the required attribution/logo guidance before enabling the integration.
 
-Brug helst filnavne som `The.Matrix.1999.1080p.mkv`. Årstal hjælper med at
-skelne genindspilninger. Uklare eller manglende matches beholder filnavn og
-videostillbillede. Uden token eller ved API-fejl lykkes upload stadig, og
-brugerfladen fortæller, at metadata ikke blev hentet. Allerede uploadede film
-får ikke nye TMDB-oplysninger automatisk.
+Danish descriptions are preferred, with English fallback. Metadata/images cache locally; file contents/technical data remain unchanged. Missing/ambiguous lookup or an outage does not prevent import. Existing uploads are not automatically rematched. Administrators can Fetch information again, choose proposed matches or adjust title/year; failed retries preserve old data. Stored match choices retain season/episode/history. Candidate posters use TMDB's image service; selected artwork caches locally.
 
-Administratorer kan åbne en film eller et afsnit og vælge **Hent oplysninger igen**
-uden at uploade filen på ny. Det seneste resultat vises i filmdetaljerne, med
-særskilte beskeder for afvist API-nøgle, timeout, netværksfejl og manglende match.
-Et fejlet genforsøg bevarer eksisterende oplysninger og billeder. Manuelt
-redigerede oplysninger og billeder beskyttes mod automatisk genhentning.
-Ved et uklart match vises forslag fra TMDB med plakat, titel, årstal og kort
-beskrivelse. Administratoren kan vælge det rigtige match eller rette søgetitlen
-og tilføje startår. Valget huskes; sæson, afsnitsnummer og afspilningshistorik
-bevares. Forslagenes plakater vises fra TMDB's billedserver, mens billederne
-for det valgte match fortsat gemmes lokalt.
+### Manual corrections
 
-## Serier, sæsoner og afsnit
+Edit display title, type, description, genres, date/rating and series name/start year/season/episode per file. Reliable TMDB series group by ID; local series group by name/year. Manual classification overrides filename inference. Explicit metadata refetch from the edit form uses entered values and can replace prior manual information; background refresh does not silently overwrite it.
 
-Uploadvinduet understøtter valg af flere filer og drag-and-drop. En uploadkø
-viser fremdrift og resultat for hver fil, uploader én ad gangen og fortsætter
-efter fejl. Ingen fast grænse for filstørrelse. Vinduet kan lukkes under upload;
-browserfanen skal holdes åben, indtil køen er færdig.
+Custom JPEG/PNG/WebP posters/banners accept up to **8 MB / 16 megapixels** and are validated/re-encoded as JPEG. Empty uploads keep old images. Text saves first; an image error reports that text has already been saved. Source video, technical data, favorites and progress remain unchanged.
 
-Filer sendes som separate HTTP-requests på højst 2 MiB (2.097.152 bytes),
-så hele videofilen ikke rammer Cloudflares grænse pr. request. Serveren samler
-bidderne uden at ændre videoen. Afbrudte requests forsøges igen automatisk;
-**Prøv igen** fortsætter fra serverens gemte position, så længe samme browserfane
-er åben. Videobehandling og TMDB-opslag kører i baggrunden med statusvisning.
-Uafsluttede uploads ryddes op efter 48 timer uden aktivitet. Uploadsessionerne
-gemmes på disk; løsningen bruger én server-worker som i den medfølgende Docker-opsætning.
+## Browser playback and format checks
 
-Afsnit vises i en vandret karrusel med billede, afsnitsnummer, titel, spilletid
-og set-status. Vælg sæson, og brug swipe, scroll, pileknapper eller tastaturets
-piletaster til at finde et afsnit. Kun uploadede afsnit vises.
-TMDB's afsnitsbillede (`still_path`) hentes og gemmes separat fra serieplakaten.
-Hvis det mangler, bruges et stillbillede fra den enkelte videofil. Ældre afsnit
-kan hente TMDB-billedet med **Hent oplysninger igen**.
+`app/static/browser-capabilities.js` checks codec profile/level, bit depth, resolution, actual frame rate and selected audio independently for direct files and MSE/HLS. Supported H.264, HEVC, AV1 and VP9 can remux into fMP4 without video encoding. HEVC tests hvc1/hev1 and chooses the corresponding server tag. Confirmed AAC/AC3/EAC3 channel support preserves audio; otherwise only audio is converted where video can remain.
 
-Upload én videofil pr. afsnit. Navne som `The.Show.S02E10.1080p.mkv`,
-`The Show s02e10.mp4` og `The Show 2x10.mkv` genkendes automatisk.
-`S00E01` bruges til specialafsnit. Et startår før afsnitskoden hjælper
-med genindspilninger: `The Show (2020) S02E10.mkv`.
+Unknown/missing API answers do not automatically reject SDR; explicit unsupported results do. HDR needs confirmed decoding and HDR output or the established desktop Chrome/Edge 121+ HDR-to-SDR display path. Both `video-dynamic-range` and `dynamic-range` are checked. Unknown/mobile profiles do not inherit that desktop exception. A documented Dolby Vision HDR10 base may be preserved while removing DV metadata; unverified DV profiles are rejected rather than assuming correct colors. Original can override a smoothness warning, never explicit unsupported.
 
-Serieopslag bruger TMDB's TV-katalog, ikke filmsøgning. Der hentes seriecover,
-banner, seriebeskrivelse, genrer og rating samt titel, beskrivelse og dato for
-det konkrete afsnit. Dansk foretrækkes med engelsk beskrivelsesfallback.
-Mangler TMDB eller netværk, bevares lokal genkendelse af serien og afsnittet.
+Original compatible video is prioritized. Auto browser transcoding can reach **4K** for a 4K source when physical display resolution is at least 3840 × 2160 and target H.264/MSE support is confirmed smooth; otherwise its cap remains 1080p. Manual qualities and Windows/LG/Xbox/AirPlay retain their own rules. This is capability negotiation, not a continuous network speed test or adaptive bitrate ladder. Unknown throughput does not itself lower compatible original quality.
 
-**Hjem** viser én flise pr. serie og de enkelte film. **Film** og **Serier**
-filtrerer biblioteket. Åbn serien for at vælge sæson og afsnit; vælgerne viser
-kun uploadede filer i numerisk rækkefølge. Næste afsnit går videre til den
-næste uploadede fil, også på tværs af sæsoner. Afspilning og **Se videre**
-gemmes pr. fil; en favoritsat episode viser serien under **Min liste**.
-Ældre filer med en genkendelig afsnitskode grupperes lokalt uden at omskrive
-databasen. Kombinerede filer med flere afsnit understøttes ikke som flere
-selvstændige afsnit; del dem eller ret den registrerede episode manuelt.
+Format/decoder failures try Direct Play → compatible Direct Stream → Transcoding. Failed paths are remembered in the tab for ten minutes, including after seeks; network failures do not cause this codec downgrade. Before-playback badges are predictions; actual playback status and hardware results remain decisive. Capability checks stay local to the tab.
 
-## Manuel rettelse
+### Independent browser profiles
 
-Administratorer kan åbne **Rediger oplysninger** på en film eller et afsnit
-og ændre visningstitel, type, beskrivelser, genrer, dato og rating. For serier
-kan serienavn, startår, sæson og afsnit også rettes. Rettelser gælder den
-valgte fil, ikke automatisk resten af serien. Lokale afsnit grupperes efter
-serienavn/startår; sikre TMDB-matches grupperes efter serie-ID. Manuel
-klassifikation respekteres, selv hvis filnavnet peger på noget andet.
+`browser-profiles.js` identifies Chrome, Edge, Firefox, Safari, Opera and Samsung Internet with separate desktop/Android/iOS IDs, Client Hints when available, specific-browser checks before generic compatibility tokens, and unknown-browser fallback. Names control buffering/probe policy, not automatic codec support.
 
-**Hent oplysninger igen** i redigeringsvinduet søger med de indtastede felter,
-også før de er gemt. Film bruger titel og eventuelt udgivelsesår; serier bruger
-serienavn, startår, sæson og afsnit. Ved tvivl vises mulige matches i vinduet.
-Et match gemmer TMDB-oplysninger og billeder; uden match bevares de indtastede
-felter, så søgningen kan justeres. Dette er en eksplicit genhentning, som også
-kan erstatte tidligere manuelt gemte oplysninger.
+| Profile | Forward/backward compressed HLS budget | Notes |
+| --- | --- | --- |
+| Chrome desktop | 64/32 MiB | Windows 4K HEVC Main 10/HDR + AAC playback and seeking checked. |
+| Edge desktop | 64/32 MiB | Separate profile checked with the same 4K clip. |
+| Other desktop profiles | 48/16 MiB | Conservative defaults, without a hardware-compatibility guarantee. |
+| Mobile profiles | 48/16 MiB | Separate defaults; no inherited desktop HDR exception. |
 
-Cover og banner kan erstattes med JPEG, PNG eller WebP (maks. 8 MB / 16 MP).
-Billeder valideres og konverteres til JPEG på serveren. Tomme billedfelter
-beholder eksisterende billeder. Tekst gemmes før billeder; ved billedfejl
-vises det tydeligt, at teksten allerede er gemt. Videofil, tekniske data,
-favoritter og afspilningshistorik ændres ikke af redigeringen. Der er ingen
-automatisk baggrundsopdatering, der overskriver manuelle oplysninger.
+Budgets become seconds using stream bitrate and respect the user's buffer setting. Browsers impose their own MSE quotas; one segment may exceed a time target. Native HLS/AirPlay use native buffers. Browser remux omits FFmpeg's `sidx` adjustment to preserve open-GOP frame timestamps without changing resolution.
 
+Firefox desktop Direct Stream can prefetch **one next unencrypted segment**, bounded separately to **32 MiB**, while MSE retains 48/16 MiB. HLS reuses the transfer and actual timings; seek/close abort unnecessary work. Range/encrypted segments use normal HLS. Chrome, Edge, mobile and native HLS are unaffected. Controlled replay of a captured HEVC/HDR timing trace eliminated post-start buffer stops, but it does not guarantee total connection capacity or every Firefox decoder. Native H.264/fMP4 was also tested.
 
+Profile regression checks:
 
-### LG webOS og andre TV-klienter
+```sh
+node --test tests/test_browser_profiles.cjs tests/test_browser_buffer.cjs tests/test_browser_capabilities.cjs tests/test_browser_prefetch.cjs
+```
 
-Xbox-klienter kan sende `client_profile: "xbox"` ved afspilning. HEVC Direct Stream
-leveres da som HLS/fMP4 med bevaret video; nødvendig H.264-konvertering begrænses
-til 1920 × 1080 og 8 Mbit/s. `/tv-api/info` annoncerer `xbox-hevc-fmp4`.
+### Diagnostics and controls
 
-Xbox-app 0.1.9 kan vælge HEVC/fMP4-konvertering i op til 3840 × 2160 ved
-Automatisk/4K med `hevc_output: true`, når Xboxens outputdecoder bekræftes.
-Serveren afprøver HEVC NVENC og bruger ellers libx265; reel konverteringshastighed
-kan aflæses gennem stream-heartbeat. HDR konverteres til SDR ved videogenkodning.
-Et verificeret HDR10-basislag i Dolby Vision profil 7 eller profil 8 med
-kompatibilitets-ID 1 kan i stedet bevares uden videogenkodning via
-`hdr10_base: true`. Her fjernes Dolby Vision RPU/enhancement-data, og output er
-HDR10. Ubekræftede Dolby Vision-profiler afvises i det nye HEVC-forløb.
-Funktionerne annonceres som `xbox-hdr10-base` og `xbox-hevc-transcode`.
+The player shows method, input/output resolution, bitrate, remux/audio/HDR reason, delivery origin, buffer seconds, cumulative/recent dropped frames, buffer-stop count and segment transfer time versus segment duration. These distinguish decoding trouble from an empty buffer. Subtitle status includes selected track, extracted lines and active cues. A single full-film timeline remains stable through stream changes and displays a still preview while seeking; late previews are discarded.
 
-**Login via telefonen:** Xbox-appen viser en QR-kode til `/tv-login`, hvor brugeren
-skriver sit FjordFlix-/FjordHub-login og vælger **Log ind på Xbox**. Koden udløber
-efter fem minutter, kan annulleres og kan kun hentes én gang af den ventende Xbox.
-Telefonen modtager ingen Xbox-token. Funktionen annonceres som `phone-login-v1`;
-proxyen skal videresende `/tv-login`, `/static/*` og `/tv-api/*` til webserveren.
-Den nye serverkode kræver også Xbox-app 0.1.7 for dette loginforløb.
+Controls include play/pause, ten-second skips, volume, quality, tracks and fullscreen, hiding during playback inactivity. Space/K, arrows, M and F work outside input/button focus. Unsupported HTML fullscreen can use the system video player.
 
-Fra Xbox-app 0.1.10 åbner **Log ind via telefonen** i stedet en midlertidig
-HTTP-side på Xboxens lokale IP og port. Telefonen kan indtaste serveradresse,
-brugernavn og adgangskode, uden at serveradressen først skrives på Xbox.
-Begge enheder skal være på samme lokalnetværk. Siden har en tilfældig engangsadresse
-og lukker efter login, annullering, suspend eller fem minutter. Den bruger det
-eksisterende `/tv-api/login`; adgangskoden gemmes ikke. Serverparringen ovenfor
-bevares til browser-simulatoren.
+## Transcoding, buffers and cleanup
 
-Xbox-kildekoden ligger i [xbox/](xbox/README.md). På Windows: `cd xbox`, `npm ci`,
-`npm run build`, `npm test`, `npm run test:browser` og `npm run test:phone`.
-`npm run package` opretter og signerer en lokal Developer Mode-APPX.
-Byggefiler, SDK, udviklercertifikater og private nøgler versionsstyres ikke.
+NVIDIA encoding is used only after a real encoder test; CPU fallback remains. Lens/Flix may share a GPU but share VRAM/capacity without reservations or automatic priority. Start with two concurrent conversions and tune load.
 
-Serveren har et indbygget token-API til selvstændige TV-apps. Det følger med ved
-normal opdatering via FjordHub; TV-appens kildekode og installationsfil ligger
-ikke i dette repository.
+Supported decode/scaling uses GPU after source validation. HDR first scales 10-bit on CUDA then tone-maps on OpenCL, reducing RAM transfers; older OpenCL and CPU paths are compatibility fallbacks. Burned subtitles still use CPU filters. Rebuild for OpenCL/dependency changes.
 
-- `GET /tv-api/info` viser API-versionen uden login.
-- `POST /tv-api/login` modtager `name` og `password`. Eksisterende FjordFlix- eller
-  FjordHub-login og loginbegrænsning genbruges. Svaret indeholder `token` og
-  `expires_in`; der sættes ingen cookie. Brug HTTPS til login over internettet.
-- TV-klienten sender `Authorization: Bearer <token>` til `/tv-api/state`,
-  `/tv-api/movies` og de tilsvarende endpoints for billeder, favoritter,
-  afspilningsposition, afspilning og stream-heartbeat. Tokenet har samme
-  syvdages levetid som en normal session; serveren gemmer kun dets hash.
-- API'et kræver token, også selv om forespørgslen indeholder en gyldig
-  browsercookie. CORS understøtter pakkede apps uden at tillade cookie-credentials.
-  Det eksisterende browser-login og dets CSRF-kontrol er uændret.
-- Afspilning returnerer en separat, kortlivet videobillet under `/tv-media/`.
-  Den gælder kun én film/stream, fornyes via `/tv-api/media/heartbeat` og kan
-  tilbagekaldes via `/tv-api/media/revoke`. `POST /tv-api/logout` ugyldiggør
-  TV-sessionen og dens billetter. FjordHub-adgang kontrolleres fortsat på serveren.
+Bitrate depends on pixel area, frame rate, source bitrate and output codec; 60 fps gets more than 24 fps and HEVC less than H.264. Quality limits dimensions, including wide-film width, without upscaling smaller sources. Xbox retains H.264 8 Mbit/s and HEVC 25 Mbit/s limits. Compatible direct video remains preferred.
 
-Ved separat mediedomæne skal reverse proxy videresende **både `/media/*` og
-`/tv-media/*`** til FjordFlix. Eksemplet i `deploy/direct-media/Caddyfile`
-understøtter begge. En eksisterende FjordHub-mediegateway skal have TV-ruten
-tilføjet, hvis den endnu ikke findes. Undlad at logge videobillet-URL'erne.
+HLS jobs are monitored each second. FFmpeg pauses at the configured forward margin and resumes halfway back, based on completed/requested segments. HEAD requests do not advance consumption; native clients need no browser heartbeat for this buffer. Matroska uses pipe backpressure.
 
-En installation med den tidligere separate `fjordflix_tv.py`-udvidelse kan
-fortsat køre under opdateringen. For at bruge det indbyggede API skal dens
-TV-Compose-override fjernes fra `COMPOSE_FILE`, hvorefter kun app-servicen
-genoprettes med den normale FjordHub-konfiguration. Bevar øvrige Compose-filer,
-data- og mediemapper, GPU-indstillinger og mediegatewayens TV-rute.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TRANSCODE_BUFFER_SECONDS` | 180 | Forward buffer, minimum 10 seconds; resume at half. |
+| `TRANSCODE_MIN_FREE_MB` | 2048 | Minimum free space during active jobs. |
+| `TRANSCODE_CLEANUP` | Enabled | Set 0 to disable played-segment cleanup. |
+| `TRANSCODE_RETAIN_SECONDS` | 180 | Retain played segments, minimum 60 seconds. |
 
-Test: `python -m pytest tests/test_tv.py tests/test_media_delivery.py tests/test_hub.py -q`.
-Xbox og telefonlogin: `python -m pytest tests/test_xbox_playback.py tests/test_tv_pairing.py -q`.
-Tests dækker token-login, cookieadskillelse, CORS, sessionsudløb, FjordHub-revokering,
-filmposition, favoritter og videobillettens rettigheder. Fysisk TV-afspilning skal
-desuden afprøves med den separate klient.
+Low disk space stops the active job, cleans temporary files and returns HTTP 507; finished jobs can still play. A paused FFmpeg process resumes before termination for cleanup. NVIDIA failure permits one CPU retry at the same output/track settings. MPEG-TS can continue with discontinuity; native fMP4/Matroska clients reopen at the current position because codec initialization cannot safely change in place. CPU failure is not retried indefinitely.
 
-### AirPlay (Safari / iPhone / iPad / Mac)
+Updated web/LG/Xbox clients report completed seek position so played HLS segments more than the retention margin behind can be deleted; recently requested segments get an extra 60-second grace. AirPlay/older clients keep their segments. Rewind starts a new stream at the requested position. Only temporary segments are removed, never original media. Closing the player/inactivity releases streams; concurrency is configurable in the Hub deployment.
 
-Start filmen, vælg lyd og undertekster, og tryk på AirPlay-ikonet ved siden af fuld skærm. Knappen vises i browsere med WebKits AirPlay-vælger og native HLS. Safari får en AirPlay-klar HLS-stream allerede ved lokal afspilning, så både knappen og systemets AirPlay-vælger bruger samme kilde. Andre browsere beholder deres normale afspilning.
+## Audio, subtitles and trailers
 
-- Det valgte lydspor sendes som AAC-stereo. Understøttet H.264-video kan bevares uden ny videokodning, når undertekster ikke brændes ind.
-- Tekstbaserede undertekstspor (fx SRT/SubRip) konverteres til WebVTT og leveres som en separat HLS-rendition med det valgte sprog aktiveret. Det kræver ikke ny videokodning alene på grund af underteksterne. Understøttet H.264-video bevares ved Original/tilstrækkelig båndbredde; andet format eller lavere kvalitet kan stadig kræve transcoding.
-- Under **Lyd og tekst** findes **Indbrænd undertekster, hvis TV’et ikke viser dem** som manuel reserve. Den kræver videokonvertering og nulstilles ved åbning af en ny film. Billedbaserede spor (fx PGS) bruger fortsat indbrænding. Automatisk kontrol af, hvad TV’et faktisk viser, er ikke mulig fra browseren.
-- Skift af lyd, tekst eller kvalitet genstarter streamen fra den aktuelle position. Det kan give en kort pause. Undertekster følger originalfilens tidslinje efter spoling.
-- TV'et bruger en tilfældig billet, der kun gælder denne stream, uden login-cookies. TV'ets forespørgsler holder billetten aktiv, når telefonen sover. Billetter har 10 minutters inaktivitetsfrist og en absolut grænse på filmens varighed plus en time (højst 24 timer); log ud eller luk afspilleren for at stoppe adgangen.
-- Med direkte video konfigureret bruges den eksisterende videoadresse og dens adgangskontrol. Ellers bruges samme adresse som hjemmesiden. TV'et skal kunne nå adressen; eksterne loginporte som Cloudflare Access kan blokere TV'et og kræver en tilgængelig videoadresse.
+Select audio/subtitles in detail or Sound and text. Text SRT, ASS/SSA, WebVTT and MP4 tracks extract to cached WebVTT without video encoding; ASS typography/effects are not fully reproduced. PGS, DVD/VobSub and DVB tracks need burn-in/transcoding. Unknown formats are unavailable. Track choices survive seeking/quality changes, resetting for another title.
 
-Verifikation: `python -m pytest tests/test_airplay.py tests/test_tracks.py tests/test_media_delivery.py -q` bruger rigtig FFmpeg til at kontrollere valgt lyd, separate tekstspor, bevarede H.264-billeddata, synkronisering før/efter spoling, indbrændingsreserven og adgang uden cookies. `node --test tests/test_airplay_ui.cjs` kræver `jsdom` og tester UI med simulerede WebKit-API'er. Den trådløse forbindelse skal desuden afprøves på fysisk Apple-udstyr: forbind TV, lås telefonen i mindst tre minutter, prøv spoling og skift af spor, undertekster Fra, separate undertekster og indbrændingsreserven, afbryd AirPlay, og kontrollér at lukning af afspilleren stopper streamen.
-# Undertekster fra OpenSubtitles
+Web and updated Xbox fetch text cues incrementally rather than waiting for full-file extraction. A far-forward resume may still wait until relevant cues are extracted. Completed tracks cache under `DATA_DIR/subtitles` and require authorization.
 
-Som administrator: åbn **Din server → Undertekster · OpenSubtitles**. Opret en
-konto på OpenSubtitles.com og en API-nøgle under **API Consumers**. Indtast
-nøgle, brugernavn og adgangskode, og vælg **Gem og test forbindelse**. Gemte
-hemmeligheder vises ikke igen; de opbevares i serverens database.
+SubDL (API key) or OpenSubtitles (key/account/password) can be selected under Settings → Subtitles. Both configurations may be saved; only the active provider searches/downloads. Blank edits preserve secrets. Administrators manually search/select or Fetch subtitles with preferred/fallback languages; users can play downloaded tracks. Automatic fetching on new upload/library import is optional, defaults off on upgrades, requires a TMDB match and skips existing suitable text tracks. It neither backfills all old titles nor automatically retries failures; import continues on provider errors.
 
-Åbn en film og vælg **Find undertekster**, vælg sprog (dansk er standard), og
-søg. Resultater viser udgave, match på filens fingeraftryk og eventuelle
-markeringer for tvungne undertekster eller hørehæmmede. Vælg **Hent SRT** for
-at gemme og vælge sporet. Titelmatch alene garanterer ikke timing; samples og
-andre klip kræver særlig opmærksomhed. Søgning og download er for administratorer.
-Alle brugere kan afspille de hentede spor. Downloadkvoten kommer fra kontoen;
-den samme gemte fil hentes ikke igen ved genafspilning eller gentaget download.
+Downloaded SRT files persist in `DATA_DIR/subtitles/downloaded` and are reused across browser/desktop/TV and provider switches. The default preferred/fallback languages are Danish and English; both can be changed and fallback disabled. Removing credentials keeps files; deleting a film removes its downloads. Match by title/ID is not a timing guarantee for a release. Quotas depend on the account; tests use mocked provider answers. [SubDL API](https://subdl.com/api-doc).
 
-SRT-filer gemmes i `DATA_DIR/subtitles/downloaded`; de oprindelige videofiler
-ændres ikke. Tekstspor leveres som WebVTT til browseren og LG-appen og tvinger
-ikke i sig selv videotranscoding. Genåbn filmen i den opdaterede TV-app for at
-hente sporlisten igen. Fjernelse af API-forbindelsen bevarer de hentede filer;
-sletning af filmen fjerner dens hentede SRT-filer. Tag database og datamappe
-med i backup. Integrationens tests bruger simulerede API-svar, så de forbruger
-ikke downloads fra en rigtig konto.
+The first administrator gets an optional TMDB/subtitle setup wizard, with language/fallback choice, resumable progress and skip options. Other users/admins do not receive the automatic wizard. Configure later in Settings. TMDB saves without a live test; subtitle connections are tested before saving.
 
-Ved opdatering fjernes de tidligere indbyggede testfilm automatisk ved opstart,
-inklusive deres videofiler, covers og historik. Oprydningen genkender de gamle
-genererede poster og bevarer uploadede film og filer fra tilføjede mediemapper.
+Trailers are fetched server-side with yt-dlp/Deno and converted to H.264/AAC MP4 for web, Windows and TV playback. Initial viewing waits for preparation; `/data/trailers` retains up to 20 entries, 24 hours after last use, with two preparations concurrently. YouTube may reject a server's address; errors are shown. Trailer playback does not change film progress. Rebuild the server for dependencies.
 
-### Første administrators opsætning
+## Direct-video origin and AirPlay
 
-Den første administrator, der åbner FjordFlix, får en valgfri modal med to trin:
-TMDB til covers og filmdata samt SubDL eller OpenSubtitles til undertekster. Begge trin har
-vejledning og links til konto og API-opsætning. Gemte forbindelser genkendes,
-og guiden springer allerede konfigurerede trin over. Almindelige brugere og
-andre administratorer får ikke den automatiske guide.
+Web can remain behind a tunnel while media uses a separate verified HTTPS origin. Configure Server → Direct video connection or Hub's gateway guide; the option defaults off. See [Caddy deployment](deploy/direct-media/README.md). Public DNS/router access is a prerequisite; simply saving a hostname does not create connectivity. Failed proof keeps settings unchanged; an unreachable direct route is not silently rerouted through the tunnel.
 
-Man kan vælge **Gør det senere** for hvert trin eller **Vent med hele opsætningen**.
-Valgene gemmes på serveren og huskes efter login og genstart. Afbrudt opsætning
-fortsætter fra det næste udestående trin. Opsætningerne kan altid ændres under
-**Indstillinger → Filmdata / Undertekster**. Guiden vises også én gang på
-opgraderede installationer, hvis en af forbindelserne endnu ikke er konfigureret.
-TMDB-nøglen gemmes uden netværkstest; undertekstudbyderens forbindelse testes inden lagring.
+Safari's AirPlay picker appears beside fullscreen when native HLS/WebKit are available. Safari uses an AirPlay-ready HLS source already locally. Supported H.264 can retain original video; selected audio becomes stereo AAC. Text subtitles are separate selected-language WebVTT renditions. A manual Burn subtitles fallback requires conversion, as do image subtitles. Track/quality changes restart at the current position with a possible brief pause.
 
-### Automatisk hentning af undertekster
+TV delivery uses stream-specific random tickets, not browser cookies. Requests keep tickets alive while a phone sleeps. AirPlay idle expiry is ten minutes; absolute lifetime is movie duration plus one hour, capped at 24 hours. Logout/player close revokes access. The TV must reach the chosen media origin without an external interactive login/challenge. Physical Apple hardware/color/output still requires verification beyond FFmpeg/UI fixtures.
 
-På den enkelte film eller det enkelte afsnit kan administratoren vælge **Hent
-undertekster** ved siden af filmdata-handlingerne. Den bruger den gemte udbyder
-og sprogrækkefølge, også når automatisk hentning ved import er slået fra. Et
-eksisterende passende tekstspor genbruges og vælges; **Find undertekster** giver
-fortsat mulighed for selv at vælge en anden udgave.
+## Phone remote
 
-Under **Indstillinger → Undertekster** vælges én aktiv udbyder: **SubDL**
-(egen API-nøgle) eller **OpenSubtitles** (API-nøgle, brugernavn og adgangskode).
-Begge forbindelser kan gemmes, men søgning og download bruger kun den valgte.
-Gemte nøgler sendes ikke tilbage til browseren; blanke felter bevarer dem.
-Adgangen administreres pr. FjordFlix-server, ligesom den eksisterende OpenSubtitles-opsætning.
+Open Remote on a signed-in desktop browser and scan the QR code. On the same trusted LAN, a phone controls the Flix pointer, click/scroll, back, playback, skips, quality, tracks and search without installing an app.
 
-Opsætningsguiden lader dig vælge ønsket undertekstsprog og et valgfrit
-fallback-sprog. Valgene bruges ved automatisk hentning og **Hent undertekster**;
-**Find undertekster** åbner med det foretrukne sprog valgt. De kan senere ændres
-under **Indstillinger → Undertekster**.
+The code is single-use, expires after three minutes and pairs with one tab. Closing/reloading that tab ends pairing; connections last up to eight hours and require valid desktop login. It grants Flix navigation, not Windows control/admin access or the desktop cookie. Background phone suspension can interrupt/reconnect.
 
-Aktivér **Hent automatisk til nye film og afsnit**. Det gælder både upload og
-import fra biblioteksmapper. Standardrækkefølgen er dansk, derefter engelsk;
-begge sprog og fravalg af fallback kan indstilles. Automatikken kræver et TMDB-match,
-vælger ét fuldt undertekstspor og springer eksisterende tekstspor på sproget over.
-Gemte SRT-filer genbruges af web-, Windows- og TV-afspillerne, også efter udbyderskift.
-Titel/ID-match garanterer ikke timing for en bestemt filmudgave; brug **Find
-undertekster** til at vælge en anden udgave. Automatisk hentning er som udgangspunkt
-slået fra ved opgradering. Den efterbehandler ikke det eksisterende bibliotek og
-gentager ikke mislykkede downloads automatisk. Importen fortsætter ved udbyderfejl.
+Copy `compose.override.example.yaml` to `compose.override.yaml`, set the actual LAN IP/`REMOTE_PUBLIC_URL`, then recreate. `Enable-Local-Remote.ps1 -LocalAddress <LAN-IP>` can add a local-subnet/private-network TCP 8096 firewall rule with administrator PowerShell. No router change is needed for a local test; external remote control requires HTTPS/WSS. There is no Pi image/automatic Wi-Fi setup.
 
-SubDL bruger den officielle [søge- og download-API](https://subdl.com/api-doc).
-Kvoter afhænger af udbyder og konto. Integrationen er testet med simulerede
-API-svar, herunder kvotefejl, episoder, SRT/ZIP, caching og udbyderskift.
+## Windows and TV clients
 
-Test: `python -m pytest tests/test_onboarding.py tests/test_catalog_settings.py tests/test_opensubtitles.py tests/test_hub.py -q`. Den isolerede
-`python tests/browser_onboarding.py` kræver Playwright/Chromium og tester modal,
-mobilvisning, gem, fejl, genoptagelse og fravalg med simuleret OpenSubtitles-login.
+- [Windows](desktop/README.md): bundled mpv opens original media with local hardware decoding, no server video transcoding. Server-loaded UI, local seeking/preview, audio passthrough with PCM fallback, diagnostics and GitHub Release updates.
+- [LG webOS](lg/README.md): shared TV UI with Magic Remote navigation, capability checks, trailers, subtitles and next-episode countdown.
+- [Xbox](xbox/README.md): UWP client, controller navigation, local phone-login page, HEVC/HDR10 paths and optional original TrueHD/DTS Matroska audio. Physical HDMI/Atmos output is not proven by server packet preservation.
 
+Browser profile changes do not replace native client policies. Update server and client together for new API capabilities/seek previews. The bundled `/tv-api/info`, `/tv-api/login`, state/library/progress/stream endpoints require bearer tokens rather than browser cookies. Tokens last seven days and are stored hashed. Separate `/tv-media/` tickets scope playback and renew/revoke through authenticated APIs. Proxies on media origins must route both `/media/*` and `/tv-media/*`, without logging tickets.
 
-## Browserens formatkontrol
+The server phone-pairing `/tv-login` expires after five minutes and requires the updated API/static paths. Xbox's native local HTTP phone page can enter the server address on the phone instead; LG first needs the server address on TV. Older separate `fjordflix_tv.py`/TV overrides should be removed from `COMPOSE_FILE` when adopting the built-in API, retaining unrelated overrides, GPU settings and mounts.
 
-Webafspilleren tester profil, level, bitdybde, opløsning, faktisk billedrate og det
-valgte lydspor i et selvstændigt modul: `app/static/browser-capabilities.js`.
-Direkte filer og MSE/HLS undersøges separat. H.264, HEVC, AV1 og VP9 kan remuxes til
-fMP4 uden videogenkodning. HEVC testes med hvc1/hev1, og serverens tag følger testen.
-AAC/AC3/EAC3 bevares med bekræftet format og kanalantal; ellers tilpasses lyden alene.
-Windows- og TV-profilerne er uændrede. Safari/AirPlay beholder sin native-HLS-vej.
+## API integration, operations and tests
 
-Manglende/fejlede API-svar er ukendte, ikke automatiske afslag for SDR. Et udtrykkeligt
-unsupported-svar respekteres. HDR kræver bekræftet decoder og enten HDR-output
-eller desktop-browserens kendte HDR-til-SDR-visning (Chrome eller Edge 121+).
-HDR-output kontrolleres via både `video-dynamic-range` og `dynamic-range`, så en
-særskilt HDR-videovej også accepteres. Formatkontrollen viser, når videotesten
-springes over på grund af manglende HDR-afspilningsvej, frem for at antyde et codec-afslag.
-Desktop-browserens SDR-visning testes uden at kræve HDR-output fra skærmen;
-codec, bitdybde, billedrate og decoderafslag kontrolleres stadig. Ukendte browsere
-og mobile klienter får ikke denne undtagelse. Farver skal også afprøves fysisk.
-Dolby Vision kan remuxes som HDR10, når basislaget er dokumenteret; ukendte profiler afvises i den
-nye browserprofil frem for at risikere forkerte farver. Original kan tilsidesætte en
-smoothness-advarsel, men aldrig unsupported. Det er ikke garanti for fysisk afspilning.
+Hub access tokens can expose the ten latest grouped movie/series titles/posters and active streams to other apps through its [data API](https://github.com/qlerup/fjordhub/blob/main/docs/app-data-integration.md). External consumers use Hub's scoped token/image proxy rather than the app key.
 
-Format-/decoderfejl forsøger Direct Play -> Direct Stream med kompatibel lyd ->
-Transcoding. En fejlet vej huskes i fanen i ti minutter, også efter seek. Netværksfejl
-udløser ikke denne nedgradering. API-tests caches kort og har timeout. Oplysningerne
-behandles lokalt i fanen; ingen ekstern analysetjeneste bruges. Filmens detaljer viser
-Browserens formatkontrol, og afspilleren viser serverens begrundelse.
+Back up the complete persistent data/media storage, provider configuration and deployment environment. Standalone volume `fjordflix_fjordflix-data` survives rebuilds; Hub uses selected bind paths. Startup removes recognized historic generated demo movies only, retaining uploads/external library files. Preserve overrides/keys and verify restored code/schema compatibility.
 
-Automatisk browser-transcoding kan bruge op til 4K, når kilden er 4K, skærmens
-fysiske opløsning er mindst 3840 × 2160, og MSE/H.264-afspilning i målformatet
-er bekræftet som understøttet og flydende. Ellers bruges fortsat op til 1080p.
-Originalvideo prioriteres før konvertering. Manuelle kvalitetsvalg, AirPlay,
-Windows-, LG- og Xbox-profiler beholder deres eksisterende regler.
+```sh
+docker compose ps
+docker compose logs --tail 100 app
+python -m pytest tests/test_hub.py tests/test_tv.py tests/test_media_delivery.py tests/test_stream_control.py tests/test_transcoding.py tests/test_airplay.py tests/test_tracks.py -q
+```
 
-Dette er format-/ydelsesforhandling, ikke løbende adaptiv netværksbitrate. Ukendt
-forbindelseshastighed er fortsat 0. Fysisk HEVC/HDR-afspilning skal også afprøves på
-de konkrete browsere og skærme. Implementationen indeholder ikke kopieret Jellyfin-kode.
+Tests run from source with Python dependencies and FFmpeg/FFprobe, using isolated databases/clips rather than live libraries. Additional integration, remote, metadata, subtitle, onboarding, Xbox and browser tests are under `tests/`. Browser smoke fixtures use a disposable QA server, not production accounts. Local controlled playback is not a guarantee of every 4K/HDR display, sustained multi-viewer load or physical TV output. Native decoder quotas, available bandwidth and source formats remain relevant limits.
