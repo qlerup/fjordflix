@@ -156,3 +156,51 @@ test('browsers without AirPlay keep their existing playback choices',async()=>{
     assert.equal((await api.capabilities(movie,'original')).airplay,false);
   }finally{dom.window.close()}
 });
+
+
+for (const errorKind of ['element','manifestIncompatibleCodecsError','bufferIncompatibleCodecsError'])
+test(`browser fallback keeps position and tracks through direct, remux and transcode (${errorKind})`,async()=>{
+  const {dom,w,calls,api}=setup(false);
+  try {
+    w.MediaSource={isTypeSupported:()=>true};
+    class Hls {
+      static Events={ERROR:'error',FRAG_LOADED:'frag'};
+      static ErrorTypes={MEDIA_ERROR:'media'};
+      static isSupported(){return true}
+      handlers={}; on(e,cb){this.handlers[e]=cb}
+      loadSource(){} attachMedia(){} destroy(){} recoverMediaError(){}
+    }
+    w.Hls=Hls;
+    const fetch=w.fetch;
+    w.fetch=async(path,options)=>{
+      const response=await fetch(path,options);
+      if(!path.endsWith('/play'))return response;
+      const data=JSON.parse(options.body);
+      const mode=data.direct?'Direct Play':data.video_copy?'Direct Stream':'Transcoding';
+      return {ok:true,json:async()=>({mode,height:720,mbps:1,encoder:'test',
+        session:data.direct?null:'stream',offset:data.direct?0:data.start,url:'/test.m3u8',
+        audio_track:data.audio_track,subtitle_track:data.subtitle_track})};
+    };
+    await tick();await tick();await api.openDetail(movie);
+    api.playFromDetail(30);await until(()=>api.playback&&!api.switching);
+    assert.equal(api.playback.mode,'Direct Play');
+    const v=w.document.getElementById('video');
+    Object.defineProperty(v,'error',{value:{code:2},writable:true,configurable:true});
+    v.dispatchEvent(new w.Event('error'));
+    assert.equal(calls.filter(c=>c.path.endsWith('/play')).length,1,'network errors must not transcode');
+    v.error={code:4};v.dispatchEvent(new w.Event('error'));
+    await until(()=>api.playback?.mode==='Direct Stream'&&!api.switching);
+    const remux=calls.filter(c=>c.path.endsWith('/play')).at(-1).data;
+    assert.equal(remux.start,30);assert.equal(remux.audio_copy,false);
+    v.error=null;v.currentTime=7;v.dispatchEvent(new w.Event('playing'));
+    if (errorKind === 'element') { v.error={code:3};v.dispatchEvent(new w.Event('error')); }
+    else api.hls.handlers[Hls.Events.ERROR](null,{fatal:true,type:Hls.ErrorTypes.MEDIA_ERROR,details:errorKind});
+    await until(()=>api.playback?.mode==='Transcoding'&&!api.switching);
+    const retry=calls.filter(c=>c.path.endsWith('/play')).at(-1).data;
+    assert.equal(retry.start,37);assert.equal(retry.audio_track,remux.audio_track);
+    assert.equal(retry.subtitle_track,remux.subtitle_track);
+    assert.equal(retry.video_copy,false);assert.equal(retry.h264,false);
+    assert.equal(calls.filter(c=>c.path.endsWith('/play')).length,3);
+    assert.ok(w.document.getElementById('browser-capabilities-text').textContent);
+  }finally{dom.window.close()}
+});

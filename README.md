@@ -468,3 +468,29 @@ API-svar, herunder kvotefejl, episoder, SRT/ZIP, caching og udbyderskift.
 Test: `python -m pytest tests/test_onboarding.py tests/test_catalog_settings.py tests/test_opensubtitles.py tests/test_hub.py -q`. Den isolerede
 `python tests/browser_onboarding.py` kræver Playwright/Chromium og tester modal,
 mobilvisning, gem, fejl, genoptagelse og fravalg med simuleret OpenSubtitles-login.
+
+
+## Browserens formatkontrol
+
+Webafspilleren tester profil, level, bitdybde, opløsning, faktisk billedrate og det
+valgte lydspor i et selvstændigt modul: `app/static/browser-capabilities.js`.
+Direkte filer og MSE/HLS undersøges separat. H.264, HEVC, AV1 og VP9 kan remuxes til
+fMP4 uden videogenkodning. HEVC testes med hvc1/hev1, og serverens tag følger testen.
+AAC/AC3/EAC3 bevares med bekræftet format og kanalantal; ellers tilpasses lyden alene.
+Windows- og TV-profilerne er uændrede. Safari/AirPlay beholder sin native-HLS-vej.
+
+Manglende/fejlede API-svar er ukendte, ikke automatiske afslag for SDR. Et udtrykkeligt
+unsupported-svar respekteres. HDR kræver bekræftet decoder og HDR-skærm. Dolby Vision
+kan remuxes som HDR10, når basislaget er dokumenteret; ukendte profiler afvises i den
+nye browserprofil frem for at risikere forkerte farver. Original kan tilsidesætte en
+smoothness-advarsel, men aldrig unsupported. Det er ikke garanti for fysisk afspilning.
+
+Format-/decoderfejl forsøger Direct Play -> Direct Stream med kompatibel lyd ->
+Transcoding. En fejlet vej huskes i fanen i ti minutter, også efter seek. Netværksfejl
+udløser ikke denne nedgradering. API-tests caches kort og har timeout. Oplysningerne
+behandles lokalt i fanen; ingen ekstern analysetjeneste bruges. Filmens detaljer viser
+Browserens formatkontrol, og afspilleren viser serverens begrundelse.
+
+Dette er format-/ydelsesforhandling, ikke løbende adaptiv netværksbitrate. Ukendt
+forbindelseshastighed er fortsat 0. Fysisk HEVC/HDR-afspilning skal også afprøves på
+de konkrete browsere og skærme. Implementationen indeholder ikke kopieret Jellyfin-kode.

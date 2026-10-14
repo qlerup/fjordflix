@@ -1045,6 +1045,9 @@ class Playback(BaseModel):
     direct: bool = False
     h264: bool = False
     video_copy: bool = False
+    browser_profile: Literal[0, 1] = 0
+    browser_fmp4: bool = False
+    browser_hevc_tag: Literal['hvc1', 'hev1'] = 'hvc1'
     hdr10_base: bool = False
     hevc_output: bool = False
     audio_copy: bool = False
@@ -1074,7 +1077,8 @@ def decide(meta, data):
         result.update(transport='matroska', playlist='stream.mkv')
         result['reason'] += ' Det valgte lydspor bevares uændret til Xboxens HDMI-lydvej.'
     copied = result['mode'] == 'Direct Play' or data.audio_passthrough or (
-        data.audio_copy and not data.airplay and audio and audio['codec'] in ('aac', 'ac3', 'eac3'))
+        data.audio_copy and not data.airplay and audio and audio['codec'] in ('aac', 'ac3', 'eac3')
+        and (not data.browser_fmp4 or result['mode'] == 'Direct Stream'))
     result['audio_output'] = {'codec': audio['codec'] if copied and audio else 'aac' if audio else None,
                               'channels': audio.get('channels') if copied and audio else 2 if audio else None,
                               'copied': bool(copied and audio)}
@@ -1103,11 +1107,13 @@ def video_plan(meta, data):
     preserve = quality == 'original' or (quality == '2160' and meta['height'] <= 2160)
     if preserve and data.direct and not data.hdr10_base and not data.airplay and not burn and not remap_audio:
         return {'mode': 'Direct Play', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Afspilleren understøtter originalfilen.'}
-    if preserve and not burn and ((data.video_copy and not data.airplay and meta['video'] in ('h264', 'hevc')) or (data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'])):
+    if preserve and not burn and ((data.video_copy and not data.airplay and (meta['video'] in ('h264', 'hevc') or data.browser_profile == 1 and data.browser_fmp4 and meta['video'] in ('av1', 'vp9'))) or (data.h264 and meta['video'] == 'h264' and meta['pix_fmt'] == 'yuv420p' and not meta['hdr'])):
         if data.hdr10_base:
             return {'mode':'Direct Stream','height':meta['height'],'mbps':round(meta['bitrate']/1e6,1), 'dynamic_range':'HDR10',
                     'reason':'4K-videoens HDR10-basislag bevares uden videogenkodning. Dolby Vision-metadata fjernes; lyd og indpakning tilpasses.'}
         return {'mode': 'Direct Stream', 'height': meta['height'], 'mbps': round(meta['bitrate'] / 1e6, 1), 'reason': 'Videoen bevares. Indpakning og lyd tilpasses afspilleren.'}
+    if data.browser_profile == 1 and source.get('dynamic_range') == 'Dolby Vision' and not compatible_hdr10_base(source):
+        raise HTTPException(400, 'Denne Dolby Vision-profil har ikke et bekræftet HDR10-basislag. Browserafspilning med korrekte farver kunne ikke bekræftes; brug en kompatibel originalafspiller.')
     hevc = (data.client_profile == 'xbox' and data.hevc_output and not data.airplay and
             quality in ('original', '2160') and data.quality != 'original')
     if hevc and source.get('dynamic_range') == 'Dolby Vision' and not compatible_hdr10_base(source):
@@ -1252,7 +1258,8 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         # HDR10 base-layer remux and native Xbox HEVC use explicit hvc1/fMP4.
         # Other browsers/TVs keep their established muxer.
         fmp4 = (data.client_profile == 'xbox' and (hevc_transcode or result['mode'] == 'Direct Stream' and meta['video'] == 'hevc')
-                or data.hdr10_base and result['mode'] == 'Direct Stream')
+                or data.hdr10_base and result['mode'] == 'Direct Stream'
+                or data.browser_profile == 1 and data.browser_fmp4 and not data.airplay and result['mode'] == 'Direct Stream')
         matroska = result.get('transport') == 'matroska'
         cmd += ['-max_muxing_queue_size', '2048']
         if matroska:
@@ -1262,7 +1269,9 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
         else:
             cmd += ['-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'temp_file']
             if fmp4:
-                cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-tag:v', 'hvc1']
+                cmd += ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4']
+                if hevc_transcode or result['mode'] == 'Direct Stream' and meta['video'] == 'hevc':
+                    cmd += ['-tag:v', data.browser_hevc_tag if data.browser_fmp4 else 'hvc1']
             cmd += ['-hls_segment_filename', str(folder / ('segment%05d.m4s' if fmp4 else 'segment%05d.ts')), str(folder / 'index.m3u8')]
         log = (folder / 'ffmpeg.log').open('wb')
         try:

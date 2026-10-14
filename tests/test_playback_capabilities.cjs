@@ -9,11 +9,12 @@ const code = source.slice(source.indexOf('async function capabilities('), source
 
 test('browser network estimate must not force compatible video into transcoding', async () => {
   const context = vm.createContext({
-    FjordLibrary,
+    FjordLibrary, setTimeout, clearTimeout,
     video: {canPlayType: () => 'probably'}, airplaySupported: false,
     navigator: {connection: {downlink: 5}, mediaCapabilities: {decodingInfo: async () => ({supported: true})}},
     FjordTracks: {request: () => ({audio_track: null, subtitle_track: null})},
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../app/static/browser-capabilities.js'), 'utf8'), context);
   vm.runInContext(code, context);
   const movie = {format:'mp4', video:'h264', audio:'aac', width:1920, height:1080,
     bitrate:20000000, pix_fmt:'yuv420p', hdr:false};
@@ -30,20 +31,21 @@ test('browser network estimate must not force compatible video into transcoding'
 test('HEVC Main10 HDR uses remux only with confirmed display and smooth MSE decoding', async () => {
   const probes = [];
   const context = vm.createContext({
-    FjordLibrary,
+    FjordLibrary, setTimeout, clearTimeout,
     video:{canPlayType:() => 'maybe'}, airplaySupported:false,
     MediaSource:{isTypeSupported:() => true}, matchMedia:() => ({matches:true}),
     navigator:{mediaCapabilities:{decodingInfo:async config => {probes.push(config); return {supported:true,smooth:true};}}},
     FjordTracks:{request:() => ({})},
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../app/static/browser-capabilities.js'), 'utf8'), context);
   vm.runInContext(code, context);
   const movie = {format:'mkv',video:'hevc',audio:'truehd',width:3840,height:2160,bitrate:40000000,
     pix_fmt:'yuv420p10le',hdr:true,quality:{dynamic_range:'HDR10',frame_rate:'24000/1001',video_level:153}};
   const result = await context.capabilities(movie, 'original');
   assert.equal(result.direct,false);
   assert.equal(result.video_copy,true);
-  assert.equal(probes.at(-1).video.transferFunction,'pq');
-  assert.match(probes.at(-1).video.contentType,/hvc1\.2\.4/);
+  assert.equal(probes.filter(p => p.video).at(-1).video.transferFunction,'pq');
+  assert.ok(probes.some(p => /hvc1\.2\.4/.test(p.video?.contentType || '')));
   context.matchMedia = () => ({matches:false});
   assert.equal((await context.capabilities(movie,'original')).video_copy,false);
   context.matchMedia = () => ({matches:true});
@@ -52,7 +54,7 @@ test('HEVC Main10 HDR uses remux only with confirmed display and smooth MSE deco
     const remux = await context.capabilities(compatible,'original');
     assert.equal(remux.video_copy,true);
     assert.equal(remux.hdr10_base,true);
-    assert.equal(probes.at(-1).video.transferFunction,'pq');
+    assert.equal(probes.filter(p => p.video).at(-1).video.transferFunction,'pq');
     context.matchMedia = () => ({matches:false});
     assert.equal((await context.capabilities(compatible,'original')).hdr10_base,false);
     context.matchMedia = () => ({matches:true});

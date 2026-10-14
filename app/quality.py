@@ -34,6 +34,7 @@ def source_quality(video, audio, tracks=()):
         first_audio.get('Format') == 'MLP FBA' and '16-ch' in features and audio.get('codec_name') == 'truehd')
     dovi = next((s for s in side_data if s.get('side_data_type') == 'DOVI configuration record'), {})
     return {'version': 3, 'video_profile': video.get('profile'), 'video_level': video.get('level'),
+            'video_codec_tag': video.get('codec_tag_string'),
             'frame_rate': video.get('avg_frame_rate') or video.get('r_frame_rate'),
             'dv_profile': dovi.get('dv_profile'), 'dv_el': bool(dovi.get('el_present_flag')),
             'dv_bl': bool(dovi['bl_present_flag']) if 'bl_present_flag' in dovi else None,

@@ -209,51 +209,26 @@ $('logout').onclick = async () => {
 document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
 
 async function capabilities(movie, quality) {
-  const mime = movie.format.includes('webm') ? 'video/webm' : 'video/mp4';
-  const codecs = {h264: 'avc1.640033', hevc:'hvc1.1.6.L153.B0', av1:'av01.0.13M.08', vp9:'vp09.00.51.08', vp8:'vp8'};
-  const details = movie.quality || {};
-  const tenBit = movie.pix_fmt === 'yuv420p10le';
-  const hevcProfile = movie.video === 'hevc' && ['yuv420p', 'yuv420p10le'].includes(movie.pix_fmt);
-  const level = Number(details.video_level) || 153;
-  const codec = hevcProfile ? `hvc1.${tenBit ? '2.4' : '1.6'}.L${level}.B0` : codecs[movie.video];
-  const frameRateParts = String(details.frame_rate || '24').split('/').map(Number);
-  const frameRate = frameRateParts[0] / (frameRateParts[1] || 1) || 24;
-  let supported = !!codec && !!video.canPlayType(`${mime}; codecs="${codec}"`);
-  const allowedContainer = mime === 'video/webm' || movie.format.includes('mp4');
-  const audioType = movie.audio === 'aac' ? 'audio/mp4; codecs="mp4a.40.2"' : movie.audio === 'opus' ? 'audio/webm; codecs="opus"' : movie.audio === 'mp3' ? 'audio/mpeg' : null;
-  const audioSupported = !movie.audio || !!audioType && !!video.canPlayType(audioType);
-  if (navigator.mediaCapabilities && supported) {
-    try { const info = await navigator.mediaCapabilities.decodingInfo({type:'file', video:{contentType:`${mime}; codecs="${codec}"`, width:movie.width, height:movie.height, bitrate:movie.bitrate || 8000000, framerate:24}}); supported = info.supported; } catch { supported = false; }
+  return FjordBrowserCapabilities.detect(movie, {video, quality, airplay:airplaySupported, tracks:FjordTracks.request()});
+}
+function showBrowserCapabilities(movie) {
+  let details = $('browser-capabilities');
+  if (!details) {
+    details = document.createElement('details'); details.id = 'browser-capabilities';
+    const summary = document.createElement('summary'); summary.textContent = 'Browserens formatkontrol';
+    const body = document.createElement('pre'); body.id = 'browser-capabilities-text';
+    body.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.5';
+    details.append(summary, body); $('plan-reason').parentElement.after(details);
   }
-  if (movie.video === 'h264' && movie.pix_fmt !== 'yuv420p') supported = false;
-  // Probe the MSE route separately: an MKV container is not directly playable,
-  // but hls.js can remux supported HEVC without re-encoding the video.
-  let videoCopy = false;
-  const mse = typeof MediaSource !== 'undefined' ? MediaSource : null;
-  const dynamicRange = details.dynamic_range;
-  const hdr10Base = FjordLibrary.hdr10Base(movie);
-  const hdrAllowed = !movie.hdr || ((['HDR10', 'HDR10+', 'HLG'].includes(dynamicRange) || hdr10Base)
-    && typeof matchMedia === 'function' && matchMedia('(dynamic-range: high)').matches);
-  if (hevcProfile && hdrAllowed && !airplaySupported
-      && mse?.isTypeSupported(`video/mp4; codecs="${codec}"`) && navigator.mediaCapabilities) {
-    try {
-      const config = {contentType:`video/mp4; codecs="${codec}"`, width:movie.width, height:movie.height,
-        bitrate:movie.bitrate || 8000000, framerate:frameRate};
-      if (movie.hdr) Object.assign(config, {colorGamut:'rec2020', transferFunction:dynamicRange === 'HLG' ? 'hlg' : 'pq'});
-      const decoded = await navigator.mediaCapabilities.decodingInfo({type:'media-source', video:config});
-      videoCopy = decoded.supported && decoded.smooth;
-    } catch { videoCopy = false; }
-  }
-  // HDR direct-file playback remains conservative; the MSE route is checked above.
-  if (movie.hdr) supported = false;
-  // NetworkInformation estimates unrelated connections (and excludes private
-  // address space). It is not a measurement of throughput to our media server.
-  // Leave bandwidth unknown rather than forcing unnecessary transcoding in Auto.
-  const capabilityReason = movie.video === 'hevc' && !videoCopy && !supported
-    ? (movie.hdr ? 'Browseren kunne ikke bekræfte understøttelse af filmens HEVC/HDR-format.' : 'Browseren kunne ikke bekræfte flydende HEVC-afspilning.') : '';
-  return {quality, airplay:airplaySupported, direct:supported && allowedContainer && audioSupported, video_copy:videoCopy,
-    hdr10_base:videoCopy && hdr10Base,
-    capability_reason:capabilityReason, h264:!!video.canPlayType('video/mp4; codecs="avc1.640028"'), bandwidth:0, ...FjordTracks.request()};
+  $('browser-capabilities-text').textContent = FjordBrowserCapabilities.describe(movie);
+}
+function retryBrowserRoute(code, current = playback) {
+  if (!current || current !== playback || current.recovering || !FjordBrowserCapabilities.noteFailure(selected, current.mode, code)) return false;
+  const at = current.hasPlayed ? position() : current.requestedPosition || 0;
+  current.recovering = true;
+  toast(current.mode === 'Direct Play' ? 'Originalfilen blev afvist. Tilpasser indpakning og lyd først.' : 'Originalvideoen blev afvist. Prøver kompatibel videokonvertering.');
+  startPlayback(at).catch(e => showPlayerError(e.message));
+  return true;
 }
 async function openDetail(movie) {
   if (movie?.isSeries) movie = FjordLibrary.initial(movie.episodes);
@@ -296,7 +271,7 @@ async function updatePlan() {
     $('detail-quality').value = 'original'; $('detail-quality').disabled = true;
     return;
   }
-  try { const movie = selected; const p = await api(`/movies/${movie.id}/plan`, 'POST', await capabilities(movie, $('detail-quality').value)); if (movie !== selected || generation !== planGeneration) return; badge('plan-badge', p.mode); $('plan-reason').textContent = `${p.height}p · ${p.mbps} Mbit/s. ${p.reason}`; } catch(e) { toast(e.message); }
+  try { const movie = selected; const p = await api(`/movies/${movie.id}/plan`, 'POST', await capabilities(movie, $('detail-quality').value)); if (movie !== selected || generation !== planGeneration) return; showBrowserCapabilities(movie); badge('plan-badge', p.mode); $('plan-reason').textContent = `${p.height}p · ${p.mbps} Mbit/s. ${p.reason}`; } catch(e) { toast(e.message); }
 }
 $('detail-quality').onchange = updatePlan;
 $('favorite-button').onclick = async () => { try { await api(`/movies/${selected.id}/favorite`, 'POST'); selected.favorite = !selected.favorite; $('favorite-button').textContent = selected.favorite ? '✓ På min liste' : '＋ Min liste'; await refresh(); } catch(e) { toast(e.message); } };
@@ -335,14 +310,14 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     if (!airplaySupported) await loadHlsLibrary();
     if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
-    if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; data.hdr10_base = false; }
+    if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; data.hdr10_base = false; data.browser_fmp4 = false; data.audio_copy = false; }
     const result = await api(`/movies/${selected.id}/play`, 'POST', {...data, start:position, force_cpu:forceCpu});
     if (generation !== playGeneration || !$('player-dialog').open) { if(result.playback_id) await api(`/playbacks/${result.playback_id}/stop`, 'POST'); if(result.session) await api(`/streams/${result.session}`, 'DELETE'); return; }
-    playback = result; lastSaved = 0;
+    playback = result; result.requestedPosition = position; lastSaved = 0;
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
     $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
     const useHls = !!result.session && !airplaySupported && !!window.Hls?.isSupported();
-    result.infoText = $('playback-info').textContent + (result.session ? ` · ${useHls ? 'HLS.js' : 'Native HLS'}` : '');
+    result.infoText = $('playback-info').textContent + (result.session ? ` · ${useHls ? 'HLS.js' : 'Native HLS'}` : '') + (result.reason ? ` · ${result.reason}` : '');
     $('playback-info').textContent = result.infoText;
     result.health = FjordPlaybackHealth.create(video);
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
@@ -354,9 +329,10 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
         result.health.error(info);
         if (!info.fatal || generation !== playGeneration) return;
         if (info.type === Hls.ErrorTypes.MEDIA_ERROR && recoverPlaybackDecode()) return;
-        if (!fallback && result.mode === 'Direct Stream' && data.video_copy && info.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          startPlayback(position + (video.currentTime || 0), true).catch(e => showPlayerError(e.message));
-        } else showPlayerError(`Streamen blev afbrudt (${/^[a-zA-Z0-9_-]{1,80}$/.test(info.details || '') ? info.details : 'HLS-fejl'}). Vælg kvalitet igen for at genstarte.`);
+        const codecError = info.type === Hls.ErrorTypes.MEDIA_ERROR &&
+          (/^(bufferAddCodecError|bufferAppendError|bufferIncompatibleCodecsError|manifestIncompatibleCodecsError|fragParsingError)$/.test(info.details || '') || [3, 4].includes(video.error?.code));
+        if (codecError && retryBrowserRoute(video.error?.code || 3, result)) return;
+        showPlayerError(`Streamen blev afbrudt (${/^[a-zA-Z0-9_-]{1,80}$/.test(info.details || '') ? info.details : 'HLS-fejl'}). Vælg kvalitet igen for at genstarte.`);
       });
       hls.loadSource(result.url); hls.attachMedia(video);
     }
@@ -364,7 +340,7 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     FjordTracks.attach(result).catch(e => { if (e.name !== 'AbortError' && generation === playGeneration) toast(e.message); });
   } finally { if(generation===playGeneration){switching = false;flushPlayerSeek();} }
 }
-video.onplaying = () => { $('player-loading').hidden = true; if(playback) { playback.health?.playing(); badge('actual-badge', playback.mode); } };
+video.onplaying = () => { $('player-loading').hidden = true; if(playback) { playback.hasPlayed = true; playback.health?.playing(); badge('actual-badge', playback.mode); } };
 video.onwaiting = () => { if(playback) { playback.health?.waiting(); $('player-loading').hidden = false; $('player-loading').textContent = 'Bufferer…'; } };
 function recoverPlaybackDecode() {
   if (playback?.mode !== 'Transcoding' || !playback.health?.recoverDecode(hls)) return false;
@@ -373,7 +349,7 @@ function recoverPlaybackDecode() {
   $('player-loading').textContent = 'Genopretter videoafkodning…';
   return true;
 }
-video.onerror = () => { if(switching || !playback || recoverPlaybackDecode()) return; if(playback.mode === 'Direct Play') { toast('Originalformatet kunne ikke afspilles. Prøver transcoding.'); startPlayback(video.currentTime || 0, true).catch(e => showPlayerError(e.message)); } else showPlayerError(FjordPlaybackHealth.mediaError(video.error) + ' Vælg kvalitet igen for at genstarte.'); };
+video.onerror = () => { if(switching || !playback || recoverPlaybackDecode()) return; if (retryBrowserRoute(video.error?.code)) return; showPlayerError(FjordPlaybackHealth.mediaError(video.error) + ' Vælg kvalitet igen for at genstarte.'); };
 function position() { return Math.min(selected?.duration || 0, (video.currentTime || 0) + (playback?.offset || 0)); }
 function reportPresence() {
   if (!playback?.playback_id) return;
