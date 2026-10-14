@@ -151,6 +151,24 @@ afspilningsopsætning.
 Chromes fungerende remux består af to rettelser: browserens fMP4-remux udelader
 FFmpegs `sidx`-justering, der ellers kan ændre open-GOP-billedtidsstempler, og
 HLS-bufferen begrænses efter bitrate. Begge bevarer originalvideoens opløsning.
+
+Firefox desktop kan ved Direct Stream hente ét næste, ukrypteret segment samtidig
+med det aktuelle. Det komprimerede segment har et separat loft på 32 MiB;
+MSE-budgettet er fortsat 48/16 MiB. HLS genbruger den igangværende eller færdige
+hentning og dens faktiske tidsmålinger. Spoling og lukning afbryder overflødige
+hentninger, og en fejlet forhåndshentning følger HLS' normale fejlbehandling ved
+behov. Range-segmenter, kryptering og manglende næste segment bruger normal HLS.
+Video, HDR og kvalitet ændres ikke. Chrome, Edge, mobil, native HLS/AirPlay og
+andre klienter bruger ikke denne forhåndshentning.
+
+En kontrolleret afspilning af 4K HEVC/HDR10-klippet med de 30 hentetider fra en
+Firefox-log havde gentagne bufferstop med almindelig sekventiel HLS. Med ét
+segment forud var der ingen stop efter opstart og 1444 billeder uden tab.
+Testen gentager hver forespørgsels hentetid og er ikke en garanti for forbindelsens
+samlede kapacitet. Native Firefox er også testet med H.264/fMP4; den lokale
+Firefox-version kan ikke verificere den nyere Firefox-versions HEVC-afkodning.
+
+Forhåndshentningens regressionstest: `node --test tests/test_browser_prefetch.cjs`.
 Ved ændringer i en profil køres `tests/test_browser_profiles.cjs`,
 `tests/test_browser_buffer.cjs` og `tests/test_browser_capabilities.cjs`.
 En ændring af en anden browsers profil skal ikke ændre Chrome-baselinen.

@@ -324,7 +324,11 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (!result.session || !useHls && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else if (useHls) {
-      hls = new Hls(FjordBrowserBuffer.config(playbackBufferSeconds(), result.mbps, !!window.fjordDesktop, browserPlaybackProfile));
+      const prefetch = result.mode === 'Direct Stream' ? FjordBrowserPrefetch.create(Hls, browserPlaybackProfile) : null;
+      const config = FjordBrowserBuffer.config(playbackBufferSeconds(), result.mbps, !!window.fjordDesktop, browserPlaybackProfile);
+      if (prefetch) config.fLoader = prefetch.Loader;
+      hls = new Hls(config);
+      prefetch?.attach(hls);
       hls.on(Hls.Events.FRAG_LOADED, (_, data) => result.health.fragment(data));
       hls.on(Hls.Events.ERROR, (_, info) => {
         result.health.error(info);

@@ -54,6 +54,7 @@
       // Mobile profiles are separate from the verified desktop Chrome policy.
       buffer:platform === 'desktop' ? {forwardMiB:policy.forwardMiB, backMiB:policy.backMiB}
         : {forwardMiB:48, backMiB:16},
+      prefetchMiB:browser === 'firefox' && platform === 'desktop' ? 32 : 0,
       // This is permission to probe local tone mapping, never codec acceptance.
       hdrToSdr:platform === 'desktop' && engine === 'chromium' &&
         (browser === 'chrome' || browser === 'edge' && major >= 121),
