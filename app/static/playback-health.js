@@ -5,8 +5,9 @@ const FjordPlaybackHealth = {
       3:'Browseren kunne ikke afkode videoen', 4:'Browseren afviste videoformatet'};
     return `${labels[error?.code] || 'Ukendt videofejl'} (kode ${error?.code || 0}).`;
   },
-  create(video) {
+  create(video, now = () => Date.now()) {
     let waits = 0, segment = null, recoveries = 0, pendingError = null;
+    let frameSample = null, recentFrames = null;
     const errors = [];
     return {
       recoverDecode(hls) {
@@ -18,8 +19,28 @@ const FjordPlaybackHealth = {
         pendingError = video.error;
         try { hls.recoverMediaError(); return true; } catch { pendingError = null; return false; }
       },
-      playing() { pendingError = null; },
-      waiting() { if (!video.paused && !video.seeking && !video.ended && video.currentTime > 0) waits++; },
+      playing() { pendingError = null; frameSample = recentFrames = null; },
+      waiting() { frameSample = recentFrames = null; if (!video.paused && !video.seeking && !video.ended && video.currentTime > 0) waits++; },
+      sampleFrames() {
+        const frames = video.getVideoPlaybackQuality?.();
+        const hidden = typeof document !== 'undefined' && document.hidden;
+        if (video.paused || video.seeking || video.ended || video.readyState < 3 || hidden ||
+            !Number.isFinite(frames?.totalVideoFrames) || !Number.isFinite(frames?.droppedVideoFrames)) {
+          frameSample = recentFrames = null; return;
+        }
+        const current = {at:now(), position:video.currentTime, total:frames.totalVideoFrames, dropped:frames.droppedVideoFrames};
+        if (frameSample) {
+          const seconds = (current.at-frameSample.at)/1000;
+          const total = current.total-frameSample.total, dropped = current.dropped-frameSample.dropped;
+          // Timer suspension, seek and source/counter resets are not playback samples.
+          const advance = current.position-frameSample.position;
+          if (seconds > 0 && total > 0 && dropped >= 0 && dropped <= total && advance > 0 &&
+              advance <= seconds*2* (video.playbackRate || 1) && seconds <= 10)
+            recentFrames = {seconds, dropped, total, percent:100*dropped/total};
+          else recentFrames = null;
+        }
+        frameSample = current;
+      },
       fragment(data) {
         const stats = data.frag?.stats || data.stats;
         const duration = data.frag?.duration;
@@ -44,12 +65,15 @@ const FjordPlaybackHealth = {
         }
         const frames = video.getVideoPlaybackQuality?.();
         return {buffer, waits, recoveries, segment:segment && {...segment}, errors:errors.map(e => ({...e})),
+          recentFrames:recentFrames && {...recentFrames},
           dropped:frames?.droppedVideoFrames, total:frames?.totalVideoFrames};
       },
       label() {
+        this.sampleFrames();
         const s = this.snapshot();
         const parts = [`Buffer: ${s.buffer.toFixed(1)} s`];
         if (Number.isFinite(s.dropped) && Number.isFinite(s.total)) parts.push(`Tabte billeder: ${s.dropped}/${s.total}`);
+        if (s.recentFrames) parts.push(`Seneste ${s.recentFrames.seconds.toFixed(1)} s: ${s.recentFrames.dropped}/${s.recentFrames.total} tabte (${s.recentFrames.percent.toFixed(1)} %)`);
         parts.push(`Bufferstop: ${s.waits}`);
         if (s.recoveries) parts.push(`Genoprettelsesforsøg: ${s.recoveries}`);
         if (s.segment) parts.push(`Segment hentet: ${s.segment.seconds.toFixed(2)} s / ${s.segment.duration.toFixed(2)} s video`);

@@ -49,3 +49,37 @@ test('only decoder errors recover, at most once per playback', () => {
   assert.match(health.mediaError(v.error),/afkode.*kode 3/);
   assert.equal(health.create(v).recoverDecode(hls),true);
 });
+
+test('recent frame losses exclude old startup losses and reset around waiting or seek', () => {
+  const v=video();v.readyState=4;v.playbackRate=1;
+  let time=0,total=1000,dropped=200;
+  v.getVideoPlaybackQuality=()=>({totalVideoFrames:total,droppedVideoFrames:dropped});
+  const monitor=health.create(v,()=>time);
+  monitor.label();
+  time=2000;v.currentTime+=2;total+=48;
+  assert.match(monitor.label(),/Seneste 2\.0 s: 0\/48 tabte \(0\.0 %\)/);
+  time=4000;v.currentTime+=2;total+=48;dropped+=12;
+  assert.match(monitor.label(),/12\/48 tabte \(25\.0 %\)/);
+  monitor.waiting();
+  assert.equal(monitor.snapshot().recentFrames,null);
+  monitor.label();
+  time=6000;v.currentTime+=60;total+=48;dropped+=48;
+  assert.doesNotMatch(monitor.label(),/Seneste/);
+  v.paused=true;
+  monitor.label();
+  assert.equal(monitor.snapshot().recentFrames,null);
+});
+
+test('counter resets and suspended timers do not report ongoing frame loss', () => {
+  const v=video();v.readyState=4;
+  let time=0,total=200,dropped=50;
+  v.getVideoPlaybackQuality=()=>({totalVideoFrames:total,droppedVideoFrames:dropped});
+  const monitor=health.create(v,()=>time);
+  monitor.label();time=2000;v.currentTime+=2;total=48;dropped=0;
+  assert.doesNotMatch(monitor.label(),/Seneste/);
+  time=22000;v.currentTime+=2;total+=48;dropped+=1;
+  assert.doesNotMatch(monitor.label(),/Seneste/);
+  delete v.getVideoPlaybackQuality;
+  monitor.label();
+  assert.equal(monitor.snapshot().recentFrames,null);
+});
