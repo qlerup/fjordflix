@@ -15,6 +15,52 @@ def static_directory():
 
 @unittest.skipIf(sync_playwright is None, "Install Playwright to run browser regression tests")
 class HubSessionBrowserTests(unittest.TestCase):
+    def test_email_requirement_cannot_be_dismissed_and_clears_after_explicit_save(self):
+        root = static_directory()
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                for width in (390, 1440):
+                    page = browser.new_page(viewport={'width':width,'height':900})
+                    state = {'required':True, 'saved':[]}
+                    def route(request):
+                        path = request.request.url.split('test')[-1].split('?')[0]
+                        if path.endswith('.js'): request.fulfill(path=str(root/'hub-session.js'),content_type='text/javascript; charset=utf-8')
+                        elif path.endswith('.css'): request.fulfill(path=str(root/'hub-session.css'),content_type='text/css; charset=utf-8')
+                        elif path == '/api/auth/email':
+                            data = request.request.post_data_json
+                            state['saved'].append(data)
+                            self.assertEqual(request.request.headers.get('x-csrf-token'), 'synthetic-csrf')
+                            if data['email'] == 'duplicate@example.test': request.fulfill(json={'ok':True,'accepted':False,'error':'Already in use'})
+                            else:
+                                state['required'] = False
+                                request.fulfill(json={'ok':True,'accepted':True})
+                        elif path.startswith('/api/'):
+                            request.fulfill(status=403 if state['required'] else 200, json={'detail':{'error_code':'email_update_required','authenticated':True,'csrf_token':'synthetic-csrf'}} if state['required'] else {'authenticated':True})
+                        else: request.fulfill(content_type='text/html; charset=utf-8',body='<html><head><meta charset="utf-8"><link rel="stylesheet" href="/static/hub-session.css"><script defer src="/static/hub-session.js"></script></head><body><main>Application</main></body></html>')
+                    page.route('**/*', route)
+                    page.goto('https://email.test/', wait_until='networkidle')
+                    dialog = page.locator('.hub-email-required')
+                    dialog.wait_for()
+                    box = dialog.bounding_box()
+                    self.assertGreaterEqual(box['x'], 0)
+                    self.assertLessEqual(box['x']+box['width'], width)
+                    page.keyboard.press('Escape')
+                    self.assertTrue(dialog.evaluate('(dialog) => dialog.open'))
+                    dialog.locator('input').fill('duplicate@example.test')
+                    dialog.locator('button').click()
+                    page.get_by_text('Already in use',exact=True).wait_for()
+                    self.assertTrue(dialog.evaluate('(dialog) => dialog.open'))
+                    dialog.locator('input').fill('new@example.test')
+                    dialog.locator('button').click()
+                    page.wait_for_function('!document.querySelector(".hub-email-required")')
+                    self.assertFalse(state['required'])
+                    self.assertEqual(state['saved'], [{'email':'duplicate@example.test'}, {'email':'new@example.test'}])
+                    page.reload(wait_until='networkidle')
+                    self.assertEqual(dialog.count(), 0)
+                    page.close()
+            finally: browser.close()
+
     def test_revocation_displays_once_then_returns_to_login_and_outage_does_not_log_out(self):
         root=static_directory()
         with sync_playwright() as playwright:

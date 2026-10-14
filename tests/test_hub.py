@@ -92,6 +92,37 @@ def test_partial_configuration_never_enables_setup(monkeypatch):
         assert client.post('/api/login',json={'name':'anything','password':'anything'}).status_code==503
 
 
+def test_required_email_blocks_existing_session_until_saved_without_logging_out(managed):
+    with TestClient(main.app) as client:
+        assert client.post('/api/login',json={'name':'Hub Alice','password':'sixsix'}).status_code == 200
+        cookie = client.cookies.get('fjordflix_session')
+        managed[0]['email_required'] = True
+        # The fresh opening check sees the flag even while a membership cache exists.
+        response = client.get('/api/auth/access?fresh=1')
+        assert response.status_code == 403
+        assert response.json()['detail']['error_code'] == 'email_update_required'
+        assert client.get('/api/movies').status_code == 403
+        assert client.cookies.get('fjordflix_session') == cookie
+        with main.db() as conn:
+            assert conn.execute('SELECT count(*) FROM sessions WHERE token=?',(main.digest(cookie),)).fetchone()[0] == 1
+        calls = []
+        def update(path,payload=None,method='POST'):
+            if path.endswith('/users'): return {'ok':True,'items':managed}
+            calls.append((path,payload))
+            if payload['email'] == 'invalid': return {'ok':True,'accepted':False,'error':'Invalid email'}
+            managed[0].update(email_required=False,email=payload['email'])
+            return {'ok':True,'accepted':True,'user':managed[0]}
+        with patch.object(hub,'call',side_effect=update):
+            assert client.post('/api/auth/email',json={'email':'invalid'}).json()['accepted'] is False
+            assert client.get('/api/auth/access?fresh=1').status_code == 403
+            assert client.post('/api/auth/email',json={'email':'updated@example.test','id':999},headers={'Origin':'https://evil.test'}).status_code == 403
+            assert client.post('/api/auth/email',json={'email':'updated@example.test','id':999}).json()['accepted'] is True
+        assert calls[-1] == ('/api/hub/apps/users/101/email', {'email':'updated@example.test'})
+        assert client.get('/api/auth/access').json()['authenticated'] is True
+        assert client.get('/api/movies').status_code == 200
+        assert client.cookies.get('fjordflix_session') == cookie
+
+
 def test_hub_key_only_goes_to_configured_backend(monkeypatch):
     monkeypatch.setenv('FJORDHUB_URL','http://hub.test')
     monkeypatch.setenv('FJORDHUB_API_KEY','test-app-key')

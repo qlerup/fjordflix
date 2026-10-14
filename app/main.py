@@ -184,7 +184,7 @@ async def security(request, call_next):
     return response
 
 
-def session_user(token):
+def session_user(token, *, allow_email=False, force=False):
     with db() as conn:
         row = conn.execute('SELECT u.id,u.name,u.admin,u.hub_id,u.hub_username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?', (token, time.time())).fetchone()
     if not row:
@@ -197,7 +197,7 @@ def session_user(token):
         if row['hub_id'] is None:
             raise HTTPException(401, 'Log ind med din FjordHub-bruger.')
         try:
-            profile = hub.current(row['hub_id'])
+            profile = hub.current(row['hub_id'], force=True) if force else hub.current(row['hub_id'])
         except HTTPException as exc:
             if exc.status_code in (401,403):
                 with db() as conn:
@@ -207,6 +207,9 @@ def session_user(token):
                 if exc.status_code == 401:
                     raise HTTPException(401, 'Din adgang er blevet fjernet.', headers={'X-FjordHub-Access':'revoked'}) from exc
             raise
+        if profile.get('email_required') and not allow_email:
+            raise HTTPException(403, {'error_code':'email_update_required', 'email_required':True,
+                                     'authenticated':True, 'error':'Bekræft eller opdater din email for at fortsætte.'})
         return {'id':row['id'], 'name':profile['username'], 'admin':profile.get('role') == 'admin', 'hub_id': row['hub_id'], 'language':tracks.language(profile.get('language', 'da'))}
     if row['hub_id'] is not None:
         raise HTTPException(401, 'Denne bruger kræver en FjordHub-forbindelse.')
@@ -223,7 +226,7 @@ def hub_access(request: Request):
     if not request.cookies.get('fjordflix_session'):
         return JSONResponse({'ok':True, 'authenticated':False}, headers={'Cache-Control':'no-store'})
     try:
-        user(request)
+        session_user(digest(request.cookies.get('fjordflix_session', '')), force=request.query_params.get('fresh') == '1')
     except HTTPException as exc:
         if exc.headers and exc.headers.get('X-FjordHub-Access') == 'revoked':
             response = JSONResponse({'authenticated':False, 'error_code':'access_revoked'}, status_code=401)
@@ -231,6 +234,20 @@ def hub_access(request: Request):
             return response
         raise
     return JSONResponse({'ok':True, 'authenticated':True}, headers={'Cache-Control':'no-store'})
+
+
+class HubEmail(BaseModel):
+    email: str = Field(min_length=1, max_length=254)
+
+
+@app.post('/api/auth/email')
+def update_hub_email(data: HubEmail, request: Request):
+    u = session_user(digest(request.cookies.get('fjordflix_session', '')), allow_email=True, force=True)
+    if not hub.managed() or u.get('hub_id') is None:
+        raise HTTPException(403, 'Kræver FjordHub-login.')
+    result = hub.call(f"/api/hub/apps/users/{u['hub_id']}/email", {'email':data.email})
+    hub._cache['expires'] = 0
+    return result
 
 
 def sync_hub_user(profile):
