@@ -149,3 +149,47 @@ test('no MSE support cannot authorize a browser remux',async()=>{
   const {api,video}=setup({MediaSource:undefined});
   assert.equal((await api.detect(movie,{video})).video_copy,false);
 });
+
+test('desktop Chrome can remux HDR to an SDR display without a server video encode',async()=>{
+  const {api,video,calls}=setup({matchMedia:()=>({matches:false}),navigator:{
+    userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0 Safari/537.36',
+    mediaCapabilities:{decodingInfo:async c=>{calls.push(c);return {supported:!c.video?.transferFunction,smooth:true};}}
+  }});
+  const source={...hevc,audio:'truehd',quality:{...hevc.quality,dynamic_range:'Dolby Vision',dv_profile:7}};
+  const result=await api.detect(source,{video});
+  assert.equal(result.video_copy,true);assert.equal(result.hdr10_base,true);assert.equal(result.audio_copy,false);
+  assert.ok(calls.some(c=>c.video));assert.ok(calls.filter(c=>c.video).every(c=>!c.video.transferFunction));
+  assert.match(api.describe(source),/håndteres af desktop-browseren/);
+  assert.equal((await api.detect({...source,quality:{...source.quality,dv_profile:5}},{video})).video_copy,false);
+});
+
+test('desktop tone mapping never overrides a decoder rejection or enables mobile/AirPlay',async()=>{
+  for(const userAgent of ['Chrome/130.0.0.0','Chrome/130.0.0.0 Mobile Android','Chrome/130.0.0.0 Edg/120.0']){
+    const {api,video}=setup({matchMedia:()=>({matches:false}),navigator:{userAgent,
+      mediaCapabilities:{decodingInfo:async()=>({supported:false,smooth:true})}}});
+    assert.equal((await api.detect(hevc,{video})).video_copy,false);
+  }
+  for(const userAgent of ['Chrome/130.0.0.0 Mobile Android','Chrome/130.0.0.0 Edg/120.0','Firefox/130.0']){
+    const no=setup({matchMedia:()=>({matches:false}),navigator:{userAgent,
+      mediaCapabilities:{decodingInfo:async()=>({supported:true,smooth:true})}}});
+    assert.equal((await no.api.detect(hevc,{video:no.video})).video_copy,false);
+  }
+  const {api,video}=setup({matchMedia:()=>({matches:false}),navigator:{userAgent:'Chrome/130.0.0.0',
+    mediaCapabilities:{decodingInfo:async()=>({supported:true,smooth:true})}}});
+  assert.equal((await api.detect(hevc,{video,airplay:true})).video_copy,false);
+});
+
+test('Auto 4K transcode requires a 4K screen and verified smooth output decoding',async()=>{
+  const calls=[];
+  const {api,video}=setup({screen:{width:1920,height:1080},devicePixelRatio:2,navigator:{
+    mediaCapabilities:{decodingInfo:async c=>{calls.push(c);return {supported:true,smooth:true};}}}});
+  assert.equal((await api.detect(hevc,{video})).browser_4k_transcode,true);
+  assert.ok(calls.some(c=>c.video?.contentType.includes('avc1.640033')&&c.video.width===3840&&c.video.bitrate===40000000));
+  assert.equal((await api.detect(hevc,{video,airplay:true})).browser_4k_transcode,false);
+  assert.equal((await api.detect(hevc,{video,quality:'720'})).browser_4k_transcode,false);
+  for(const overrides of [{devicePixelRatio:1},{navigator:{}},
+    {navigator:{mediaCapabilities:{decodingInfo:async()=>({supported:true,smooth:false})}}}]){
+    const no=setup({screen:{width:1920,height:1080},devicePixelRatio:2,...overrides});
+    assert.equal((await no.api.detect(hevc,{video:no.video})).browser_4k_transcode,false);
+  }
+});

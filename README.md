@@ -480,10 +480,14 @@ AAC/AC3/EAC3 bevares med bekræftet format og kanalantal; ellers tilpasses lyden
 Windows- og TV-profilerne er uændrede. Safari/AirPlay beholder sin native-HLS-vej.
 
 Manglende/fejlede API-svar er ukendte, ikke automatiske afslag for SDR. Et udtrykkeligt
-unsupported-svar respekteres. HDR kræver bekræftet decoder og HDR-skærm.
+unsupported-svar respekteres. HDR kræver bekræftet decoder og enten HDR-output
+eller desktop-browserens kendte HDR-til-SDR-visning (Chrome eller Edge 121+).
 HDR-output kontrolleres via både `video-dynamic-range` og `dynamic-range`, så en
 særskilt HDR-videovej også accepteres. Formatkontrollen viser, når videotesten
-springes over på grund af manglende HDR-output, frem for at antyde et codec-afslag.
+springes over på grund af manglende HDR-afspilningsvej, frem for at antyde et codec-afslag.
+Desktop-browserens SDR-visning testes uden at kræve HDR-output fra skærmen;
+codec, bitdybde, billedrate og decoderafslag kontrolleres stadig. Ukendte browsere
+og mobile klienter får ikke denne undtagelse. Farver skal også afprøves fysisk.
 Dolby Vision kan remuxes som HDR10, når basislaget er dokumenteret; ukendte profiler afvises i den
 nye browserprofil frem for at risikere forkerte farver. Original kan tilsidesætte en
 smoothness-advarsel, men aldrig unsupported. Det er ikke garanti for fysisk afspilning.
@@ -493,6 +497,12 @@ Transcoding. En fejlet vej huskes i fanen i ti minutter, også efter seek. Netv�
 udløser ikke denne nedgradering. API-tests caches kort og har timeout. Oplysningerne
 behandles lokalt i fanen; ingen ekstern analysetjeneste bruges. Filmens detaljer viser
 Browserens formatkontrol, og afspilleren viser serverens begrundelse.
+
+Automatisk browser-transcoding kan bruge op til 4K, når kilden er 4K, skærmens
+fysiske opløsning er mindst 3840 × 2160, og MSE/H.264-afspilning i målformatet
+er bekræftet som understøttet og flydende. Ellers bruges fortsat op til 1080p.
+Originalvideo prioriteres før konvertering. Manuelle kvalitetsvalg, AirPlay,
+Windows-, LG- og Xbox-profiler beholder deres eksisterende regler.
 
 Dette er format-/ydelsesforhandling, ikke løbende adaptiv netværksbitrate. Ukendt
 forbindelseshastighed er fortsat 0. Fysisk HEVC/HDR-afspilning skal også afprøves på

@@ -68,12 +68,20 @@
     store(probes, id, {at:Date.now(), promise});
     return promise;
   }
-  async function videoProbe(movie, video, codec, mime, route, hdr, quality) {
+  function desktopToneMapping() {
+    const agent = env.navigator?.userAgent || '';
+    if (/Android|Mobile|iPhone|iPad|iPod|Oculus|Xbox|webOS|Tizen/i.test(agent)) return false;
+    const edge = /Edg\/(\d+)/.exec(agent);
+    return edge ? Number(edge[1]) >= 121 : /Chrome\/(\d+)/.test(agent) && !/OPR\/|SamsungBrowser\//.test(agent);
+  }
+  async function videoProbe(movie, video, codec, mime, route, hdr, quality, toneMapping = false) {
     const contentType = `${mime}; codecs="${codec}"`;
     if (!supports(video, contentType, route)) return {ok:false, codec};
     const config = {contentType, width:positive(movie.width, 1920), height:positive(movie.height, 1080),
       bitrate:positive(movie.bitrate, 8000000), framerate:frameRate(movie)};
-    if (hdr) Object.assign(config, {colorGamut:'rec2020', transferFunction:movie.quality?.dynamic_range === 'HLG' ? 'hlg' : 'pq'});
+    // Desktop Chromium can map HDR to its SDR output. In that route, query
+    // decoder performance independently of HDR display capabilities.
+    if (hdr && !toneMapping) Object.assign(config, {colorGamut:'rec2020', transferFunction:movie.quality?.dynamic_range === 'HLG' ? 'hlg' : 'pq'});
     const info = await decoding({type:route, video:config});
     // A rejected API call is unknown, NOT a negative codec result. An explicit
     // unsupported result is never overridden. Original may override smoothness.
@@ -101,6 +109,16 @@
       bitrate:positive(track.bitrate, 192000), samplerate:positive(track.sample_rate, 48000)}});
     return info?.supported !== false && (channels <= 2 || info?.supported === true);
   }
+  async function auto4k(movie, video) {
+    const ratio = positive(env.devicePixelRatio, 1);
+    const dimensions = [positive(env.screen?.width, 0), positive(env.screen?.height, 0)].sort((a,b)=>b-a);
+    if (dimensions[0]*ratio < 3840 || dimensions[1]*ratio < 2160 || frameRate(movie)>60 || !(movie.width >= 3840 || movie.height >= 2160)) return false;
+    const scale = Math.min(1, 3840/positive(movie.width,3840), 2160/positive(movie.height,2160));
+    const target = {...movie, width:Math.floor(movie.width*scale/2)*2, height:Math.floor(movie.height*scale/2)*2, bitrate:40000000};
+    // 4K/60 needs level 5.2; 4K up to 30 fps needs level 5.1.
+    const probe = await videoProbe(target, video, frameRate(movie)>30?'avc1.640034':'avc1.640033', 'video/mp4', 'media-source', false, 'auto');
+    return probe.ok && probe.verified && probe.smooth === true;
+  }
   async function detect(movie, options = {}) {
     const video = options.video || env.document?.createElement('video');
     const quality = options.quality || 'auto', request = options.tracks || {};
@@ -116,22 +134,24 @@
     const hdrPage = highRange('dynamic-range'), hdrVideo = highRange('video-dynamic-range');
     const hdrDisplay = hdrVideo || hdrPage;
     const hdrFormat = ['HDR10', 'HDR10+', 'HLG'].includes(q.dynamic_range) || base;
-    const hdrAllowed = !hdr || hdrDisplay && hdrFormat;
+    const airplay = !!options.airplay;
+    const toneMapping = hdr && !hdrDisplay && !airplay && desktopToneMapping();
+    const hdrAllowed = !hdr || hdrFormat && (hdrDisplay || toneMapping);
     const variants = codecs(movie), webm = /webm/.test(format), mp4 = /mp4/.test(format);
     const fileVariants = movie.video === 'hevc' ? variants.slice(0, 1) : variants;
     const audioTracks = movie.tracks?.audio || [];
     const audio = audioTracks.find(t => t.index === request.audio_track) || audioTracks.find(t => t.default) || audioTracks[0] ||
       {codec:movie.audio, channels:q.audio_channels, profile:q.audio_profile};
-    const airplay = !!options.airplay;
     // Preserve the existing native AirPlay path. Its receiver is not the browser
     // whose decoder we are probing, so MSE support must not be sent as receiver support.
-    const [files, streams, fileAudio, streamAudio] = await Promise.all([
+    const [files, streams, fileAudio, streamAudio, transcode4k] = await Promise.all([
       hdrAllowed && !base && (mp4 || webm || airplay && movie.video === 'h264')
-        ? Promise.all(fileVariants.map(c => videoProbe(movie, video, c, webm ? 'video/webm' : 'video/mp4', 'file', hdr, quality))) : [],
+        ? Promise.all(fileVariants.map(c => videoProbe(movie, video, c, webm ? 'video/webm' : 'video/mp4', 'file', hdr, quality, toneMapping))) : [],
       hdrAllowed && !airplay && ['h264', 'hevc', 'av1', 'vp9'].includes(movie.video)
-        ? Promise.all(variants.map(c => videoProbe(movie, video, c, 'video/mp4', 'media-source', hdr, quality))) : [],
+        ? Promise.all(variants.map(c => videoProbe(movie, video, c, 'video/mp4', 'media-source', hdr, quality, toneMapping))) : [],
       audioProbe(audio, video, 'file', webm),
-      !airplay && ['aac', 'ac3', 'eac3'].includes(audio?.codec) ? audioProbe(audio, video, 'media-source') : false
+      !airplay && ['aac', 'ac3', 'eac3'].includes(audio?.codec) ? audioProbe(audio, video, 'media-source') : false,
+      !airplay && quality === 'auto' ? auto4k(movie, video) : false
     ]);
     const file = files.find(p => p.ok), stream = streams.find(p => p.ok);
     const previous = failures.get(key(movie));
@@ -142,14 +162,14 @@
     let reason = '';
     if (blocked.stream) reason = 'Browseren afviste originalvideoen. Bruger kompatibel videokonvertering.';
     else if (hdr && !hdrFormat) reason = 'Filmens HDR-format har ikke en bekræftet kompatibel afspilningsvej.';
-    else if (hdr && !hdrDisplay) reason = 'Browseren bekræfter ikke HDR-output på skærmen. Videoens HDR konverteres til SDR.';
+    else if (hdr && !hdrDisplay && !toneMapping) reason = 'Browseren bekræfter ikke HDR-output eller lokal HDR-til-SDR-visning. Videoens HDR konverteres til SDR.';
     else if (!file && !stream) reason = 'Browseren kunne ikke bekræfte filmens codec, profil og billedrate.';
     else if (!fileAudio) reason = 'Det valgte lydspor skal tilpasses; kompatibel video bevares.';
-    const result = {quality, airplay, browser_profile:1, direct, video_copy:copy, browser_fmp4:copy,
+    const result = {quality, airplay, browser_profile:1, browser_4k_transcode:transcode4k, direct, video_copy:copy, browser_fmp4:copy,
       browser_hevc_tag:stream?.codec.startsWith('hev1.') ? 'hev1' : 'hvc1',
       h264:movie.video === 'h264' && (copy || legacyH264), hdr10_base:copy && base,
       audio_copy:copy && streamAudio && !blocked.direct, capability_reason:reason, bandwidth:0, ...request};
-    store(reports, key(movie), {file, stream, hdrDisplay, hdrPage, hdrVideo, hdrAllowed, audio:audio?.codec || 'ingen', result, frameRate:frameRate(movie), blocked});
+    store(reports, key(movie), {file, stream, hdrDisplay, hdrPage, hdrVideo, hdrAllowed, toneMapping, audio:audio?.codec || 'ingen', result, frameRate:frameRate(movie), blocked});
     return result;
   }
   function noteFailure(movie, mode, code) {
@@ -169,6 +189,8 @@
       `Valgt lyd: ${report.audio}${report.result.audio_copy ? ' · kan bevares i HLS' : ''}`,
       `HDR-skærm: ${report.hdrDisplay ? 'bekræftet' : 'ikke bekræftet'}`,
       `HDR-output: video ${report.hdrVideo ? 'bekræftet' : 'ikke bekræftet'} · side ${report.hdrPage ? 'bekræftet' : 'ikke bekræftet'}`, report.result.capability_reason,
+      report.toneMapping ? 'HDR → SDR: håndteres af desktop-browseren, hvis originalvideoen kan afspilles.' : '',
+      report.result.quality === 'auto' ? `Automatisk 4K-konvertering: ${report.result.browser_4k_transcode ? 'skærm og H.264-decoder bekræftet' : 'ikke bekræftet'}` : '',
       report.blocked.direct ? 'En fejlet afspilningsvej springes over i denne fane i ti minutter.' : '',
       'Netværk: ukendt. Formatkontrol er ikke en hastighedstest.'].filter(Boolean).join('\n');
   }

@@ -1047,6 +1047,7 @@ class Playback(BaseModel):
     video_copy: bool = False
     browser_profile: Literal[0, 1] = 0
     browser_fmp4: bool = False
+    browser_4k_transcode: bool = False
     browser_hevc_tag: Literal['hvc1', 'hev1'] = 'hvc1'
     hdr10_base: bool = False
     hevc_output: bool = False
@@ -1118,7 +1119,9 @@ def video_plan(meta, data):
             quality in ('original', '2160') and data.quality != 'original')
     if hevc and source.get('dynamic_range') == 'Dolby Vision' and not compatible_hdr10_base(source):
         raise HTTPException(400, 'Denne Dolby Vision-profil har ikke et bekræftet HDR10-basislag. Serverens nuværende konvertering kan ikke levere korrekte farver fra den profil.')
-    target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' or hevc else 1080))
+    auto_4k = (data.client_profile == 'default' and data.browser_profile == 1 and data.browser_4k_transcode
+               and not data.airplay and data.quality == 'auto' and quality == 'original')
+    target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' or hevc or auto_4k else 1080))
     mbps = limit.get(quality, 25 if target > 1080 else 8)
     reason = ('AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else
               'De valgte billedbaserede undertekster skal brændes ind i videoen.' if burn else
@@ -1142,7 +1145,7 @@ def video_plan(meta, data):
         mbps = min(mbps, 8)
         if meta['height'] > max_height:
             reason += ' Xbox bruger højst 1080p (1920 × 1080) ved H.264-konvertering. Original 4K kræver kompatibel Direct Play eller Direct Stream.'
-    box = int(quality) if quality.isdigit() else (2160 if data.quality == 'original' else 1080)
+    box = int(quality) if quality.isdigit() else (2160 if data.quality == 'original' or auto_4k else 1080)
     if data.client_profile == 'xbox':
         box = min(box, 1080)
     target, mbps = encoding_quality.output(meta, target, mbps, xbox=data.client_profile == 'xbox', box=box,
