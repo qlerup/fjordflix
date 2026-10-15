@@ -120,7 +120,7 @@ test('iPhone tracks presented frames where Safari exposes frame callbacks', () =
   assert.equal(monitor.frozenFrame(),false);
   time=4000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),false);
   time=6000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),false);
-  time=8000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),false);
+  time=8000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),true,'six seconds without a presented frame');
   time=10000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),true);
   monitor.close();assert.equal(cancelled,request);
 });
