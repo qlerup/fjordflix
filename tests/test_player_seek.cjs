@@ -50,6 +50,22 @@ test('seek pins timeline through video reset and shows target preview until play
   s.images[0].onload();assert.equal(w.$('player-seek-preview').hidden,true);
  }finally{s.close();}
 });
+test('native HLS timeline drift cannot leave a static preview over live video',async()=>{
+ const s=setup(),{w}=s;
+ try{
+  w.seekPlayer(300);await settle();
+  assert.equal(w.$('player-seek-preview').hidden,false);
+  s.ready(300);await settle();
+  // Native Safari HLS can begin at a nonzero PTS (or report a timestamp
+  // different from the source movie timeline) despite decoding the new frame.
+  w.video.currentTime=4.1;
+  w.video.dispatchEvent(new w.Event('loadeddata'));
+  assert.equal(w.$('player-seek-preview').hidden,true);
+  assert.equal(w.$('timeline').value,'304.1');
+  s.images[0].onload();
+  assert.equal(w.$('player-seek-preview').hidden,true,'late image must not re-cover playback');
+ }finally{s.close();}
+});
 test('repeated seeks retain newest target and ignore late preview responses',async()=>{
  const s=setup(),{w}=s;
  try{

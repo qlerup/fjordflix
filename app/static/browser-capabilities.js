@@ -198,8 +198,13 @@
     if (!report) return '';
     const route = p => !report.hdrAllowed ? 'ikke testet: HDR-kontrollen blokerer' : !p ? 'ikke bekræftet' : `${p.codec} · ${p.verified ? 'bekræftet' : 'format understøttet; ydelse ukendt'}${p.smooth === false ? ' · kan hakke' : ''}`;
     const profile = browserProfile();
+    const source = movie.quality || {};
     return [`Browserprofil: ${profile.label} (${profile.id})`,
+      `Kilde: ${movie.format || 'ukendt container'} · video ${movie.video || 'ukendt'} (${movie.pix_fmt || 'ukendt pixel-format'}, ${source.video_profile || 'ukendt profil'}, level ${source.video_level ?? '?'}) · lyd ${report.audio}`,
       `Film: ${movie.width} × ${movie.height} · ${report.frameRate.toFixed(3)} billeder/s`,
+      `Videovalg: ${report.result.direct ? 'originalfil' : report.result.video_copy || report.result.h264 ? 'original video med ændret indpakning/lyd' : 'video skal konverteres'}`,
+      report.blocked.stream ? 'Safari har tidligere afvist originalvideoen i denne fane (maksimalt ti minutter).' :
+        report.blocked.direct ? 'Safari har tidligere afvist direkte afspilning i denne fane (maksimalt ti minutter).' : '',
       `Direkte fil: ${route(report.file)}`, `HLS/fMP4: ${route(report.stream)}`,
       `Valgt lyd: ${report.audio}${report.result.audio_copy ? ' · kan bevares i HLS' : ''}`,
       `HDR-skærm: ${report.hdrDisplay ? 'bekræftet' : 'ikke bekræftet'}`,

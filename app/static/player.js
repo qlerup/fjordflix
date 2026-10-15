@@ -56,7 +56,10 @@ function beginPlayerSeek(target) {
 }
 function finishPlayerSeek() {
   if(!playerSeek || switching || !playback || video.seeking || video.readyState<2 || queuedPlayerSeek!==null) return;
-  if(Math.abs(position()-playerSeek.target)>2) return;
+  // Once the new video has a decoded frame, show it. Native Safari HLS may
+  // expose a media timeline with a nonzero segment PTS even when the original
+  // movie offset is zero. Comparing these different timelines could leave the
+  // static seek preview covering every subsequent video frame indefinitely.
   clearPlayerSeek();updatePlayerTimeline();
 }
 function flushPlayerSeek() {
@@ -64,7 +67,7 @@ function flushPlayerSeek() {
   const target=queuedPlayerSeek;queuedPlayerSeek=null;
   seekPlayer(target);
 }
-for(const event of ['playing','seeked','timeupdate'])video.addEventListener(event,finishPlayerSeek);
+for(const event of ['loadeddata','playing','seeked','timeupdate'])video.addEventListener(event,finishPlayerSeek);
 function wakePlayerControls() {
   playerDialog.classList.remove('controls-hidden');
   clearTimeout(playerIdleTimer);
