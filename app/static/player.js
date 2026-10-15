@@ -172,17 +172,45 @@ airplayButton.hidden = !airplaySupported;
 function updateAirplayButton() {
   const active = airplayActive();
   airplayButton.setAttribute('aria-pressed', String(active));
-  airplayButton.setAttribute('aria-label', active ? 'AirPlay aktiv: skift TV eller afbryd' : 'AirPlay: vælg TV');
-  airplayButton.title = active ? 'AirPlay aktiv: skift TV eller afbryd' : 'AirPlay: vælg TV';
+  const label = active ? 'AirPlay aktiv: skift TV eller afbryd'
+    : airplayRequested ? 'AirPlay klar: vælg TV' : 'Klargør AirPlay til TV';
+  airplayButton.setAttribute('aria-label', label);
+  airplayButton.title = label;
   airplayButton.disabled = !playback || switching || !video.currentSrc;
   if (active) $('player-loading').hidden = true;
   wakePlayerControls();
 }
 airplayButton.onclick = () => {
   if (!playback || switching) return;
+  if (!airplayRequested) {
+    // The native AirPlay playlist has to be loaded before the picker can open.
+    // Opening the picker requires a second user gesture after that async switch.
+    airplayRequested = true;
+    FjordTracks.sync();
+    toast('Klargør AirPlay… Tryk på AirPlay igen, når filmen spiller.');
+    startPlayback(position()).catch(error => {
+      airplayRequested = false;
+      FjordTracks.sync();
+      showPlayerError(error.message);
+    });
+    return;
+  }
+  if (!playback.airplay) return;
   try { video.webkitShowPlaybackTargetPicker(); }
   catch { toast('AirPlay kunne ikke åbnes. Prøv igen i Safari.'); }
 };
-video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', updateAirplayButton);
+let wasWirelessAirplay = airplayActive();
+video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => {
+  const wireless = airplayActive();
+  if (wasWirelessAirplay && !wireless && airplayRequested && playback && !switching) {
+    airplayRequested = false;
+    FjordTracks.burnSubtitles = false;
+    FjordTracks.sync();
+    startPlayback(position()).catch(error => showPlayerError(error.message));
+  }
+  wasWirelessAirplay = wireless;
+  updateAirplayButton();
+});
+playerDialog.addEventListener('close', () => { wasWirelessAirplay = false; });
 for (const event of ['loadedmetadata', 'emptied', 'playing']) video.addEventListener(event, updateAirplayButton);
 updateAirplayButton();

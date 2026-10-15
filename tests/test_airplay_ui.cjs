@@ -28,7 +28,10 @@ function setup(safari, transcode = false) {
   textTracks.removeEventListener = trackEvents.removeEventListener.bind(trackEvents);
   Object.defineProperty(w.HTMLMediaElement.prototype,'textTracks',{get(){return textTracks}});
   w.addNativeTrack = track => {textTracks.push(track);trackEvents.dispatchEvent(new w.Event('addtrack'));};
-  if(safari)w.HTMLMediaElement.prototype.webkitShowPlaybackTargetPicker=function(){w.pickerCalls=(w.pickerCalls||0)+1};
+  if(safari) {
+    Object.defineProperty(w.navigator,'userAgent',{configurable:true,value:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1'});
+    w.HTMLMediaElement.prototype.webkitShowPlaybackTargetPicker=function(){w.pickerCalls=(w.pickerCalls||0)+1};
+  }
   w.fetch=async(path,options={})=>{
     const data=options.body?JSON.parse(options.body):undefined;
     calls.push({path,method:options.method||'GET',data});
@@ -81,6 +84,13 @@ test('AirPlay uses native HLS and carries selected tracks through changes and ba
     assert.equal(api.hls,undefined);assert.match(v.src,/\/media\/test\//);
     assert.equal(w.document.querySelector('script[src="/static/vendor/hls.min.js"]'),null);
     let play=calls.filter(c=>c.path.endsWith('/play')).at(-1).data;
+    assert.equal(play.airplay,false,'ordinary iPhone playback must not enter AirPlay mode');
+    assert.equal(play.browser_ios_native_hls,true);
+    assert.equal(button.title,'Klargør AirPlay til TV');
+    button.click();
+    await until(()=>api.playback?.airplay&&!api.switching);
+    v.dispatchEvent(new w.Event('loadedmetadata'));
+    play=calls.filter(c=>c.path.endsWith('/play')).at(-1).data;
     assert.equal(play.audio_track,2);assert.equal(play.subtitle_track,3);assert.equal(play.airplay,true);
     assert.equal(play.burn_subtitles,false);
     const native={label:'FjordFlix',mode:'disabled'};

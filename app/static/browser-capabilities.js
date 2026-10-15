@@ -131,6 +131,8 @@
   async function detect(movie, options = {}) {
     const video = options.video || env.document?.createElement('video');
     const quality = options.quality || 'auto', request = options.tracks || {};
+    const nativeIosHls = browserProfile().platform === 'ios' &&
+      /^(maybe|probably)$/.test(video?.canPlayType?.('application/vnd.apple.mpegurl') || '');
     const q = movie.quality || {}, format = String(movie.format || '');
     const hdr = !!movie.hdr || ['HDR10', 'HDR10+', 'HLG', 'Dolby Vision'].includes(q.dynamic_range);
     const base = movie.video === 'hevc' && q.dynamic_range === 'Dolby Vision' && q.dv_bl !== false &&
@@ -154,27 +156,29 @@
     // Preserve the existing native AirPlay path. Its receiver is not the browser
     // whose decoder we are probing, so MSE support must not be sent as receiver support.
     const [files, streams, fileAudio, streamAudio, transcode4k] = await Promise.all([
-      hdrAllowed && !base && (mp4 || webm || airplay && movie.video === 'h264')
+      hdrAllowed && !base && (mp4 || webm || (airplay || nativeIosHls) && movie.video === 'h264')
         ? Promise.all(fileVariants.map(c => videoProbe(movie, video, c, webm ? 'video/webm' : 'video/mp4', 'file', hdr, quality, toneMapping))) : [],
-      hdrAllowed && !airplay && ['h264', 'hevc', 'av1', 'vp9'].includes(movie.video)
+      hdrAllowed && !airplay && !nativeIosHls && ['h264', 'hevc', 'av1', 'vp9'].includes(movie.video)
         ? Promise.all(variants.map(c => videoProbe(movie, video, c, 'video/mp4', 'media-source', hdr, quality, toneMapping))) : [],
       audioProbe(audio, video, 'file', webm),
-      !airplay && ['aac', 'ac3', 'eac3'].includes(audio?.codec) ? audioProbe(audio, video, 'media-source') : false,
-      !airplay && quality === 'auto' ? auto4k(movie, video) : false
+      !airplay && !nativeIosHls && ['aac', 'ac3', 'eac3'].includes(audio?.codec) ? audioProbe(audio, video, 'media-source') : false,
+      !airplay && !nativeIosHls && quality === 'auto' ? auto4k(movie, video) : false
     ]);
     const file = files.find(p => p.ok), stream = streams.find(p => p.ok);
     const previous = failures.get(key(movie));
     const blocked = previous && Date.now() - previous.at < 600000 ? previous : {};
-    const direct = !airplay && (mp4 || webm) && !!file && fileAudio && !blocked.direct;
+    const direct = !airplay && (mp4 || webm) && !!file && fileAudio && !blocked.direct &&
+      (!nativeIosHls || movie.video === 'h264' && !hdr);
     const copy = !!stream && !blocked.stream;
-    const legacyH264 = airplay && movie.video === 'h264' && !hdr && !!file && !blocked.stream;
+    const legacyH264 = (airplay || nativeIosHls) && movie.video === 'h264' && !hdr && !!file && !blocked.stream;
     let reason = '';
     if (blocked.stream) reason = 'Browseren afviste originalvideoen. Bruger kompatibel videokonvertering.';
+    else if (nativeIosHls && (movie.video !== 'h264' || hdr)) reason = 'iPhone/iPad bruger kompatibel H.264/AAC i stedet for en usikker originalvideovej.';
     else if (hdr && !hdrFormat) reason = 'Filmens HDR-format har ikke en bekræftet kompatibel afspilningsvej.';
     else if (hdr && !hdrDisplay && !toneMapping) reason = 'Browseren bekræfter ikke HDR-output eller lokal HDR-til-SDR-visning. Videoens HDR konverteres til SDR.';
     else if (!file && !stream) reason = 'Browseren kunne ikke bekræfte filmens codec, profil og billedrate.';
     else if (!fileAudio) reason = 'Det valgte lydspor skal tilpasses; kompatibel video bevares.';
-    const result = {quality, airplay, browser_profile:1, browser_4k_transcode:transcode4k, direct, video_copy:copy, browser_fmp4:copy,
+    const result = {quality, airplay, browser_profile:1, browser_ios_native_hls:nativeIosHls, browser_4k_transcode:transcode4k, direct, video_copy:copy, browser_fmp4:copy,
       browser_hevc_tag:stream?.codec.startsWith('hev1.') ? 'hev1' : 'hvc1',
       h264:movie.video === 'h264' && (copy || legacyH264), hdr10_base:copy && base,
       audio_copy:copy && streamAudio && !blocked.direct, capability_reason:reason, bandwidth:0, ...request};

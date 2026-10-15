@@ -1063,6 +1063,7 @@ class Playback(BaseModel):
     h264: bool = False
     video_copy: bool = False
     browser_profile: Literal[0, 1] = 0
+    browser_ios_native_hls: bool = False
     browser_fmp4: bool = False
     browser_4k_transcode: bool = False
     browser_hevc_tag: Literal['hvc1', 'hev1'] = 'hvc1'
@@ -1139,6 +1140,10 @@ def video_plan(meta, data):
     auto_4k = (data.client_profile == 'default' and data.browser_profile == 1 and data.browser_4k_transcode
                and not data.airplay and data.quality == 'auto' and quality == 'original')
     target = min(meta['height'], int(quality) if quality.isdigit() else (2160 if data.quality == 'original' or hevc or auto_4k else 1080))
+    # iOS native HLS uses a reliable H.264/AAC baseline for automatic fallback.
+    # A manually selected 2160p remains an explicit quality choice.
+    if data.browser_ios_native_hls and not data.airplay and data.client_profile == 'default' and data.quality in ('auto', 'original'):
+        target = min(target, 1080)
     mbps = limit.get(quality, 25 if target > 1080 else 8)
     reason = ('AirPlay-klare undertekster lægges ind i videoen.' if data.airplay and burn else
               'De valgte billedbaserede undertekster skal brændes ind i videoen.' if burn else
@@ -1163,7 +1168,7 @@ def video_plan(meta, data):
         if meta['height'] > max_height:
             reason += ' Xbox bruger højst 1080p (1920 × 1080) ved H.264-konvertering. Original 4K kræver kompatibel Direct Play eller Direct Stream.'
     box = int(quality) if quality.isdigit() else (2160 if data.quality == 'original' or auto_4k else 1080)
-    if data.client_profile == 'xbox':
+    if data.client_profile == 'xbox' or data.browser_ios_native_hls and not data.airplay and data.quality in ('auto', 'original'):
         box = min(box, 1080)
     target, mbps = encoding_quality.output(meta, target, mbps, xbox=data.client_profile == 'xbox', box=box,
                                           bandwidth=data.bandwidth if data.quality == 'auto' else 0)

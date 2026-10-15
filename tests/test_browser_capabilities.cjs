@@ -145,6 +145,23 @@ test('native HLS errors disable the legacy copy route too',async()=>{
   const result=await api.detect(movie,{video,airplay:true});
   assert.equal(result.h264,false);assert.equal(result.video_copy,false);
 });
+test('iPhone native HLS uses a local H.264 profile without enabling AirPlay',async()=>{
+  const iphone='Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Version/18.5 Mobile/15E148 Safari/604.1';
+  const {api,video}=setup({MediaSource:undefined,navigator:{userAgent:iphone}});
+  const compatible=await api.detect(movie,{video});
+  assert.equal(compatible.airplay,false);
+  assert.equal(compatible.browser_ios_native_hls,true);
+  assert.equal(compatible.direct,true);
+  const mkv=await api.detect({...movie,format:'matroska'},{video});
+  assert.equal(mkv.direct,false);assert.equal(mkv.h264,true);
+  assert.equal(mkv.video_copy,false);assert.equal(mkv.browser_fmp4,false);
+  const source=await api.detect({...hevc,hdr:false,quality:{...hevc.quality,dynamic_range:'SDR'}},{video});
+  assert.equal(source.direct,false);assert.equal(source.video_copy,false);
+  assert.equal(source.h264,false);assert.equal(source.browser_4k_transcode,false);
+  const cast=await api.detect({...movie,format:'matroska'},{video,airplay:true});
+  assert.equal(cast.airplay,true);assert.equal(cast.h264,true);
+});
+
 test('no MSE support cannot authorize a browser remux',async()=>{
   const {api,video}=setup({MediaSource:undefined});
   assert.equal((await api.detect(movie,{video})).video_copy,false);

@@ -25,6 +25,9 @@ function savePlaybackBuffer(seconds) {
 }
 const video = $('video');
 const airplaySupported = typeof video.webkitShowPlaybackTargetPicker === 'function' && !!video.canPlayType('application/vnd.apple.mpegurl');
+const nativeIosHls = browserPlaybackProfile.platform === 'ios' && !!video.canPlayType('application/vnd.apple.mpegurl');
+// AirPlay availability is not permission to change ordinary local playback.
+let airplayRequested = false;
 function airplayActive() { return !!video.webkitCurrentPlaybackTargetIsWireless; }
 let hlsLibraryPromise;
 function loadHlsLibrary() {
@@ -210,7 +213,7 @@ $('logout').onclick = async () => {
 document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
 
 async function capabilities(movie, quality) {
-  return FjordBrowserCapabilities.detect(movie, {video, quality, airplay:airplaySupported, tracks:FjordTracks.request()});
+  return FjordBrowserCapabilities.detect(movie, {video, quality, airplay:airplaySupported && airplayRequested, tracks:FjordTracks.request()});
 }
 function showBrowserCapabilities(movie) {
   let details = $('browser-capabilities');
@@ -308,7 +311,7 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
   try {
     // Chrome can advertise native HLS too. Prefer our MSE player except for
     // AirPlay, which requires the native path for remote playback/subtitles.
-    if (!airplaySupported) await loadHlsLibrary();
+    if (!airplaySupported && !nativeIosHls) await loadHlsLibrary();
     if (generation !== playGeneration || !$('player-dialog').open) return;
     const data = await capabilities(selected, $('player-quality').value);
     if (fallback) { data.direct = false; data.h264 = false; data.video_copy = false; data.hdr10_base = false; data.browser_fmp4 = false; data.audio_copy = false; }
@@ -317,7 +320,7 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     playback = result; result.requestedPosition = position; lastSaved = 0;
     if(result.delivery === 'direct') video.crossOrigin = 'anonymous'; else video.removeAttribute('crossorigin');
     $('playback-info').textContent = `${selected.height}p → ${result.height}p · ${result.mbps} Mbit/s · ${result.encoder}${result.delivery === 'direct' ? ' · Direkte forbindelse' : ''}${result.airplay ? ' · AirPlay-klar' : ''}`;
-    const useHls = !!result.session && !airplaySupported && !!window.Hls?.isSupported();
+    const useHls = !!result.session && !airplaySupported && !nativeIosHls && !!window.Hls?.isSupported();
     result.infoText = $('playback-info').textContent + (result.session ? ` · ${useHls ? 'HLS.js' : 'Native HLS'}` : '') + (result.reason ? ` · ${result.reason}` : '');
     $('playback-info').textContent = result.infoText;
     result.health = FjordPlaybackHealth.create(video);
@@ -345,7 +348,24 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     FjordTracks.attach(result).catch(e => { if (e.name !== 'AbortError' && generation === playGeneration) toast(e.message); });
   } finally { if(generation===playGeneration){switching = false;flushPlayerSeek();} }
 }
-video.onplaying = () => { $('player-loading').hidden = true; if(playback) { playback.hasPlayed = true; playback.health?.playing(); badge('actual-badge', playback.mode); } };
+video.onplaying = () => {
+  $('player-loading').hidden = true;
+  if (!playback) return;
+  playback.hasPlayed = true;
+  playback.health?.playing();
+  badge('actual-badge', playback.mode);
+  // WebKit can play audio without decoding any video frames; detect this
+  // silent failure once on iOS and fall back to the next compatible route.
+  if (nativeIosHls && !airplayRequested && playback.mode !== 'Transcoding' && !playback.videoCheckScheduled) {
+    const current = playback, generation = playGeneration;
+    current.videoCheckScheduled = true;
+    setTimeout(() => {
+      if (generation !== playGeneration || playback !== current || switching || airplayRequested) return;
+      if (!video.paused && video.readyState >= 2 && video.videoWidth === 0 && video.videoHeight === 0)
+        retryBrowserRoute(3, current);
+    }, 3500);
+  }
+};
 video.onwaiting = () => { if(playback) { playback.health?.waiting(); $('player-loading').hidden = false; $('player-loading').textContent = 'Bufferer…'; } };
 function recoverPlaybackDecode() {
   if (playback?.mode !== 'Transcoding' || !playback.health?.recoverDecode(hls)) return false;
@@ -370,7 +390,7 @@ async function saveProgress() { if(!selected || !playback) return; const p = pos
 video.ontimeupdate = () => { updatePlayerTimeline(); if(Date.now() - lastSaved > 5000 && playback) { lastSaved = Date.now(); saveProgress(); } };
 video.onended = () => { saveProgress(); $('player-loading').hidden = true; };
 $('player-quality').onchange = () => startPlayback(position()).catch(e => showPlayerError(e.message));
-async function closePlayer() { ++playGeneration; if(document.fullscreenElement && $('player-dialog').open) await document.exitFullscreen().catch(()=>{}); await saveProgress(); await release(); $('player-dialog').close(); if(state?.user) await refresh(); }
+async function closePlayer() { ++playGeneration; airplayRequested = false; FjordTracks.burnSubtitles = false; FjordTracks.sync(); if(document.fullscreenElement && $('player-dialog').open) await document.exitFullscreen().catch(()=>{}); await saveProgress(); await release(); $('player-dialog').close(); if(state?.user) await refresh(); }
 $('player-close').onclick = closePlayer;
 $('player-dialog').addEventListener('cancel', event => { event.preventDefault(); closePlayer(); });
 setInterval(() => {

@@ -101,7 +101,7 @@ const FjordTracks = {
       for (const kind of ['audio','subtitle']) $(`${place}-${kind}`).value = this[kind] ?? '';
       const fallback = $(`${place}-burn-subtitles`);
       fallback.checked = this.burnSubtitles;
-      fallback.parentElement.hidden = !(typeof airplaySupported !== 'undefined' && airplaySupported && this.selectedSubtitle()?.delivery === 'text');
+      fallback.parentElement.hidden = !(typeof airplayRequested !== 'undefined' && airplayRequested && this.selectedSubtitle()?.delivery === 'text');
     }
   },
   selectedSubtitle() { return this.movie?.tracks?.subtitles?.find(t => t.index === this.subtitle); },
