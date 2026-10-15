@@ -83,3 +83,44 @@ test('counter resets and suspended timers do not report ongoing frame loss', () 
   monitor.label();
   assert.equal(monitor.snapshot().recentFrames,null);
 });
+
+test('iPhone reports frozen pictures only when the audio clock advances without presented frames', () => {
+  let time = 0, frames = 5;
+  const v = video(); v.readyState = 4; v.videoWidth = 1920; v.videoHeight = 1080;
+  v.getVideoPlaybackQuality = () => ({totalVideoFrames:frames,droppedVideoFrames:0});
+  const monitor = health.create(v, () => time, true);
+  assert.equal(monitor.frozenFrame(), false);
+  for (let i=0;i<2;i++) {
+    time+=2000;v.currentTime+=2;
+    assert.equal(monitor.frozenFrame(),false);
+  }
+  time+=2000;v.currentTime+=2;
+  assert.equal(monitor.frozenFrame(),true,'audio advanced six seconds while the picture froze');
+  frames+=48;time+=2000;v.currentTime+=2;
+  assert.equal(monitor.frozenFrame(),false,'new pictures reset the freeze window');
+  v.paused=true;time+=2000;v.currentTime+=2;
+  assert.equal(monitor.frozenFrame(),false,'pause clears the watchdog');
+  v.paused=false;time+=2000;v.currentTime+=2;
+  assert.equal(monitor.frozenFrame(),false,'resumed playback gets a new baseline');
+  v.seeking=true;assert.equal(monitor.frozenFrame(),false);
+  v.seeking=false;
+  assert.equal(monitor.frozenFrame(false),false,'AirPlay and inactive playback never trigger');
+  monitor.close();
+});
+
+test('iPhone tracks presented frames where Safari exposes frame callbacks', () => {
+  let time=0, request=0, callback, cancelled=null;
+  const v = video();v.readyState=4;v.videoWidth=1920;v.videoHeight=1080;
+  v.requestVideoFrameCallback = cb => { callback=cb; return ++request; };
+  v.cancelVideoFrameCallback = id => {cancelled=id;};
+  const monitor = health.create(v,()=>time,true);
+  assert.equal(request,1);
+  assert.equal(monitor.frozenFrame(),false);
+  time=2000;v.currentTime+=2;callback();
+  assert.equal(monitor.frozenFrame(),false);
+  time=4000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),false);
+  time=6000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),false);
+  time=8000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),false);
+  time=10000;v.currentTime+=2;assert.equal(monitor.frozenFrame(),true);
+  monitor.close();assert.equal(cancelled,request);
+});

@@ -5,9 +5,38 @@ const FjordPlaybackHealth = {
       3:'Browseren kunne ikke afkode videoen', 4:'Browseren afviste videoformatet'};
     return `${labels[error?.code] || 'Ukendt videofejl'} (kode ${error?.code || 0}).`;
   },
-  create(video, now = () => Date.now()) {
+  create(video, now = () => Date.now(), watchFrozenFrames = false) {
     let waits = 0, segment = null, recoveries = 0, pendingError = null;
     let frameSample = null, recentFrames = null;
+    let freezeSample = null, freezeAdvance = 0, presentedFrames = 0;
+    let videoFrameRequest = null, watching = true, hasFrameCallback = false;
+    // Prefer actual presented frames over decoder-only counters: Safari may
+    // advance the audio clock while leaving the last picture on screen.
+    if (watchFrozenFrames && typeof video.requestVideoFrameCallback === 'function') {
+      const presented = () => {
+        if (!watching) return;
+        presentedFrames++;
+        try { videoFrameRequest = video.requestVideoFrameCallback(presented); }
+        catch (_) { videoFrameRequest = null; }
+      };
+      try { videoFrameRequest = video.requestVideoFrameCallback(presented); hasFrameCallback = true; }
+      catch (_) { videoFrameRequest = null; }
+    }
+    const resetFreeze = () => { freezeSample = null; freezeAdvance = 0; };
+    const displayedFrames = () => {
+      if (hasFrameCallback) return presentedFrames;
+      try {
+        const quality = video.getVideoPlaybackQuality?.();
+        if (Number.isFinite(quality?.totalVideoFrames)) {
+          const dropped = Number.isFinite(quality?.droppedVideoFrames) ? quality.droppedVideoFrames : 0;
+          return Math.max(0, quality.totalVideoFrames - dropped);
+        }
+      } catch (_) {}
+      if (Number.isFinite(video.webkitDecodedFrameCount)) return video.webkitDecodedFrameCount;
+      // Zero dimensions are a reliable signal only while the audio clock runs.
+      if (video.videoWidth === 0 || video.videoHeight === 0) return 0;
+      return null; // No observable frame metric: avoid claiming a frozen picture.
+    };
     const errors = [];
     return {
       recoverDecode(hls) {
@@ -19,8 +48,36 @@ const FjordPlaybackHealth = {
         pendingError = video.error;
         try { hls.recoverMediaError(); return true; } catch { pendingError = null; return false; }
       },
-      playing() { pendingError = null; frameSample = recentFrames = null; },
-      waiting() { frameSample = recentFrames = null; if (!video.paused && !video.seeking && !video.ended && video.currentTime > 0) waits++; },
+      playing() { pendingError = null; frameSample = recentFrames = null; resetFreeze(); },
+      frozenFrame(active = true) {
+        const hidden = typeof document !== 'undefined' && document.hidden;
+        if (!watchFrozenFrames || !active || hidden || video.paused || video.seeking ||
+            video.ended || video.readyState < 2) { resetFreeze(); return false; }
+        const count = displayedFrames(), position = Number(video.currentTime), at = now();
+        if (!Number.isFinite(count) || !Number.isFinite(position)) { resetFreeze(); return false; }
+        const next = {count, position, at};
+        if (!freezeSample) { freezeSample = next; return false; }
+        const elapsed = (at - freezeSample.at) / 1000;
+        const advance = position - freezeSample.position;
+        // Reset after seeks, clock discontinuities and suspended browser timers.
+        if (elapsed <= 0 || elapsed > 6 || advance < 0 ||
+            advance > elapsed * Math.max(1, Number(video.playbackRate) || 1) * 2 + 2) {
+          resetFreeze(); freezeSample = next; return false;
+        }
+        if (count > freezeSample.count || advance < 0.4) freezeAdvance = 0;
+        else freezeAdvance += advance;
+        freezeSample = next;
+        return freezeAdvance >= 6;
+      },
+      close() {
+        watching = false;
+        if (videoFrameRequest !== null) {
+          try { video.cancelVideoFrameCallback?.(videoFrameRequest); } catch (_) {}
+        }
+        videoFrameRequest = null;
+        resetFreeze();
+      },
+      waiting() { resetFreeze(); frameSample = recentFrames = null; if (!video.paused && !video.seeking && !video.ended && video.currentTime > 0) waits++; },
       sampleFrames() {
         const frames = video.getVideoPlaybackQuality?.();
         const hidden = typeof document !== 'undefined' && document.hidden;

@@ -226,11 +226,15 @@ function showBrowserCapabilities(movie) {
   }
   $('browser-capabilities-text').textContent = FjordBrowserCapabilities.describe(movie);
 }
-function retryBrowserRoute(code, current = playback) {
+function retryBrowserRoute(code, current = playback, frozenPicture = false) {
   if (!current || current !== playback || current.recovering || !FjordBrowserCapabilities.noteFailure(selected, current.mode, code)) return false;
   const at = current.hasPlayed ? position() : current.requestedPosition || 0;
   current.recovering = true;
-  toast(current.mode === 'Direct Play' ? 'Originalfilen blev afvist. Tilpasser indpakning og lyd først.' : 'Originalvideoen blev afvist. Prøver kompatibel videokonvertering.');
+  toast(frozenPicture ? (current.mode === 'Direct Play'
+    ? 'Safari viser et fastfrosset billede. Prøver en anden videostrøm.'
+    : 'Safari viser et fastfrosset billede. Konverterer videoen til H.264.')
+    : current.mode === 'Direct Play' ? 'Originalfilen blev afvist. Tilpasser indpakning og lyd først.'
+      : 'Originalvideoen blev afvist. Prøver kompatibel videokonvertering.');
   startPlayback(at).catch(e => showPlayerError(e.message));
   return true;
 }
@@ -294,6 +298,7 @@ $('restart-button').onclick = () => playFromDetail(0);
 function showPlayerError(message) { $('player-error').textContent = message; $('player-loading').hidden = true; }
 async function release() {
   FjordTracks.clear();
+  playback?.health?.close();
   video.pause(); video.removeAttribute('src'); video.load();
   if (hls) { hls.destroy(); hls = null; }
   const old = playback; playback = null;
@@ -323,7 +328,7 @@ async function startPlayback(position = 0, fallback = false, forceCpu = false) {
     const useHls = !!result.session && !airplaySupported && !nativeIosHls && !!window.Hls?.isSupported();
     result.infoText = $('playback-info').textContent + (result.session ? ` · ${useHls ? 'HLS.js' : 'Native HLS'}` : '') + (result.reason ? ` · ${result.reason}` : '');
     $('playback-info').textContent = result.infoText;
-    result.health = FjordPlaybackHealth.create(video);
+    result.health = FjordPlaybackHealth.create(video, undefined, nativeIosHls);
     video.onloadedmetadata = () => { if (result.mode === 'Direct Play') video.currentTime = position; else if (result.initial_time) video.currentTime = result.initial_time; video.play().catch(() => { $('player-loading').hidden = true; toast('Tryk på afspil for at starte filmen.'); }); };
     if (!result.session || !useHls && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = result.url; }
     else if (useHls) {
@@ -354,17 +359,8 @@ video.onplaying = () => {
   playback.hasPlayed = true;
   playback.health?.playing();
   badge('actual-badge', playback.mode);
-  // WebKit can play audio without decoding any video frames; detect this
-  // silent failure once on iOS and fall back to the next compatible route.
-  if (nativeIosHls && !airplayRequested && playback.mode !== 'Transcoding' && !playback.videoCheckScheduled) {
-    const current = playback, generation = playGeneration;
-    current.videoCheckScheduled = true;
-    setTimeout(() => {
-      if (generation !== playGeneration || playback !== current || switching || airplayRequested) return;
-      if (!video.paused && video.readyState >= 2 && video.videoWidth === 0 && video.videoHeight === 0)
-        retryBrowserRoute(3, current);
-    }, 3500);
-  }
+  // Frozen video is checked continuously by the iOS frame watchdog below.
+  // videoWidth/videoHeight alone cannot tell whether new pictures arrive.
 };
 video.onwaiting = () => { if(playback) { playback.health?.waiting(); $('player-loading').hidden = false; $('player-loading').textContent = 'Bufferer…'; } };
 function recoverPlaybackDecode() {
@@ -414,8 +410,18 @@ setInterval(() => {
   }).catch(e => { if (playback === current) showPlayerError(e.message); });
 }, 10000);
 setInterval(() => {
-  if (!playback?.health || switching) return;
-  $('playback-info').textContent = [playback.infoText, playback.transcodeInfo, playback.health.label(), FjordTracks.statusLabel()].filter(Boolean).join(' · ');
+  const current = playback;
+  if (!current?.health || switching) return;
+  const localIos = nativeIosHls && !airplayRequested && !airplayActive() && $('player-dialog').open;
+  if (current.health.frozenFrame(localIos) && !current.frozenPictureReported) {
+    current.frozenPictureReported = true;
+    if (current.mode === 'Transcoding') {
+      showPlayerError('Safari afspiller lyd, men ingen nye billeder, selv efter videokonvertering. Prøv en anden film eller kvalitet.');
+    } else if (retryBrowserRoute(3, current, true)) return;
+    else showPlayerError('Safari viser ikke nye billeder. Prøv at ændre afspilningskvaliteten.');
+  }
+  if (playback !== current) return;
+  $('playback-info').textContent = [current.infoText, current.transcodeInfo, current.health.label(), FjordTracks.statusLabel()].filter(Boolean).join(' · ');
 }, 2000);
 setInterval(() => {
   if(playback?.media_ticket) api('/media/heartbeat', 'POST', {ticket:playback.media_ticket}).catch(e => showPlayerError(e.message));
