@@ -36,9 +36,9 @@ function setupCategories() {
   const content = document.createElement('div'); content.className = 'library-results';
   content.append(...section.childNodes); section.append(content);
   section.insertAdjacentHTML('afterbegin', `<aside id="library-categories" class="library-categories" hidden aria-labelledby="categories-title">
-    <a class="sidebar-brand" href="/" aria-label="FjordFlix hjem"><img src="/static/logos/source/fjordflix-horizontal-dark.svg?v=brand-20261005" alt="FjordFlix"></a>
+    <a class="sidebar-brand" href="/" aria-label="FjordFlix forside"><img src="/static/logos/source/fjordflix-horizontal-dark.svg?v=brand-20261005" alt="FjordFlix"></a>
     <section id="sidebar-library"><span class="sidebar-section-label">BIBLIOTEK</span><nav id="sidebar-browse" aria-label="Bibliotek">
-    <button class="sidebar-view" data-side-view="home">Hjem</button><button class="sidebar-view" data-side-view="all">Film</button>
+    <button class="sidebar-view" data-side-view="home">Forside</button><button class="sidebar-view" data-side-view="all">Film</button>
     <button class="sidebar-view" data-side-view="series">Serier</button><button class="sidebar-view" data-side-view="favorites">Min liste</button></nav></section>
     <button id="sidebar-back" class="sidebar-view" type="button" hidden aria-label="Tilbage til bibliotek"><span aria-hidden="true">←</span> Tilbage</button>
     <section id="sidebar-genres"><h2 id="categories-title">Genrer</h2><nav id="categories-links" aria-label="Genrer"></nav></section>

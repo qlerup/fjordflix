@@ -62,3 +62,12 @@
 .airplay-subtitle-fallback{grid-column:1/-1;font-size:12px}
 .airplay-subtitle-fallback input[type=checkbox]{width:auto;display:inline-block;margin-right:8px}
 .airplay-subtitle-fallback[hidden]{display:none}
+
+#recent-section { margin: 4px 0 32px; }
+#recent-heading { margin: 0 0 18px; font-size: 20px; }
+#recent-grid { display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(150px, 17%); gap: 20px; overflow-x: auto; padding: 3px 2px 12px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; scrollbar-width: thin; }
+#recent-grid .movie-card { scroll-snap-align: start; }
+@media(max-width:800px) {
+  #recent-heading { font-size: 18px; margin-bottom: 15px; }
+  #recent-grid { grid-auto-columns: 42%; gap: 14px; }
+}

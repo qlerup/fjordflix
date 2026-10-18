@@ -152,6 +152,10 @@ function render() {
     $('empty').querySelector('h3').textContent = `Ingen titler i ${category.label}`;
     $('empty').querySelector('p').textContent = query ? 'Prøv en anden søgning eller kategori.' : 'Vælg en anden kategori eller Alle for at se resten af biblioteket.';
   }
+  // The API returns newest additions first; cards keeps that order and groups series.
+  const recent = cards.slice(0, 12);
+  $('recent-section').hidden = view !== 'home' || !!query || !recent.length;
+  fillGrid('recent-grid', recent);
   const continuing = library.filter(m => m.position > 1 && m.position < m.duration - 2);
   $('continue-section').hidden = view !== 'home' || !!query || !continuing.length;
   fillGrid('continue-grid', continuing);
