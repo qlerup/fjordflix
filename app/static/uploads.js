@@ -1,13 +1,44 @@
 /* Upload one file at a time; keep each result visible and never repeat successes. */
+const uploadPath = file => file.uploadRelativePath || file.webkitRelativePath || file.name;
+
+async function collectDroppedFiles(transfer) {
+  // Capture the entries synchronously: the browser clears the drag data after this event.
+  const entries = Array.from(transfer.items || []).filter(item => item.kind === 'file')
+    .map(item => ({entry:item.webkitGetAsEntry?.(), file:item.getAsFile()}));
+  if (!entries.length) return Array.from(transfer.files || []);
+  const files = [];
+  async function walk(entry, prefix = '') {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      if (prefix) Object.defineProperty(file, 'uploadRelativePath', {value:prefix + file.name});
+      files.push(file);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      // Chromium returns directory contents in batches, not necessarily all at once.
+      for (;;) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) break;
+        for (const child of batch) await walk(child, prefix + entry.name + '/');
+      }
+    }
+  }
+  for (const item of entries) {
+    if (item.entry) await walk(item.entry);
+    else if (item.file) files.push(item.file);
+  }
+  return files;
+}
+
 function createUploadQueue(send, changed = () => {}) {
   const queue = {items: [], running: false};
   queue.add = files => {
     if (queue.running) return;
     for (const file of files) {
-      if (queue.items.some(item => item.file.name === file.name && item.file.size === file.size && item.file.lastModified === file.lastModified)) continue;
-      const error = !/\.(mp4|mkv|mov|webm|m4v|avi|ts)$/i.test(file.name) ? 'Filtypen understøttes ikke.'
+      if (queue.items.some(item => uploadPath(item.file) === uploadPath(file) && item.file.size === file.size && item.file.lastModified === file.lastModified)) continue;
+      const unsupported = !/\.(mp4|mkv|mov|webm|m4v|avi|ts)$/i.test(file.name);
+      const error = unsupported ? 'Springes over: filtypen understøttes ikke.'
         : !file.size ? 'Filen er tom.' : '';
-      queue.items.push({file, status: error ? 'invalid' : 'queued', message: error || 'Venter', progress: 0});
+      queue.items.push({file, status: unsupported ? 'skipped' : error ? 'invalid' : 'queued', message: error || 'Venter', progress: 0});
     }
     changed();
   };
@@ -79,7 +110,8 @@ function createChunkUploader(request = uploadRequest, wait = ms => new Promise(r
       catch (error) { if (error.status !== 404) throw error; sessions.delete(file); }
     }
     if (!state) {
-      state = await retry('POST', '/api/uploads', {filename: file.name, size: file.size});
+      state = await retry('POST', '/api/uploads', {filename: file.name, size: file.size,
+        relative_path: uploadPath(file).includes('/') ? uploadPath(file) : ''});
       sessions.set(file, state.id);
     }
     const url = `/api/uploads/${state.id}`;
@@ -105,11 +137,13 @@ function createChunkUploader(request = uploadRequest, wait = ms => new Promise(r
     return state;
   };
 }
-if (typeof module !== 'undefined') module.exports = {createUploadQueue, createChunkUploader, UPLOAD_CHUNK_SIZE};
+if (typeof module !== 'undefined') module.exports = {createUploadQueue, createChunkUploader, collectDroppedFiles, uploadPath, UPLOAD_CHUNK_SIZE};
 
 function setupUploads() {
   const input = $('upload-file'), zone = input.closest('.dropzone');
-  zone.querySelector('strong').textContent = 'Vælg videoer eller træk dem hertil';
+  const folderInput = $('upload-folder');
+  let collecting = false;
+  zone.querySelector('strong').textContent = 'Træk videoer eller hele mapper hertil';
   zone.querySelector('span').textContent = 'MP4, MKV, MOV, WebM, M4V, AVI og TS';
   const list = document.createElement('ul'); list.className = 'upload-queue';
   $('upload-progress').before(list);
@@ -119,12 +153,14 @@ function setupUploads() {
     const pending = queue.items.filter(item => item.status === 'queued');
     const complete = queue.items.filter(item => item.status === 'done').length;
     const failures = queue.items.filter(item => ['error', 'invalid'].includes(item.status)).length;
-    input.disabled = queue.running;
-    $('upload-submit').disabled = queue.running || !pending.length;
+    const skipped = queue.items.filter(item => item.status === 'skipped').length;
+    input.disabled = folderInput.disabled = queue.running || collecting;
+    $('upload-choose-files').disabled = $('upload-choose-folder').disabled = queue.running || collecting;
+    $('upload-submit').disabled = queue.running || collecting || !pending.length;
     $('upload-submit').textContent = queue.running ? 'Uploader…' : pending.length ? `Upload ${pending.length} ${pending.length === 1 ? 'fil' : 'filer'}` : 'Upload til biblioteket';
     $('upload-form').setAttribute('aria-busy', String(queue.running));
-    $('upload-status').textContent = queue.items.length
-      ? `${complete} af ${queue.items.length} tilføjet${failures ? ` · ${failures} med fejl` : ''}${queue.running ? ' · Du kan lukke dette vindue, men hold Fjordflix-fanen åben.' : ''}` : '';
+    $('upload-status').textContent = collecting ? 'Læser mappen og dens undermapper…' : queue.items.length
+      ? `${complete} af ${queue.items.length - skipped} videoer tilføjet${skipped ? ` · ${skipped} sprunget over` : ''}${failures ? ` · ${failures} med fejl` : ''}${queue.running ? ' · Du kan lukke dette vindue, men hold Fjordflix-fanen åben.' : ''}` : '';
     const active = queue.items.find(item => item.status === 'uploading');
     $('upload-progress').hidden = !active;
     if (active?.progress === 100) $('upload-progress').removeAttribute('value');
@@ -132,7 +168,7 @@ function setupUploads() {
     list.replaceChildren(...queue.items.map(item => {
       const row = document.createElement('li'); row.dataset.status = item.status;
       const text = document.createElement('div'), name = document.createElement('strong'), status = document.createElement('span');
-      name.textContent = item.file.name; status.textContent = item.message;
+      name.textContent = uploadPath(item.file); status.textContent = item.message;
       text.append(name, status); row.append(text);
       if (!queue.running && item.status !== 'done') {
         if (item.status === 'error') {
@@ -150,24 +186,31 @@ function setupUploads() {
     }));
   }
   input.onchange = () => { queue.add(input.files); input.value = ''; };
+  folderInput.onchange = () => { queue.add(folderInput.files); folderInput.value = ''; };
+  $('upload-choose-files').onclick = () => input.click();
+  $('upload-choose-folder').onclick = () => folderInput.click();
   for (const type of ['dragenter', 'dragover']) zone.addEventListener(type, event => {
     event.preventDefault();
     if (!queue.running) zone.classList.add('drag-over');
   });
   zone.addEventListener('dragleave', event => { if (!zone.contains(event.relatedTarget)) zone.classList.remove('drag-over'); });
-  zone.addEventListener('drop', event => {
+  zone.addEventListener('drop', async event => {
     event.preventDefault(); zone.classList.remove('drag-over');
-    queue.add(event.dataTransfer.files);
+    if (queue.running || collecting) return;
+    collecting = true; render();
+    try { queue.add(await collectDroppedFiles(event.dataTransfer)); }
+    catch { toast('Mappen kunne ikke læses. Prøv Vælg mappe, eller vælg filerne igen.'); }
+    finally { collecting = false; render(); }
   });
   // Dropping outside the target must not navigate away from an active upload.
   for (const type of ['dragover', 'drop']) $('upload-dialog').addEventListener(type, event => event.preventDefault());
   $('upload-open').onclick = () => {
-    if (!queue.running && queue.items.length && queue.items.every(item => item.status === 'done')) queue.items = [];
+    if (!queue.running && queue.items.length && queue.items.every(item => ['done','skipped'].includes(item.status))) queue.items = [];
     render(); $('upload-dialog').showModal();
   };
   $('upload-form').onsubmit = async event => {
     event.preventDefault();
-    if (queue.running || !queue.items.some(item => item.status === 'queued')) return;
+    if (queue.running || collecting || !queue.items.some(item => item.status === 'queued')) return;
     await queue.run();
     try { await refresh(); } catch { toast('Uploadkøen er færdig. Genindlæs biblioteket for at se filerne.'); }
   };

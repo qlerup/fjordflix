@@ -1,5 +1,6 @@
 """Small HTTP uploads; disk-backed sessions for the single-worker app."""
 import json
+import os
 import re
 import secrets
 import shutil
@@ -16,6 +17,7 @@ CHUNK_SIZE = 2 * 1024 * 1024
 class StartUpload(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
     size: int = Field(gt=0)
+    relative_path: str = Field(default='', max_length=2048)
 
 
 class Uploads:
@@ -34,6 +36,30 @@ class Uploads:
         temporary = path.with_suffix('.tmp')
         temporary.write_text(json.dumps(state), encoding='utf-8')
         temporary.replace(path)
+
+    def destination(self, state, create=False):
+        """Keep folder uploads beneath MEDIA; never traverse a link or replace a file."""
+        relative = state.get('stored_path') or state.get('relative_path') or (state['id'] + state['suffix'])
+        parts = relative.split('/')
+        if (relative.startswith('/') or any(not p or p in ('.', '..', '.uploads')
+                or len(p.encode('utf-8')) > 255 or re.search(r'[\\:\x00-\x1f\x7f]', p) for p in parts)):
+            raise HTTPException(400, 'Ugyldig mappesti i upload.')
+        path = self.backend.MEDIA
+        for part in parts[:-1]:
+            path = path / part
+            if path.is_symlink():
+                raise HTTPException(400, 'Uploadmapper må ikke være links.')
+            if create:
+                path.mkdir(exist_ok=True)
+        path = path / parts[-1]
+        if path.is_symlink():
+            raise HTTPException(400, 'Uploadfilen må ikke være et link.')
+        return path
+
+    @staticmethod
+    def identity(path):
+        info = path.stat(follow_symlinks=False)
+        return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
 
     def read(self, uid, owner):
         if not re.fullmatch(r'[a-f0-9]{32}', uid):
@@ -59,18 +85,25 @@ class Uploads:
                     with self.backend.db() as conn:
                         indexed = conn.execute('SELECT id FROM movies WHERE id=?', (state['id'],)).fetchone()
                     if not indexed:
-                        (self.backend.MEDIA / (state['id'] + state['suffix'])).unlink(missing_ok=True)
+                        final = self.destination(state)
+                        # A later upload may reuse the same folder/filename. It is not ours.
+                        legacy = not state.get('relative_path')
+                        if final.exists() and (legacy or state.get('published') and state.get('file_identity') == self.identity(final)):
+                            final.unlink()
                     path.unlink(missing_ok=True)
 
     def start(self, data, owner):
         suffix = Path(data.filename).suffix.lower()
         if suffix not in ('.mp4', '.mkv', '.mov', '.webm', '.m4v', '.avi', '.ts'):
             raise HTTPException(400, 'Filtypen understøttes ikke.')
+        if data.relative_path and (data.relative_path.split('/')[-1] != data.filename or '/' not in data.relative_path):
+            raise HTTPException(400, 'Mappestien skal indeholde filens navn og mappe.')
         with self.lock:
             if shutil.disk_usage(self.backend.MEDIA).free < data.size + 512 * 1024**2:
                 raise HTTPException(507, 'Serveren mangler ledig diskplads.')
             state = dict(id=secrets.token_hex(16), owner=owner, filename=data.filename,
-                         suffix=suffix, size=data.size, offset=0, status='uploading', touch=time.time())
+                         relative_path=data.relative_path, suffix=suffix, size=data.size, offset=0, status='uploading', touch=time.time())
+            self.destination(state)  # Validate before creating an upload session.
             (self.root / (state['id'] + '.part')).touch()
             self.save(state)
             return state
@@ -121,15 +154,41 @@ class Uploads:
 
     def finish(self, state):
         mid = state['id']
-        path = self.backend.MEDIA / (mid + state['suffix'])
+        path = None
+        published = False
         try:
             with self.backend.db() as conn:
                 exists = conn.execute('SELECT id FROM movies WHERE id=?', (mid,)).fetchone()
             if not exists:
                 part = self.root / (mid + '.part')
-                if part.exists():
-                    part.replace(path)
-                self.backend.index_movie(path, Path(state['filename']).stem.replace('_', ' ').replace('.', ' '), mid, True)
+                if part.exists() and not state.get('published'):
+                    with self.lock:
+                        path = self.destination(state, create=True)
+                        if path.exists():
+                            stem = path.stem.encode('utf-8')[:180].decode('utf-8', errors='ignore')
+                            path = path.with_name(stem + '-' + mid + state['suffix'])
+                        state['stored_path'] = path.relative_to(self.backend.MEDIA).as_posix()
+                        # Exclusive publication protects simultaneous same-name uploads.
+                        try:
+                            os.link(part, path)
+                            published = True
+                        except OSError as error:
+                            if isinstance(error, FileExistsError):
+                                raise HTTPException(409, 'En fil med samme navn findes allerede. Prøv igen.')
+                            # Filesystems without hard links use bounded disk-to-disk copying.
+                            with path.open('xb') as output, part.open('rb') as source:
+                                published = True
+                                shutil.copyfileobj(source, output, CHUNK_SIZE)
+                        state['published'] = True
+                        state['file_identity'] = self.identity(path)
+                        self.save(state)
+                        part.unlink()
+                else:
+                    path = self.destination(state)
+                    published = bool(state.get('published')) or not state.get('relative_path')
+                    part.unlink(missing_ok=True)
+                title = self.backend.catalog.file_title(Path(state.get('relative_path') or state['filename']))
+                self.backend.index_movie(path, title, mid, True)
             info = self.backend.movie(mid)[1].get('catalog', {})
             state.update(status='done', metadata_status=info.get('status', 'disabled'),
                          metadata_message=self.backend.catalog.message(info))
@@ -141,8 +200,9 @@ class Uploads:
             # Do not remove a video that was successfully indexed before an error.
             with self.backend.db() as conn:
                 exists = conn.execute('SELECT id FROM movies WHERE id=?', (mid,)).fetchone()
-            if not exists:
+            if not exists and path is not None and published:
                 path.unlink(missing_ok=True)
+                state['published'] = False
         finally:
             with self.lock:
                 state['touch'] = time.time()

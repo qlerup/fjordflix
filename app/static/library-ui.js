@@ -96,7 +96,7 @@ function setupLibraryUI() {
   $('search').setAttribute('aria-label', 'Søg i film og serier');
   $('upload-open').textContent = '＋ Upload film / afsnit';
   $('upload-dialog').querySelector('h2').textContent = 'Tilføj film eller afsnit';
-  $('upload-dialog').querySelector('p').textContent = 'Serier genkendes fra fx Serietitel 2014 S02E10.mkv. Vælg flere film eller afsnit, eller træk dem ind i feltet nedenfor.';
+  $('upload-dialog').querySelector('p').textContent = 'Vælg film, afsnit eller en hel mappe. Du kan også trække mapper ind nedenfor. Mappernes navne og struktur bevares, og serier genkendes automatisk.';
   $('detail-description').insertAdjacentHTML('beforebegin', `<section id="episode-picker" hidden aria-label="Sæson og afsnit">
     <p id="series-overview" class="muted"></p><div class="episode-carousel-header">
     <label>Sæson<select id="series-season"></select></label>

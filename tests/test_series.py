@@ -86,7 +86,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setitem(main.app.dependency_overrides, main.user, lambda: {'admin': True, 'id': 'owner', 'name': 'Owner'})
     (tmp_path / 'posters').mkdir()
     with db() as conn:
-        conn.executescript('CREATE TABLE movies(id TEXT PRIMARY KEY,title TEXT,path TEXT,metadata TEXT,created REAL); CREATE TABLE progress(user_id TEXT,movie_id TEXT,position REAL,favorite INTEGER);')
+        conn.executescript('CREATE TABLE movies(id TEXT PRIMARY KEY,title TEXT,path TEXT,metadata TEXT,created REAL); CREATE TABLE progress(user_id TEXT,movie_id TEXT,position REAL,favorite INTEGER); CREATE TABLE catalog_settings(name TEXT PRIMARY KEY,value TEXT);')
         conn.execute('INSERT INTO movies VALUES (?,?,?,?,?)', ('a'*32, 'Show S01E02', '/video.mkv', json.dumps({'duration': 100, 'video': 'hevc', 'height': 2160}), 0))
         conn.execute('INSERT INTO progress VALUES (?,?,?,?)', ('owner', 'a'*32, 32, 1))
     return TestClient(main.app)
