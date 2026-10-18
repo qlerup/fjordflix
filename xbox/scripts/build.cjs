@@ -21,3 +21,5 @@ fs.writeFileSync(path.join(out,'qrcode.js'),qrSource);
 fs.copyFileSync(path.join(root,'tv/QR-LICENSE.txt'),path.join(out,'QR-LICENSE.txt'));
 fs.writeFileSync(path.join(out,'phone-page.js'),'window.FjordPhonePage = '+JSON.stringify(fs.readFileSync(path.join(root,'tv/phone-setup.html'),'utf8'))+';');
 console.log('Built standalone Xbox UWP app; all scripts pass ES5 parsing.');
+
+fs.writeFileSync(path.join(out,'client-info.js'), 'window.FjordTVClient = ' + JSON.stringify({platform:'Xbox',version:require('../package.json').version}) + ';\n');

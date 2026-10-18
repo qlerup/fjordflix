@@ -4,8 +4,8 @@
   var isXbox = !!window.XboxPlatform;
   function localPhoneAvailable() { return !!window.FjordLocalPhoneServer && window.FjordLocalPhoneServer.available(); }
   var $ = function (id) { return document.getElementById(id); };
-  var movies = [], selected, filter = 'all', page = 0, playback, generation = 0, busy = false;
-  var lastSaved = 0, hideTimer, startTimer, cardFocus, video = $('video');
+  var movies = [], selected, filter = 'home', page = 0, playback, generation = 0, busy = false;
+  var lastSaved = 0, hideTimer, startTimer, cardFocus, cardFocusSection = 'grid', video = window.SamsungVideo ? window.SamsungVideo($('video')) : $('video');
   var planGeneration = 0, selectedAudio = null, selectedSubtitle = null, subtitleURL = null, subtitleXHR = null, subtitleTimer;
   var server = '', token = '', images = [], imageGeneration = 0, backdropURL;
   var serverFeatures = [], fallbackStage = '', lastRequest, lastFailure = '', lastPlan;
@@ -69,7 +69,7 @@
       if (video.buffered.start(i) <= now && video.buffered.end(i) >= now) ahead = video.buffered.end(i) - now;
     }
     var frames = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
-    runtime = 'Buffer: ' + ahead.toFixed(1) + ' s · Vent på data: ' + waitingCount +
+    runtime = 'Buffer: ' + (video.nativeBufferUnknown ? 'ikke tilgængeligt (AVPlay)' : ahead.toFixed(1) + ' s') + ' · Vent på data: ' + waitingCount +
       ' · Stalled: ' + stalledCount + ' · Tabte billeder: ' + (frames ? frames.droppedVideoFrames + '/' + frames.totalVideoFrames : 'ikke tilgængeligt') +
       ' · readyState: ' + video.readyState + ' · networkState: ' + video.networkState;
   }
@@ -87,7 +87,8 @@
     }).catch(function (e) { if (playback === current) playerError(e.message); });
   }
   function diagnostics() {
-    var probe = window.TVCapabilities.diagnostics(), lines = [isXbox ? 'FjordFlix Xbox 0.1.17' : 'FjordFlix LG 0.1.10'];
+    var client = window.FjordTVClient || {platform:isXbox ? 'Xbox' : 'LG', version:isXbox ? '0.1.18' : '0.1.11'};
+    var probe = window.TVCapabilities.diagnostics(), lines = ['FjordFlix ' + client.platform + ' ' + client.version];
     lines.push(probe.source || '');
     lines.push('Lydvej: ' + (probe.audioTransport || '?') + ' · MKV-format: ' + (probe.htmlMatroska || '?'));
     var audioOutput = playback && playback.audio_output || lastPlan && lastPlan.audio_output;
@@ -169,15 +170,8 @@
         .then(loadLibrary).then(function () { $('search').focus(); });
     }).catch(function (error) { message(error.message); });
   }
-  function render() {
-    var query = $('search').value.toLowerCase();
-    var visible = movies.filter(function (m) {
-      return (!query || (m.title + ' ' + ((m.catalog || {}).series_title || '')).toLowerCase().indexOf(query) >= 0) &&
-        (filter !== 'movies' || !m.series_key) && (filter !== 'series' || !!m.series_key) &&
-        (filter !== 'favorites' || m.favorite) && (filter !== 'continue' || m.position > 1 && m.position < m.duration - 2);
-    });
-    page = Math.max(0, Math.min(page, Math.ceil(visible.length / 20) - 1)); clearImages(); var imageRun = imageGeneration; $('grid').textContent = '';
-    visible.slice(page * 20, (page + 1) * 20).forEach(function (m) {
+  function fillCards(id, items, imageRun) {
+    items.forEach(function (m) {
       var button = document.createElement('button'), poster = document.createElement('div'), img = document.createElement('img');
       var badge = document.createElement('span'), title = document.createElement('strong'), info = document.createElement('small');
       button.className = 'card'; button.setAttribute('data-movie', m.id); poster.className = 'poster'; img.alt = '';
@@ -187,7 +181,7 @@
       info.textContent = clock(m.duration) + (m.favorite ? ' · På min liste' : '') + (m.position > 1 ? ' · Set ' + clock(m.position) : '');
       poster.appendChild(img); poster.appendChild(badge); button.appendChild(poster); button.appendChild(title); button.appendChild(info);
       button.onclick = function () {
-        cardFocus = m.id; openDetail(m);
+        cardFocus = m.id; cardFocusSection = id; openDetail(m);
         api('/movies/' + m.id + '/tracks').then(function (available) {
           if (!available || !Array.isArray(available.subtitles)) return;
           if (selected !== m || $('detail').hidden || !$('player').hidden) return;
@@ -196,14 +190,32 @@
           if (!$('subtitle-options').hidden || current !== $('play')) return;
           m.tracks = available; openDetail(m);
         }).catch(ignore);
-      }; $('grid').appendChild(button);
+      }; $(id).appendChild(button);
     });
+  }
+  function render() {
+    var query = $('search').value.toLowerCase();
+    var visible = movies.filter(function (m) {
+      return (!query || (m.title + ' ' + ((m.catalog || {}).series_title || '')).toLowerCase().indexOf(query) >= 0) &&
+        (filter !== 'movies' || !m.series_key) && (filter !== 'series' || !!m.series_key) &&
+        (filter !== 'favorites' || m.favorite) && (filter !== 'continue' || m.position > 1 && m.position < m.duration - 2);
+    });
+    page = Math.max(0, Math.min(page, Math.ceil(visible.length / 20) - 1)); clearImages(); var imageRun = imageGeneration; $('grid').textContent = '';
+    var home = filter === 'home' && !query;
+    var continuing = visible.filter(function (m) { return m.position > 1 && m.position < m.duration - 2; });
+    ['grid','recent-grid','continue-grid'].forEach(function (id) { $(id).textContent = ''; });
+    $('grid').hidden = home;
+    $('pagination').hidden = home;
+    $('recent-section').hidden = !home || !visible.length;
+    $('continue-section').hidden = !home || !continuing.length;
+    fillCards(home ? 'recent-grid' : 'grid', home ? visible.slice(0, 12) : visible.slice(page * 20, (page + 1) * 20), imageRun);
+    if (home) fillCards('continue-grid', continuing.slice(0, 20), imageRun);
     text('count', visible.length ? visible.length + ' titler i dit bibliotek' : movies.length ? 'Ingen titler matcher. Prøv en anden søgning eller kategori.' : 'Dit bibliotek er tomt. Tilføj film fra FjordFlix på din computer.');
     $('previous').disabled = page === 0; $('next').disabled = (page + 1) * 20 >= visible.length;
     text('page-number', visible.length ? 'Side ' + (page + 1) + ' af ' + Math.ceil(visible.length / 20) : '');
   }
   function focusCard() {
-    var cards = $('grid').querySelectorAll('button');
+    var cards = $(cardFocusSection).querySelectorAll('button');
     for (var i = 0; i < cards.length; i++) if (cards[i].getAttribute('data-movie') === cardFocus) { cards[i].focus(); return; }
     $('search').focus();
   }
@@ -222,7 +234,7 @@
   $('subtitle-dropdown').addEventListener('keydown', function (event) {
     if ($('subtitle-options').hidden) return;
     var key = event.keyCode;
-    if ([27,461,37,39,9].indexOf(key) >= 0) {
+    if ([27,461,10009,37,39,9].indexOf(key) >= 0) {
       event.preventDefault(); event.stopPropagation(); closeSubtitleMenu(true); return;
     }
     if (key !== 38 && key !== 40 && key !== 36 && key !== 35) return;
@@ -387,7 +399,7 @@
       var previousURL = subtitleURL;
       var complete = xhr.getResponseHeader('X-Subtitle-Complete') !== '0';
       subtitleURL = URL.createObjectURL(new Blob([xhr.responseText], {type:'text/vtt'}));
-      var track = document.createElement('track'); track.kind = 'subtitles'; track.label = 'FjordFlix';
+      var track = video.createSubtitleTrack ? video.createSubtitleTrack() : document.createElement('track'); track.kind = 'subtitles'; track.label = 'FjordFlix';
       track.src = subtitleURL;
       track.onload = function () {
         if (id !== generation) return;
@@ -615,12 +627,15 @@
     else if (!$('player').hidden) closePlayer();
     else if (!$('detail').hidden) $('detail-back').click();
     else if ($('search').value) { $('search').value = ''; page = 0; render(); $('search').focus(); }
+    else if (filter !== 'home') document.querySelector('[data-filter="home"]').click();
+    else if (window.SamsungPlatform) window.SamsungPlatform.requestExit();
     else if (isXbox) window.XboxPlatform.requestExit();
     else if (window.confirm('Vil du lukke FjordFlix?')) window.close();
   };
   document.addEventListener('keydown', function (event) {
     if ($('player').hidden) return;
-    if ([415,19,413,417,412].indexOf(event.keyCode) >= 0) event.preventDefault();
+    if ([415,19,413,417,412,10252].indexOf(event.keyCode) >= 0) event.preventDefault();
+    if (event.keyCode === 10252) $('toggle').click();
     if (event.keyCode === 415) playVideo(); if (event.keyCode === 19) video.pause();
     if (event.keyCode === 413) closePlayer(); if (event.keyCode === 417) seek(30); if (event.keyCode === 412) seek(-30);
   });

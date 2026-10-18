@@ -1,8 +1,10 @@
 # FjordFlix for LG webOS
 
-The LG client lives in `fjordflix/lg` alongside Windows/Xbox. Its build imports the shared TV UI from `xbox/tv`, while retaining Magic Remote navigation, the webOS manifest and device-format checks through `webOS.deviceInfo`. Source version: **0.1.10**.
+The LG client lives in `fjordflix/lg` alongside Windows/Xbox. Its build imports the shared TV UI from `xbox/tv`, while retaining Magic Remote navigation, the webOS manifest and device-format checks through `webOS.deviceInfo`. Source version: **0.1.11**.
 
 ## Features
+
+- A shared Forside with Senest tilføjet above Se videre; all titles remain searchable and paginated.
 
 - Library, tracks, subtitle selection, server-prepared trailers and explained playback plans.
 - QR-assisted phone login after entering the server address on TV.
@@ -17,7 +19,7 @@ The Xbox local-phone Windows service and Windows mpv are not installed on LG. HD
 
 ## Install
 
-Update the server; TV APIs, phone login and trailers are bundled, so the former `compose.tv.yaml`/`fjordflix_tv.py` extension is unnecessary. Install the generated IPK, e.g. `dist/dk.fjordflix.tv_0.1.10_all.ipk`, through Developer Mode/webOS Studio. `dist/app` is the assembled Studio project. See [the LG test guide](TEST-PAA-LG-TV.md), which currently remains in Danish.
+Update the server; TV APIs, phone login and trailers are bundled, so the former `compose.tv.yaml`/`fjordflix_tv.py` extension is unnecessary. Install the generated IPK, e.g. `dist/dk.fjordflix.tv_0.1.11_all.ipk`, through Developer Mode/webOS Studio. `dist/app` is the assembled Studio project. See [the LG test guide](TEST-PAA-LG-TV.md), which currently remains in Danish.
 
 The TV uses bearer login and scoped media tickets. Central Hub account requirements still apply: if an active client cannot show a newly required email-update form, complete it in the updated web app/Hub before resuming TV use.
 

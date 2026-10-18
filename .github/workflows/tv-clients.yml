@@ -1,0 +1,43 @@
+name: Check TV clients
+on:
+  push:
+    branches: [main]
+    paths: ['lg/**', 'xbox/**', 'samsung/**', '.github/workflows/tv-clients.yml']
+  pull_request:
+    paths: ['lg/**', 'xbox/**', 'samsung/**', '.github/workflows/tv-clients.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [lg, xbox, samsung]
+    defaults:
+      run:
+        working-directory: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ${{ matrix.platform }}/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:browser
+      - run: npm run test:next
+      - if: matrix.platform == 'samsung'
+        run: npm run package
+      - if: matrix.platform == 'samsung'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FjordFlix-Samsung-TV-project
+          path: |
+            samsung/dist/*.wgt
+            samsung/dist/*.zip
+            samsung/dist/SHA256SUMS.txt

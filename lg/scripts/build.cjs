@@ -16,3 +16,5 @@ for (const [folder, files] of Object.entries({app:['appinfo.json','server-url.js
   }
 }
 console.log('Built standalone webOS app; every shipped script parses as ES5.');
+
+fs.writeFileSync(path.join(out,'client-info.js'), 'window.FjordTVClient = ' + JSON.stringify({platform:'LG',version:require('../package.json').version}) + ';\n');

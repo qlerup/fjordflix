@@ -1,0 +1,9 @@
+node_modules/
+dist/
+test-results/
+.signing/
+*.p12
+*.pfx
+profiles.xml
+author-signature.xml
+signature*.xml

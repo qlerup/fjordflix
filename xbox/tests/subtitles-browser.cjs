@@ -42,7 +42,7 @@ const {pathToFileURL} = require('node:url');
   });
   try {
     await page.goto(pathToFileURL(path.resolve(__dirname,'../dist/app/index.html')).href);
-    await page.locator('.card').click();
+    await page.locator('.card').first().click();
     const controller=code=>page.evaluate(code=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{keyCode:code,bubbles:true,cancelable:true})),code);
     // Navigate from the actual playback buttons, without mouse/focus shortcuts.
     for(const width of [1920,1280,900]) {

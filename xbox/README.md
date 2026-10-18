@@ -1,10 +1,12 @@
 # FjordFlix for Xbox
 
-A standalone JavaScript/UWP TV client for Xbox One, One S, One X, Series S and Series X with current system software. Xbox 360/original Xbox are unsupported. Uses the shared TV UI and server token API. Source version: **0.1.17**.
+A standalone JavaScript/UWP TV client for Xbox One, One S, One X, Series S and Series X with current system software. Xbox 360/original Xbox are unsupported. Uses the shared TV UI and server token API. Source version: **0.1.18**.
 
 Start with [the console test guide](TEST-PAA-XBOX.md). That separate guide currently remains in Danish.
 
 ## Features
+
+- A shared Forside with Senest tilføjet above Se videre; all titles remain searchable and paginated.
 
 - Server/login, movies/series, search, pagination, favorites and resume progress.
 - Audio/text-subtitle/quality selection and diagnostic playback plans.
@@ -16,7 +18,7 @@ Start with [the console test guide](TEST-PAA-XBOX.md). That separate guide curre
 
 ## Installation artifacts
 
-`npm run package` produces a Developer Mode APPX, e.g. `dist/FjordFlix-Xbox_0.1.17.appx`, public `dist/FjordFlix-Xbox.cer`, `dist/SHA256SUMS.txt` and packaged `dist/app/`. Use the generated version filename rather than an older README release name.
+`npm run package` produces a Developer Mode APPX, e.g. `dist/FjordFlix-Xbox_0.1.18.appx`, public `dist/FjordFlix-Xbox.cer`, `dist/SHA256SUMS.txt` and packaged `dist/app/`. Use the generated version filename rather than an older README release name.
 
 The architecture-neutral package uses Xbox's JavaScript/UWP runtime without external frameworks, LG tools, Visual Studio or WebView2 installation on the console. It is not a Store release. Signing identity is `FjordFlix.Xbox`, publisher `CN=FjordFlix Development`.
 

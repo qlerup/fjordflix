@@ -41,7 +41,7 @@ const {pathToFileURL} = require('node:url');
   });
   try {
     await page.goto(pathToFileURL(path.resolve(__dirname,'../dist/app/index.html')).href);
-    await page.locator('.card').click();
+    await page.locator('.card').first().click();
     assert.equal(await page.locator('[data-subtitle="off"]').getAttribute('aria-pressed'),'true');
     await page.locator('#subtitle-toggle').focus();
     assert.equal(await page.locator('#subtitle-options').isVisible(),false);

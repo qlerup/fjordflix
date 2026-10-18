@@ -1,6 +1,6 @@
 # FjordFlix
 
-A private media server with a cinema-style library, movies/series, per-user progress, browser playback, real FFmpeg transcoding and Windows/LG/Xbox clients. The interface currently uses Danish labels. [Artwork](app/static/logos/README_logo.md) and [brand provenance](branding/README.md) are included.
+A private media server with a cinema-style library, movies/series, per-user progress, browser playback, real FFmpeg transcoding and Windows/LG/Xbox/Samsung clients. The interface currently uses Danish labels. [Artwork](app/static/logos/README_logo.md) and [brand provenance](branding/README.md) are included.
 
 ## Features
 
@@ -40,7 +40,7 @@ Matching local/Hub names do not automatically merge identities or migrate solo h
 
 Administrators enable Can submit wishes for individual regular users under Settings → Users. Enabled users submit movie/series wishes with notes and follow their own replies/statuses. Administrators see all wishes, reply and set Received/Fulfilled/Declined, but **cannot submit wishes themselves**; this is also enforced by the server. The web/Windows admin view omits the submission form.
 
-Permission is local to Flix, including for Hub identities. Each user can have at most 20 unanswered wishes; duplicate open wishes from that user are rejected. Requests/permissions persist in the database. LG 0.1.10 and Xbox 0.1.17 support submission/listing; update server/clients and reopen after permission changes.
+Permission is local to Flix, including for Hub identities. Each user can have at most 20 unanswered wishes; duplicate open wishes from that user are rejected. Requests/permissions persist in the database. LG 0.1.11, Xbox 0.1.18 and Samsung 0.1.0 support submission/listing; update server/clients and reopen after permission changes.
 
 ## Library folders and storage
 
@@ -174,11 +174,14 @@ Copy `compose.override.example.yaml` to `compose.override.yaml`, set the actual 
 
 - [Windows](desktop/README.md): bundled mpv opens original media with local hardware decoding, no server video transcoding. Server-loaded UI, local seeking/preview, audio passthrough with PCM fallback, diagnostics and GitHub Release updates.
 - [LG webOS](lg/README.md): shared TV UI with Magic Remote navigation, capability checks, trailers, subtitles and next-episode countdown.
+- [Samsung Tizen 2018+](samsung/README.md): Tizen 4.0 baseline, Samsung remote keys, native AVPlay, model-aware UHD/HDR10 checks and text subtitles. See the [physical-TV test guide](samsung/TEST-PAA-SAMSUNG-TV.md). Installation requires your Samsung certificate profile and TV DUID.
 - [Xbox](xbox/README.md): UWP client, controller navigation, local phone-login page, HEVC/HDR10 paths and optional original TrueHD/DTS Matroska audio. Physical HDMI/Atmos output is not proven by server packet preservation.
 
 Browser profile changes do not replace native client policies. Update server and client together for new API capabilities/seek previews. The bundled `/tv-api/info`, `/tv-api/login`, state/library/progress/stream endpoints require bearer tokens rather than browser cookies. Tokens last seven days and are stored hashed. Separate `/tv-media/` tickets scope playback and renew/revoke through authenticated APIs. Proxies on media origins must route both `/media/*` and `/tv-media/*`, without logging tickets.
 
-The server phone-pairing `/tv-login` expires after five minutes and requires the updated API/static paths. Xbox's native local HTTP phone page can enter the server address on the phone instead; LG first needs the server address on TV. Older separate `fjordflix_tv.py`/TV overrides should be removed from `COMPOSE_FILE` when adopting the built-in API, retaining unrelated overrides, GPU settings and mounts.
+The TV clients share Forside with Senest tilføjet above Se videre. Full-library filters and pagination remain available. Shared code comes from `xbox/tv` at build time; LG/Samsung standalone exports retain updated snapshots. Current clients: LG 0.1.11, Xbox 0.1.18 and Samsung 0.1.0.
+
+The server phone-pairing `/tv-login` expires after five minutes and requires the updated API/static paths. Xbox's native local HTTP phone page can enter the server address on the phone instead; LG/Samsung first need the server address on TV. Older separate `fjordflix_tv.py`/TV overrides should be removed from `COMPOSE_FILE` when adopting the built-in API, retaining unrelated overrides, GPU settings and mounts.
 
 ## API integration, operations and tests
 

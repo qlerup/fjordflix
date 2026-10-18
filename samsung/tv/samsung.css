@@ -1,0 +1,6 @@
+/* Tizen 4.0 / Chromium 56: flex and margins, without flex-gap or CSS grid. */
+#av-player{position:absolute;left:0;top:0;width:100%;height:100%}
+#samsung-subtitles{position:absolute;left:8%;right:8%;bottom:16%;text-align:center;white-space:pre-line;pointer-events:none;color:#fff;font:42px/1.35 Arial,sans-serif;text-shadow:2px 2px 3px #000,-2px -2px 3px #000;background:rgba(0,0,0,.6);padding:8px 16px;z-index:2}
+#player-controls,#seek-preview{z-index:3}
+.phone-pairing>img{margin-right:28px}
+#recent-title,#continue-title{font-size:32px;margin:30px 0 12px}

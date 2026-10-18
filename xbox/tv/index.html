@@ -32,10 +32,10 @@
       </div>
     </section>
     <section id="library" hidden>
-      <nav aria-label="Bibliotek"><button data-filter="all" class="active">Alle titler</button><button data-filter="movies">Film</button><button data-filter="series">Serieafsnit</button><button data-filter="continue">Fortsæt</button><button data-filter="favorites">Min liste</button><button id="refresh">Opdater</button><button id="logout">Log ud</button></nav>
+      <nav aria-label="Bibliotek"><button data-filter="home" class="active">Forside</button><button data-filter="all">Alle titler</button><button data-filter="movies">Film</button><button data-filter="series">Serieafsnit</button><button data-filter="continue">Se videre</button><button data-filter="favorites">Min liste</button><button id="refresh">Opdater</button><button id="logout">Log ud</button></nav>
       <div class="library-heading"><div><p class="eyebrow">FJORDFLIX · XBOX</p><h1>Find din næste film.</h1></div><input id="search" type="search" placeholder="Søg i dit bibliotek" aria-label="Søg i dit bibliotek"></div>
-      <p id="count" class="muted" aria-live="polite"></p><div id="grid" class="grid"></div>
-      <div class="pagination"><button id="previous">Forrige side</button><span id="page-number"></span><button id="next">Næste side</button></div>
+      <p id="count" class="muted" aria-live="polite"></p><section id="recent-section" hidden aria-labelledby="recent-title"><h2 id="recent-title">Senest tilføjet</h2><div id="recent-grid" class="grid"></div></section><section id="continue-section" hidden aria-labelledby="continue-title"><h2 id="continue-title">Se videre</h2><div id="continue-grid" class="grid"></div></section><div id="grid" class="grid"></div>
+      <div id="pagination" class="pagination"><button id="previous">Forrige side</button><span id="page-number"></span><button id="next">Næste side</button></div>
     </section>
     <section id="detail" class="overlay" role="dialog" aria-modal="true" aria-labelledby="detail-title" hidden>
       <div class="detail-art" id="detail-art"></div><div class="detail-content"><button id="detail-back">← Bibliotek</button><p class="eyebrow">FRA DIT BIBLIOTEK</p><h1 id="detail-title"></h1><p id="detail-meta" class="muted"></p><p id="description"></p>
@@ -61,5 +61,5 @@
     <p id="message" role="alert" hidden></p>
   </main>
   <footer>D-PAD / STICK Flyt fokus <span>A Vælg</span><span>B Tilbage</span><span>X Pause / afspil</span><span>LB / RB Spol</span></footer>
-  <script src="xbox-platform.js"></script><script src="server-url.js"></script><script src="wishes.js"></script><script src="navigation.js"></script><script src="capabilities.js"></script><script src="qrcode.js"></script><script src="phone-page.js"></script><script src="local-phone-server.js"></script><script src="phone-login.js"></script><script src="next-episode.js"></script><script src="tv.js"></script>
+  <script src="xbox-platform.js"></script><script src="client-info.js"></script><script src="server-url.js"></script><script src="wishes.js"></script><script src="navigation.js"></script><script src="capabilities.js"></script><script src="qrcode.js"></script><script src="phone-page.js"></script><script src="local-phone-server.js"></script><script src="phone-login.js"></script><script src="next-episode.js"></script><script src="tv.js"></script>
 </body></html>

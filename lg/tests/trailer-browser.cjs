@@ -66,7 +66,7 @@ async function fixture(browser, options={}) {
     window.Windows={};
     HTMLMediaElement.prototype.canPlayType=function(type){return type==='application/vnd.apple.mpegurl'?'':'probably';};
   });
-  await page.locator('.card').click();
+  await page.locator('.card').first().click();
   await page.waitForFunction(()=>document.getElementById('quality-plan').textContent.includes('p'));
   const start = async quality=>{
     await page.locator(`[data-quality="${quality}"]`).click();
