@@ -88,7 +88,7 @@ const FjordTracks = {
         });
         if (kind === 'subtitle') options.unshift(new Option('Fra', ''));
         else if (!options.length) options.push(new Option('Ingen tilgængelige lydspor', ''));
-        const canUpload = kind === 'subtitle' && typeof state !== 'undefined' && state?.user?.admin && window.FjordSubtitleUpload;
+        const canUpload = kind === 'subtitle' && typeof state !== 'undefined' && state?.user?.admin && window.FjordSubtitleUpload?.available();
         if (canUpload) options.push(new Option('＋ Tilføj undertekster…', '__upload__'));
         $(`${place}-${kind}`).replaceChildren(...options);
         $(`${place}-${kind}`).disabled = !items.length && !canUpload;

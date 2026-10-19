@@ -44,6 +44,20 @@ with sync_playwright() as pw:
           FjordTracks.setup();
           await FjordTracks.prepare({id:'a'.repeat(32),title:'Power Book II: Ghost',catalog:{media_type:'tv',season:3,episode:1}});
         }''')
+        if width <= 600:
+            assert page.locator('#detail-subtitle option[value="__upload__"]').count()==0
+            page.evaluate('FjordSubtitleUpload.open(FjordTracks.movie)')
+            expect(page.locator('#subtitle-upload-dialog')).not_to_be_visible()
+            page.evaluate('''() => {
+              available.subtitles=[{index:2**49+123,language:'da',codec:'subrip',delivery:'text',external:true,title:'Tilføjet SRT'}];
+              FjordTracks.movie.tracks=available;FjordTracks.fill(available);
+            }''')
+            expect(page.locator('#detail-subtitle')).to_be_enabled()
+            expect(page.locator('#detail-subtitle option').filter(has_text='Tilføjet SRT')).to_have_count(1)
+            assert not errors, errors
+            print('PASS mobile hides subtitle upload and keeps existing subtitles selectable',width)
+            page.close()
+            continue
         expect(page.locator('#detail-subtitle')).to_be_enabled()
         page.locator('.fx-select-button[data-select-id="detail-subtitle"]').click()
         page.get_by_role('option',name='＋ Tilføj undertekster…',exact=True).click()

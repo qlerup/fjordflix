@@ -1,6 +1,7 @@
 (() => {
   const el = id => document.getElementById(id);
   const dialog = el('subtitle-upload-dialog');
+  const mobile = window.matchMedia('(max-width: 600px)');
   const languages = {und:'Ukendt sprog',da:'Dansk',en:'Engelsk',sv:'Svensk',no:'Norsk',fi:'Finsk',de:'Tysk',fr:'Fransk',es:'Spansk',it:'Italiensk',pt:'Portugisisk',nl:'Nederlandsk',pl:'Polsk',is:'Islandsk',ar:'Arabisk',ja:'Japansk',ko:'Koreansk',zh:'Kinesisk',ru:'Russisk',uk:'Ukrainsk',tr:'Tyrkisk',he:'Hebraisk'};
   let target = null, place = 'detail', queue = [], busy = false;
   function message(text, error = false) {
@@ -47,8 +48,9 @@
     render();
   }
   window.FjordSubtitleUpload = {
+    available: () => !mobile.matches,
     open(movie, from = 'detail') {
-      if (!movie || !state?.user?.admin || busy) return;
+      if (!movie || !state?.user?.admin || busy || mobile.matches) return;
       target = movie; place = from; queue = [];
       const info = movie.catalog || {};
       const episode = info.media_type === 'tv' && info.season != null && info.episode != null
@@ -57,6 +59,10 @@
       el('subtitle-upload-input').value = ''; message(''); render(); dialog.showModal();
     }
   };
+  mobile.addEventListener('change', () => {
+    if (FjordTracks.movie?.tracks) FjordTracks.fill(FjordTracks.movie.tracks);
+    if (mobile.matches && !busy) dialog.close();
+  });
   const close = () => { if (!busy) dialog.close(); };
   el('subtitle-upload-close').onclick = close; el('subtitle-upload-cancel').onclick = close;
   dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
