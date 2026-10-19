@@ -10,7 +10,7 @@ test('editor searches unsaved fields, shows candidates, and retains draft on no 
   w.HTMLDialogElement.prototype.close = function() { this.open = false; };
   w.$ = id => w.document.getElementById(id);
   w.setupLibraryDeletion = () => {};
-  w.selected = {id:'movie',title:'Old title',catalog:{media_type:'movie'}};
+  w.selected = {id:'movie',title:'Old title',catalog:{media_type:'movie'},tracks:{version:1,audio:[],subtitles:[]}};
   w.library = [w.selected];
   w.refresh = async () => {};
   w.openDetail = async () => {};

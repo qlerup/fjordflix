@@ -172,6 +172,7 @@ def test_index_preserves_video_metadata(monkeypatch, tmp_path):
     import json
     import sqlite3
     from app import main
+    monkeypatch.setattr(main.subtitle_manager, 'automatic', lambda mid: None)
     def database():
         return sqlite3.connect(tmp_path / 'test.db')
     with database() as conn:

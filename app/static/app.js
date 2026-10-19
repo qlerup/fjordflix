@@ -136,6 +136,21 @@ async function boot() {
   return true;
 }
 async function refresh() { library = await api('/movies'); render(); }
+let seriesMetadataPolling = false;
+setInterval(async () => {
+  if (seriesMetadataPolling || !state?.user || playback || !library.some(m => m.catalog?.series_refresh_pending)) return;
+  seriesMetadataPolling = true;
+  try {
+    const mid = selected?.id;
+    await refresh();
+    if (mid && selected?.id === mid && !$('detail').hidden) {
+      const item = library.find(m => m.id === mid);
+      if (item) await openDetail(item);
+    }
+  } catch (_) {
+    // Retry on the next interval if the connection is temporarily unavailable.
+  } finally { seriesMetadataPolling = false; }
+}, 5000);
 function render() {
   const query = $('search').value.toLocaleLowerCase('da');
   const cards = FjordLibrary.cards(library);

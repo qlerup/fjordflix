@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import hashlib
 import json
 import os
@@ -24,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
 from app import transcoding, active_streams, trailers, stream_control, encoding_quality
+from app import series_metadata
 from app.quality import hdr10_base as compatible_hdr10_base
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -134,12 +136,15 @@ async def lifespan(app):
     stream_task = asyncio.create_task(supervise())
     quality_task = asyncio.create_task(refresh_source_quality())
     sources_task = asyncio.create_task(library_sources.watch())
+    series_task = asyncio.create_task(refresh_series_metadata())
     yield
     task.cancel()
     stream_task.cancel()
     await asyncio.gather(stream_task, return_exceptions=True)
     quality_task.cancel()
     sources_task.cancel()
+    series_task.cancel()
+    await asyncio.gather(series_task, return_exceptions=True)
     for key in list(JOBS):
         stop_job(key)
 
@@ -558,7 +563,9 @@ def index_movie(path, title, mid, enrich=False, source=None):
     if frame.exists():
         shutil.copyfile(frame, DATA / 'posters' / f'{mid}-frame.jpg')
     if enrich:
-        meta['catalog'] = catalog.enrich(title, mid, DATA)
+        selected=series_metadata.selected_id(db,title)
+        meta['catalog'] = catalog.enrich(title,mid,DATA,tmdb_id=selected) if selected is not None else catalog.enrich(title, mid, DATA)
+        if selected is not None:meta['catalog']['selected_tmdb_id']=selected
         meta['original_title'] = title
         if meta['catalog'].get('title'):
             title = meta['catalog']['title']
@@ -751,11 +758,22 @@ class MetadataSearch(BaseModel):
     draft: library_metadata.LibraryEdit | None = None
 
 
+async def refresh_series_metadata():
+    while True:
+        try:
+            await asyncio.to_thread(series_metadata.process_one,sys.modules[__name__])
+        except Exception:
+            series_metadata.logger.exception('Series metadata worker failed')
+        await asyncio.sleep(1)
+
+
 @app.post('/api/movies/{mid}/metadata/refresh')
 def refresh_movie_metadata(mid: str, data: MetadataSearch | None = None, u=Depends(admin)):
     if not re.fullmatch(r'[a-f0-9]{32}', mid):
         raise HTTPException(400, 'Ugyldigt film-id.')
     row, meta = movie(mid)
+    series_before=copy.deepcopy(meta)
+    series_title_before=row['title']
     draft = data.draft if data else None
     if meta.get('catalog', {}).get('manual') and draft is None:
         raise HTTPException(409, 'Oplysningerne er redigeret manuelt og bevares. Automatisk genhentning er slået fra for denne video.')
@@ -811,7 +829,11 @@ def refresh_movie_metadata(mid: str, data: MetadataSearch | None = None, u=Depen
                                     'candidates': info.get('candidates', [])}
             conn.execute('UPDATE movies SET title=?,metadata=? WHERE id=?',
                          (row['title'][:160], json.dumps(meta), mid))
-    return {'ok': info.get('status') == 'matched', 'message': summary, 'candidates': info.get('candidates', [])}
+    updated=0
+    if info.get('status')=='matched' and data and data.tmdb_id is not None:
+        updated=series_metadata.share(sys.modules[__name__],mid,series_before,series_title_before,meta['catalog'],data.tmdb_id)
+        if updated:summary+=f' Serie og plakat er valgt for {updated} andre afsnit. Afsnitsoplysninger hentes i baggrunden.'
+    return {'ok': info.get('status') == 'matched', 'message': summary, 'candidates': info.get('candidates', []),'series_updated':updated}
 
 
 @app.put('/api/movies/{mid}/artwork/{kind}')

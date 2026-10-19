@@ -357,7 +357,7 @@ function updateEpisodeArrows() {
 }
 
 function showCatalogStatus(movie) {
-  const pending = metadataRefreshPending.has(movie.id);
+  const pending = metadataRefreshPending.has(movie.id) || !!movie.catalog?.series_refresh_pending;
   const button = $('metadata-refresh');
   button.hidden = !state.user.admin || !!movie.catalog?.manual;
   button.disabled = pending;
