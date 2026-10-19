@@ -160,20 +160,20 @@ def test_save_timing_replaces_track_download_and_playback_with_revision_guard(cl
     monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'owner','admin':True})
     assert client.post(url,json={'delay':301}).status_code == 422
     assert client.post(url,json={'delay':-300}).status_code == 400
-    first = client.post(url,json={'delay':2})
+    first = client.post(url,json={'delay':2.125})
     assert first.status_code == 200, first.text
     revision = first.json()['revision']
-    assert '00:00:03,000 --> 00:00:05,000' in client.get(download).text
-    assert '00:03.000 --> 00:05.000' in client.get(f'/api/movies/{MID}/subtitles/{index}.vtt').text
+    assert '00:00:03,125 --> 00:00:05,125' in client.get(download).text
+    assert '00:03.125 --> 00:05.125' in client.get(f'/api/movies/{MID}/subtitles/{index}.vtt').text
     track = client.get(f'/api/movies/{MID}/tracks').json()['subtitles'][0]
     assert track['timing_revision'] == revision and track['uploaded']
     monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'other-viewer','admin':False})
     assert client.get(f'/api/movies/{MID}/tracks').json()['subtitles'][0]['timing_revision'] == revision
-    assert '00:03.000 --> 00:05.000' in client.get(f'/api/movies/{MID}/subtitles/{index}.vtt').text
+    assert '00:03.125 --> 00:05.125' in client.get(f'/api/movies/{MID}/subtitles/{index}.vtt').text
     assert client.post(url,json={'delay':1,'revision':revision}).status_code == 403
     monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'owner','admin':True})
     assert client.post(url,json={'delay':2}).status_code == 409
     assert client.post(url,json={'delay':-0.5,'revision':revision}).status_code == 200
-    assert '00:00:02,500 --> 00:00:04,500' in client.get(download).text
+    assert '00:00:02,625 --> 00:00:04,625' in client.get(download).text
     assert client.delete(f'/api/movies/{MID}/subtitle-upload/{index}').status_code == 200
     assert not list((main.DATA/'subtitles'/'adjusted').glob('*.srt'))

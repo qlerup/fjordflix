@@ -58,15 +58,18 @@ def check_timing(page, width):
     expect(page.locator('#subtitle-timing')).to_be_visible()
     page.locator('#subtitle-later').click()
     assert page.evaluate('FjordTracks.element.track.cues[0].startTime') == 1.5
-    page.locator('#subtitle-delay').fill('-0.5')
+    page.locator('#subtitle-delay').fill('-0.525')
     page.locator('#subtitle-delay').dispatch_event('change')
-    assert page.evaluate('FjordTracks.element.track.cues[0].startTime') == 0.5
+    assert abs(page.evaluate('FjordTracks.element.track.cues[0].startTime') - 0.475) < 0.000001
+    expect(page.locator('#subtitle-delay')).to_have_value('-0.525')
+    assert page.locator('#subtitle-delay').evaluate('(el)=>el.checkValidity()')
+    expect(page.locator('#subtitle-timing-status')).to_contain_text('0,525 sekunder')
     page.screenshot(path=str(output/f'subtitle-timing-{width}.png'))
     assert page.locator('#subtitle-timing').evaluate('(el)=>el.scrollWidth<=el.clientWidth')
     page.once('dialog',lambda dialog:dialog.accept())
     page.locator('#subtitle-delay-save').click()
     page.wait_for_function('timingCalls.length===1 && !FjordTracks.savingTiming')
-    assert page.evaluate('timingCalls[0].delay') == -0.5
+    assert page.evaluate('timingCalls[0].delay') == -0.525
     expect(page.locator('#subtitle-delay')).to_have_value('0')
     page.evaluate('state.user.admin=false;FjordTracks.sync()')
     expect(page.locator('#subtitle-timing')).not_to_be_visible()

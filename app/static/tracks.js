@@ -35,7 +35,7 @@ const FjordTracks = {
     const close = () => { $('player-tracks').hidden = true; $('player-tracks-toggle').setAttribute('aria-expanded', 'false'); };
     $('player-tracks-toggle').onclick = () => { const open = $('player-tracks').hidden; $('player-tracks').hidden = !open; $('player-tracks-toggle').setAttribute('aria-expanded', String(open)); };
     $('player-tracks-close').onclick = () => { close(); $('player-tracks-toggle').focus(); };
-    $('player-tracks').insertAdjacentHTML('beforeend', `<section id="subtitle-timing" hidden aria-label="Underteksttiming"><label for="subtitle-delay">Underteksttiming (sekunder)</label><div class="subtitle-timing-controls"><button type="button" id="subtitle-earlier" class="secondary small" aria-label="Vis undertekster 0,5 sekunder tidligere">−0,5 s</button><input id="subtitle-delay" type="number" min="-300" max="300" step="0.1" value="0" inputmode="decimal"><button type="button" id="subtitle-later" class="secondary small" aria-label="Vis undertekster 0,5 sekunder senere">+0,5 s</button><button type="button" id="subtitle-delay-reset" class="secondary small">Nulstil</button></div><p id="subtitle-timing-status" class="fine" role="status"></p></section>`);
+    $('player-tracks').insertAdjacentHTML('beforeend', `<section id="subtitle-timing" hidden aria-label="Underteksttiming"><label for="subtitle-delay">Underteksttiming (sekunder)</label><div class="subtitle-timing-controls"><button type="button" id="subtitle-earlier" class="secondary small" aria-label="Vis undertekster 0,5 sekunder tidligere">−0,5 s</button><input id="subtitle-delay" type="number" min="-300" max="300" step="0.001" value="0" inputmode="decimal"><button type="button" id="subtitle-later" class="secondary small" aria-label="Vis undertekster 0,5 sekunder senere">+0,5 s</button><button type="button" id="subtitle-delay-reset" class="secondary small">Nulstil</button></div><p id="subtitle-timing-status" class="fine" role="status"></p></section>`);
     $('subtitle-earlier').onclick = () => this.setSubtitleDelay(this.subtitleDelay - 0.5);
     $('subtitle-later').onclick = () => this.setSubtitleDelay(this.subtitleDelay + 0.5);
     $('subtitle-delay-reset').onclick = () => this.setSubtitleDelay(0);
@@ -153,11 +153,11 @@ const FjordTracks = {
     $('subtitle-delay-save').textContent = this.savingTiming ? 'Gemmer…' : 'Gem timing';
     $('subtitle-timing-status').textContent = !supported ? 'Timing kan justeres for tekstspor, der vises i denne afspiller. AirPlay og indbrændte undertekster understøttes ikke.' :
       this.subtitleDelay === 0 ? 'Original timing. Minus viser teksten tidligere; plus viser den senere.' :
-      `${Math.abs(this.subtitleDelay).toLocaleString('da-DK', {maximumFractionDigits:1})} sekunder ${this.subtitleDelay > 0 ? 'senere' : 'tidligere'}. Gælder denne afspilning.`;
+      `${Math.abs(this.subtitleDelay).toLocaleString('da-DK', {maximumFractionDigits:3})} sekunder ${this.subtitleDelay > 0 ? 'senere' : 'tidligere'}. Gælder denne afspilning.`;
   },
   setSubtitleDelay(value) {
     if (!(typeof state !== 'undefined' && state?.user?.admin) || !Number.isFinite(value) || $('subtitle-delay')?.disabled) { this.syncTiming(); return; }
-    this.subtitleDelay = Math.round(Math.max(-300, Math.min(300, value)) * 10) / 10;
+    this.subtitleDelay = Math.round(Math.max(-300, Math.min(300, value)) * 1000) / 1000;
     if (this.element?.track) this.applyTiming(this.element.track, this.timingOffset || 0);
     this.syncTiming();
   },
@@ -171,7 +171,7 @@ const FjordTracks = {
       const available = await api(`/movies/${movie.id}/tracks`);
       movie.tracks = available;
       if (this.movie === movie) {
-        this.subtitleDelay = Math.round((this.subtitleDelay - delay)*10)/10;
+        this.subtitleDelay = Math.round((this.subtitleDelay - delay)*1000)/1000;
         this.fill(available);
         if (playback?.subtitle_delivery === 'text' && playback.subtitle_track === track.index) await this.attach(playback);
       }
