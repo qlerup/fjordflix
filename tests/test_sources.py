@@ -108,9 +108,10 @@ def scan(reindex_source=None):
     assert not main.library_sources.status['running']
 
 
-def test_fjordseed_buffer_is_never_indexed_but_published_movie_is(mounted):
+@pytest.mark.parametrize('buffer_name',['.incomplete','.fjordseed-buffer'])
+def test_fjordseed_buffer_is_never_indexed_but_published_movie_is(mounted,buffer_name):
     client, root = mounted
-    buffer = root/'Film'/'.fjordseed-buffer'/'torrent-id'
+    buffer = root/'Film'/buffer_name/'torrent-id'
     buffer.mkdir(parents=True)
     video = buffer/'Ready.mp4'
     video.write_bytes(b'complete synthetic video')
@@ -118,6 +119,7 @@ def test_fjordseed_buffer_is_never_indexed_but_published_movie_is(mounted):
     assert client.post('/api/admin/library', json={'path':str(root/'Film')}).status_code == 201
     scan()
     assert client.get('/api/movies').json() == []
+    assert not any(buffer_name in Path(p).parts for p in main.library_sources.snapshot())
     destination = root/'Film'/'published'
     destination.mkdir()
     video.rename(destination/video.name)
@@ -141,7 +143,8 @@ def test_publishing_marker_hides_complete_episodes_until_entire_move_finishes(mo
     assert len(client.get('/api/movies').json()) == 1
 
 
-def test_watcher_detects_new_stable_files_ignores_buffer_and_retries_busy_scan(mounted, monkeypatch):
+@pytest.mark.parametrize('buffer_name',['.incomplete','.fjordseed-buffer'])
+def test_watcher_detects_new_stable_files_ignores_buffer_and_retries_busy_scan(mounted, monkeypatch,buffer_name):
     import asyncio
     client, root = mounted
     folder = root / 'Film'
@@ -166,7 +169,7 @@ def test_watcher_detects_new_stable_files_ignores_buffer_and_retries_busy_scan(m
         tick += 1
         if tick == 1:
             video.write_bytes(b'partial')
-            buffer = folder / '.fjordseed-buffer'
+            buffer = folder / buffer_name
             buffer.mkdir()
             (buffer / 'hidden.mp4').write_bytes(b'hidden')
         elif tick == 2:
@@ -184,7 +187,7 @@ def test_watcher_detects_new_stable_files_ignores_buffer_and_retries_busy_scan(m
             assert len(attempts) == len(scans) + 1
             # No scan for an unchanged library or ongoing buffer downloads.
             scan_count = len(scans)
-            (folder / '.fjordseed-buffer' / 'hidden.mp4').write_bytes(b'changed')
+            (folder / buffer_name / 'hidden.mp4').write_bytes(b'changed')
         elif tick == 7:
             assert len(scans) == scan_count
             raise asyncio.CancelledError

@@ -16,6 +16,7 @@ from .integration_data import authorize as authorize_hub
 
 VIDEO_SUFFIXES = {'.mp4', '.mkv', '.mov', '.webm', '.m4v', '.avi', '.ts'}
 PUBLISHING_MARKER = '.fjordseed-publishing'
+BUFFER_DIRECTORIES = {'.incomplete', '.fjordseed-buffer'}
 log = logging.getLogger(__name__)
 
 
@@ -191,7 +192,7 @@ class Sources:
         if not path.is_absolute():
             raise HTTPException(400, 'Vælg en absolut mappesti.')
         path = path.resolve()
-        if '.fjordseed-buffer' in path.parts:
+        if BUFFER_DIRECTORIES.intersection(path.parts):
             raise HTTPException(400, 'FjordSeeds buffermappe kan ikke bruges som bibliotek.')
         if not any(path.is_relative_to(root) for root in self.roots()):
             raise HTTPException(400, 'Mappen ligger uden for de tilgængelige biblioteksdrev.')
@@ -237,7 +238,7 @@ class Sources:
                         if any((p / PUBLISHING_MARKER).exists() for p in (Path(directory), *Path(directory).parents)):
                             dirs[:] = []
                             continue
-                        dirs[:] = [d for d in dirs if d != '.fjordseed-buffer' and not (Path(directory) / d).is_symlink()]
+                        dirs[:] = [d for d in dirs if d not in BUFFER_DIRECTORIES and not (Path(directory) / d).is_symlink()]
                         for name in files:
                             path = Path(directory) / name
                             if path.suffix.lower() not in VIDEO_SUFFIXES or path.is_symlink():
@@ -320,7 +321,7 @@ class Sources:
                 if any((p / PUBLISHING_MARKER).exists() for p in (Path(directory), *Path(directory).parents)):
                     dirs[:] = []
                     continue
-                dirs[:] = [d for d in dirs if d != '.fjordseed-buffer' and not (Path(directory) / d).is_symlink()]
+                dirs[:] = [d for d in dirs if d not in BUFFER_DIRECTORIES and not (Path(directory) / d).is_symlink()]
                 for name in files:
                     path = Path(directory) / name
                     if path.suffix.lower() not in VIDEO_SUFFIXES or path.is_symlink():

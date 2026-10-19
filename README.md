@@ -50,7 +50,7 @@ Permission is local to Flix, including for Hub identities. Each user can have at
 
 ## Library folders and storage
 
-Under Settings → Library → Add folder, select existing drives/subfolders. Sources scan recursively at startup, every 15 minutes and with Scan all folders. Results report new/updated titles and read errors. Overlapping roots are rejected, symlinks are not followed, and the active `.fjordseed-buffer` is excluded so unfinished downloads are not indexed.
+Under Settings → Library → Add folder, select existing drives/subfolders. Sources scan recursively at startup, every 15 minutes and with Scan all folders. Results report new/updated titles and read errors. Overlapping roots are rejected, symlinks are not followed, and both `.incomplete` and the previous `.fjordseed-buffer` are excluded so unfinished downloads are not indexed.
 
 Hub's Proxmox disks/storage inventory includes pools, physical disks/partitions and visible LXC mounts. Required audit permissions are `Datastore.Audit`, `Sys.Audit` and `VM.Audit`; the inventory itself neither formats nor mounts disks. A pool marked mounted does not prove it is readable inside the app. UUID disk mounts are not guessed from device names.
 
