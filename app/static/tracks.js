@@ -34,6 +34,9 @@ const FjordTracks = {
     for (const place of ['detail', 'player']) for (const kind of ['audio', 'subtitle']) {
       $(`${place}-${kind}`).onchange = async () => {
         const value = $(`${place}-${kind}`).value;
+        if (kind === 'subtitle' && value === '__upload__') {
+          this.sync(); window.FjordSubtitleUpload?.open(this.movie, place); return;
+        }
         this[kind] = value === '' ? null : Number(value);
         this.sync();
         try {
@@ -85,8 +88,10 @@ const FjordTracks = {
         });
         if (kind === 'subtitle') options.unshift(new Option('Fra', ''));
         else if (!options.length) options.push(new Option('Ingen tilgængelige lydspor', ''));
+        const canUpload = kind === 'subtitle' && typeof state !== 'undefined' && state?.user?.admin && window.FjordSubtitleUpload;
+        if (canUpload) options.push(new Option('＋ Tilføj undertekster…', '__upload__'));
         $(`${place}-${kind}`).replaceChildren(...options);
-        $(`${place}-${kind}`).disabled = !items.length;
+        $(`${place}-${kind}`).disabled = !items.length && !canUpload;
       }
     }
     this.sync();

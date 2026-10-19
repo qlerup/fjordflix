@@ -50,7 +50,7 @@ def normalize_srt(raw):
 
 
 def subtitle_path(data, mid, index):
-    if not re.fullmatch(r'[a-f0-9]{32}', mid) or not isinstance(index, int) or not OFFSET < index <= 2**49:
+    if not re.fullmatch(r'[a-f0-9]{32}', mid) or type(index) is not int or not OFFSET < index < 2**50:
         raise ValueError('Ugyldigt undertekstspor.')
     return Path(data) / 'subtitles' / 'downloaded' / f'{mid}-{index}.srt'
 

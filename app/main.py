@@ -1567,6 +1567,8 @@ from app.tv import attach_tv
 
 attach_tv(app, sys.modules[__name__])
 subtitle_provider = opensubtitles.register(sys.modules[__name__])
+from app import subtitle_upload
+subtitle_upload.register(sys.modules[__name__])
 onboarding.register(sys.modules[__name__])
 from app import desktop
 desktop.register(sys.modules[__name__])
