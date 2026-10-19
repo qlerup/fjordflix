@@ -1,4 +1,5 @@
 const FjordTracks = {
+  subtitleDelay: 0, cueTimings: new WeakMap(),
   movie: null, audio: null, subtitle: null, generation: 0, element: null, url: null, pending: null, burnSubtitles: false, nativeCleanup: null,
   language(code) {
     const known = {dan:'Dansk',da:'Dansk',eng:'Engelsk',en:'Engelsk',swe:'Svensk',sv:'Svensk',nor:'Norsk',nob:'Norsk',nb:'Norsk',deu:'Tysk',ger:'Tysk',de:'Tysk',fra:'Fransk',fre:'Fransk',fr:'Fransk',spa:'Spansk',es:'Spansk',und:'Ukendt sprog'};
@@ -34,14 +35,25 @@ const FjordTracks = {
     const close = () => { $('player-tracks').hidden = true; $('player-tracks-toggle').setAttribute('aria-expanded', 'false'); };
     $('player-tracks-toggle').onclick = () => { const open = $('player-tracks').hidden; $('player-tracks').hidden = !open; $('player-tracks-toggle').setAttribute('aria-expanded', String(open)); };
     $('player-tracks-close').onclick = () => { close(); $('player-tracks-toggle').focus(); };
+    $('player-tracks').insertAdjacentHTML('beforeend', `<section id="subtitle-timing" hidden aria-label="Underteksttiming"><label for="subtitle-delay">Underteksttiming (sekunder)</label><div class="subtitle-timing-controls"><button type="button" id="subtitle-earlier" class="secondary small" aria-label="Vis undertekster 0,5 sekunder tidligere">−0,5 s</button><input id="subtitle-delay" type="number" min="-300" max="300" step="0.1" value="0" inputmode="decimal"><button type="button" id="subtitle-later" class="secondary small" aria-label="Vis undertekster 0,5 sekunder senere">+0,5 s</button><button type="button" id="subtitle-delay-reset" class="secondary small">Nulstil</button></div><p id="subtitle-timing-status" class="fine" role="status"></p></section>`);
+    $('subtitle-earlier').onclick = () => this.setSubtitleDelay(this.subtitleDelay - 0.5);
+    $('subtitle-later').onclick = () => this.setSubtitleDelay(this.subtitleDelay + 0.5);
+    $('subtitle-delay-reset').onclick = () => this.setSubtitleDelay(0);
+    $('subtitle-delay').onchange = () => this.setSubtitleDelay(Number($('subtitle-delay').value));
+    $('subtitle-delay-reset').insertAdjacentHTML('afterend', '<button type="button" id="subtitle-delay-save" class="primary small">Gem timing</button>');
+    $('subtitle-delay-save').onclick = () => this.saveSubtitleTiming();
+    $('player-tracks').append($('player-tracks-close'));
     $('player-dialog').addEventListener('close', close);
     for (const place of ['detail', 'player']) for (const kind of ['audio', 'subtitle']) {
       $(`${place}-${kind}`).onchange = async () => {
         const value = $(`${place}-${kind}`).value;
+        if (kind === 'subtitle' && this.savingTiming) { this.sync(); return; }
         if (kind === 'subtitle' && value === '__upload__') {
           this.sync(); window.FjordSubtitleUpload?.open(this.movie, place); return;
         }
-        this[kind] = value === '' ? null : Number(value);
+        const chosen = value === '' ? null : Number(value);
+        if (kind === 'subtitle' && chosen !== this.subtitle) this.subtitleDelay = 0;
+        this[kind] = chosen;
         this.sync();
         try {
           if (place === 'detail') await updatePlan();
@@ -60,6 +72,7 @@ const FjordTracks = {
     }
   },
   async prepare(movie) {
+    this.subtitleDelay = 0;
     this.movie = movie; this.audio = null; this.subtitle = null; this.burnSubtitles = false;
     $('track-status').textContent = 'Læser lydspor og undertekster…';
     this.fill({audio:[], subtitles:[]});
@@ -101,6 +114,7 @@ const FjordTracks = {
     this.sync();
   },
   sync() {
+    this.syncTiming();
     const audioBadge = $('detail-audio-format');
     if (audioBadge && this.movie) {
       const track = this.movie.tracks?.audio?.find(t => t.index === this.audio);
@@ -126,6 +140,61 @@ const FjordTracks = {
     }
   },
   selectedSubtitle() { return this.movie?.tracks?.subtitles?.find(t => t.index === this.subtitle); },
+  syncTiming(result = typeof playback !== 'undefined' ? playback : null) {
+    if (typeof $ === 'undefined') return;
+    const panel = $('subtitle-timing');
+    if (!panel) return;
+    const track = this.selectedSubtitle();
+    panel.hidden = !track || !(typeof state !== 'undefined' && state?.user?.admin);
+    const supported = track?.delivery === 'text' && !['burn','hls'].includes(result?.subtitle_delivery) && !result?.airplay && !(typeof airplayRequested !== 'undefined' && airplayRequested);
+    for (const id of ['subtitle-earlier','subtitle-later','subtitle-delay','subtitle-delay-reset']) $(id).disabled = !supported || !!this.savingTiming;
+    $('subtitle-delay').value = String(this.subtitleDelay);
+    $('subtitle-delay-save').disabled = !supported || !this.subtitleDelay || !!this.savingTiming;
+    $('subtitle-delay-save').textContent = this.savingTiming ? 'Gemmer…' : 'Gem timing';
+    $('subtitle-timing-status').textContent = !supported ? 'Timing kan justeres for tekstspor, der vises i denne afspiller. AirPlay og indbrændte undertekster understøttes ikke.' :
+      this.subtitleDelay === 0 ? 'Original timing. Minus viser teksten tidligere; plus viser den senere.' :
+      `${Math.abs(this.subtitleDelay).toLocaleString('da-DK', {maximumFractionDigits:1})} sekunder ${this.subtitleDelay > 0 ? 'senere' : 'tidligere'}. Gælder denne afspilning.`;
+  },
+  setSubtitleDelay(value) {
+    if (!(typeof state !== 'undefined' && state?.user?.admin) || !Number.isFinite(value) || $('subtitle-delay')?.disabled) { this.syncTiming(); return; }
+    this.subtitleDelay = Math.round(Math.max(-300, Math.min(300, value)) * 10) / 10;
+    if (this.element?.track) this.applyTiming(this.element.track, this.timingOffset || 0);
+    this.syncTiming();
+  },
+  async saveSubtitleTiming() {
+    const movie = this.movie, track = this.selectedSubtitle(), delay = this.subtitleDelay;
+    if (!state?.user?.admin || !track || !delay || this.savingTiming || $('subtitle-delay-save').disabled) return;
+    if (!confirm('Gem den justerede timing for dette undertekstspor? Den gemte version bruges fremover af alle brugere og ved download.')) return;
+    this.savingTiming = true; this.syncTiming();
+    try {
+      await api(`/movies/${movie.id}/subtitles/${track.index}/timing`, 'POST', {delay, revision:track.timing_revision || null});
+      const available = await api(`/movies/${movie.id}/tracks`);
+      movie.tracks = available;
+      if (this.movie === movie) {
+        this.subtitleDelay = Math.round((this.subtitleDelay - delay)*10)/10;
+        this.fill(available);
+        if (playback?.subtitle_delivery === 'text' && playback.subtitle_track === track.index) await this.attach(playback);
+      }
+      toast('Timingen er gemt. Underteksten bruger nu de nye tider.');
+    } catch (error) { toast(error.message); }
+    finally { this.savingTiming = false; this.syncTiming(); }
+  },
+  applyTiming(track, offset) {
+    let original = this.cueTimings.get(track);
+    if (!original) {
+      if (!track.cues?.length) return; // Loading tracks have no cues yet.
+      original = Array.from(track.cues || [], cue => ({cue,start:cue.startTime,end:cue.endTime}));
+      this.cueTimings.set(track, original);
+    }
+    this.timingOffset = offset;
+    const active = new Set(Array.from(track.cues || []));
+    for (const {cue,start,end} of original) {
+      const shift = this.subtitleDelay - offset;
+      if (end + shift <= 0) { if (active.has(cue)) track.removeCue(cue); continue; }
+      cue.startTime = Math.max(0, start + shift); cue.endTime = end + shift;
+      if (!active.has(cue)) track.addCue(cue);
+    }
+  },
   async deleteUploadedSubtitle(place) {
     const movie = this.movie, track = this.selectedSubtitle();
     if (!movie || !track?.uploaded || !state?.user?.admin || this.deletingSubtitle) return;
@@ -137,7 +206,7 @@ const FjordTracks = {
       movie.tracks.subtitles = movie.tracks.subtitles.filter(t => t.index !== track.index);
       if (this.movie?.id === movie.id) {
         const wasSelected = this.subtitle === track.index;
-        if (wasSelected) this.subtitle = null;
+        if (wasSelected) { this.subtitle = null; this.subtitleDelay = 0; }
         this.fill(movie.tracks);
         if (wasSelected) await $(`${place}-subtitle`).onchange();
         $('track-status').textContent = `${movie.tracks.audio?.length || 0} lydspor · ${movie.tracks.subtitles.length} undertekstspor`;
@@ -201,6 +270,7 @@ const FjordTracks = {
     }
   },
   async attach(result, refreshing = false) {
+    this.syncTiming(result);
     if (!refreshing) {
       this.clear();
       if (result.subtitle_track != null) this.subtitleStatus = {index:result.subtitle_track, delivery:result.subtitle_delivery};
@@ -260,7 +330,7 @@ const FjordTracks = {
       this.element = element;
       element.onload = () => {
         if (generation !== this.generation) return;
-        this.shiftCues(element.track, result.offset || 0);
+        this.applyTiming(element.track, result.offset || 0);
         if (this.oldElement) { this.oldElement.track.mode = 'disabled'; this.oldElement.remove(); this.oldElement = null; }
         if (this.oldUrl) { URL.revokeObjectURL(this.oldUrl); this.oldUrl = null; }
         element.track.mode = 'showing';

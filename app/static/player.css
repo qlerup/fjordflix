@@ -128,3 +128,10 @@ html:fullscreen #player-dialog{width:100vw;height:100dvh;max-height:none;aspect-
 #player-dialog #player-airplay[hidden]{display:none}
 #player-dialog #player-airplay[aria-pressed=true]{color:#70b7ff;background:#70b7ff22}
 #player-dialog #player-airplay:disabled{opacity:.4}
+#subtitle-timing { border-top:1px solid var(--line); padding-top:14px; }
+#subtitle-timing[hidden] { display:none; }
+.subtitle-timing-controls { display:grid; grid-template-columns:auto minmax(65px,1fr) auto; gap:8px; align-items:center; margin-top:8px; }
+.subtitle-timing-controls input { width:100%; min-width:0; margin:0; padding:10px; text-align:center; }
+#subtitle-delay-reset { grid-column:1/2; justify-self:start; }
+#subtitle-delay-save { grid-column:2/-1; justify-self:end; }
+#subtitle-timing-status { margin:10px 0 0; line-height:1.5; }

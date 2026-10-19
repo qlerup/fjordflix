@@ -139,3 +139,41 @@ def test_download_embedded_subtitle_preserves_source(client, codec, extension):
     assert 'Hej!' in result.content.decode('utf-8')
     assert client.get(url).content == result.content
     assert video.read_bytes() == original
+    saved = client.post(f'/api/movies/{MID}/subtitles/0/timing',json={'delay':1.5})
+    assert saved.status_code == 200, saved.text
+    exported = client.get(url)
+    assert '00:00:02,500 --> 00:00:04,500' in exported.text
+    assert '.srt' in exported.headers['content-disposition']
+    assert video.read_bytes() == original
+
+
+def test_save_timing_replaces_track_download_and_playback_with_revision_guard(client, monkeypatch):
+    with main.db() as conn:
+        meta = json.loads(conn.execute('SELECT metadata FROM movies WHERE id=?',(MID,)).fetchone()[0])
+        meta['tracks'] = {'version':1, 'audio':[], 'subtitles':[]}
+        conn.execute('UPDATE movies SET metadata=?',(json.dumps(meta),))
+    index = upload(client).json()['index']
+    url = f'/api/movies/{MID}/subtitles/{index}/timing'
+    download = f'/api/movies/{MID}/subtitles/{index}/download'
+    monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'viewer','admin':False})
+    assert client.post(url,json={'delay':2}).status_code == 403
+    monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'owner','admin':True})
+    assert client.post(url,json={'delay':301}).status_code == 422
+    assert client.post(url,json={'delay':-300}).status_code == 400
+    first = client.post(url,json={'delay':2})
+    assert first.status_code == 200, first.text
+    revision = first.json()['revision']
+    assert '00:00:03,000 --> 00:00:05,000' in client.get(download).text
+    assert '00:03.000 --> 00:05.000' in client.get(f'/api/movies/{MID}/subtitles/{index}.vtt').text
+    track = client.get(f'/api/movies/{MID}/tracks').json()['subtitles'][0]
+    assert track['timing_revision'] == revision and track['uploaded']
+    monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'other-viewer','admin':False})
+    assert client.get(f'/api/movies/{MID}/tracks').json()['subtitles'][0]['timing_revision'] == revision
+    assert '00:03.000 --> 00:05.000' in client.get(f'/api/movies/{MID}/subtitles/{index}.vtt').text
+    assert client.post(url,json={'delay':1,'revision':revision}).status_code == 403
+    monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'owner','admin':True})
+    assert client.post(url,json={'delay':2}).status_code == 409
+    assert client.post(url,json={'delay':-0.5,'revision':revision}).status_code == 200
+    assert '00:00:02,500 --> 00:00:04,500' in client.get(download).text
+    assert client.delete(f'/api/movies/{MID}/subtitle-upload/{index}').status_code == 200
+    assert not list((main.DATA/'subtitles'/'adjusted').glob('*.srt'))

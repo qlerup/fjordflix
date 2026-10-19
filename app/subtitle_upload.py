@@ -82,18 +82,25 @@ def register(backend):
             if not track or not track.get('uploaded') or not OFFSET <= index < 2**50:
                 raise HTTPException(400, 'Kun manuelt uploadede undertekster kan slettes her.')
             path = subtitle_path(backend.DATA, mid, index)
+            paths = [path, *(backend.DATA / 'subtitles' / 'adjusted').glob(f'{mid}-{index}-*.srt')]
             meta['external_subtitles'] = [t for t in existing if t.get('index') != index]
+            meta.get('subtitle_overrides', {}).pop(str(index), None)
             try:
                 # Keep a recoverable file until the metadata transaction commits.
-                if path.exists():
+                if any(p.exists() for p in paths):
                     with tempfile.TemporaryDirectory(prefix='delete-', dir=path.parent) as folder:
-                        backup = Path(folder) / 'subtitle.srt'
-                        path.replace(backup)
+                        moved = []
                         try:
+                            for n, source in enumerate(paths):
+                                if source.exists():
+                                    backup = Path(folder) / f'{n}.srt'
+                                    source.replace(backup)
+                                    moved.append((source, backup))
                             conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
                             conn.commit()
                         except Exception:
-                            backup.replace(path)
+                            for source, backup in reversed(moved):
+                                backup.replace(source)
                             raise
                 else:
                     conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))

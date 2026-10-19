@@ -42,6 +42,38 @@ def check_delete(page):
     assert page.evaluate('FjordTracks.subtitle') is None
     assert page.evaluate('available.subtitles.length') == 0
 
+def check_timing(page, width):
+    page.evaluate('''() => {
+      window.savedApi=api;window.timingCalls=[];
+      window.api=async (route,method,data) => {
+        if(route.endsWith('/timing')) {timingCalls.push(data);available.subtitles[0].timing_revision='a'.repeat(64);return {revision:'a'.repeat(64)}}
+        return available;
+      };
+      window.video=document.createElement('video');document.body.append(video);
+      const track=video.addTextTrack('subtitles');track.addCue(new VTTCue(1,3,'Hej!'));
+      FjordTracks.element={track};FjordTracks.subtitle=available.subtitles[0].index;
+      FjordTracks.applyTiming(track,0);FjordTracks.sync();
+      document.getElementById('player-dialog').showModal();document.getElementById('player-tracks').hidden=false;
+    }''')
+    expect(page.locator('#subtitle-timing')).to_be_visible()
+    page.locator('#subtitle-later').click()
+    assert page.evaluate('FjordTracks.element.track.cues[0].startTime') == 1.5
+    page.locator('#subtitle-delay').fill('-0.5')
+    page.locator('#subtitle-delay').dispatch_event('change')
+    assert page.evaluate('FjordTracks.element.track.cues[0].startTime') == 0.5
+    page.screenshot(path=str(output/f'subtitle-timing-{width}.png'))
+    assert page.locator('#subtitle-timing').evaluate('(el)=>el.scrollWidth<=el.clientWidth')
+    page.once('dialog',lambda dialog:dialog.accept())
+    page.locator('#subtitle-delay-save').click()
+    page.wait_for_function('timingCalls.length===1 && !FjordTracks.savingTiming')
+    assert page.evaluate('timingCalls[0].delay') == -0.5
+    expect(page.locator('#subtitle-delay')).to_have_value('0')
+    page.evaluate('state.user.admin=false;FjordTracks.sync()')
+    expect(page.locator('#subtitle-timing')).not_to_be_visible()
+    page.evaluate('FjordTracks.setSubtitleDelay(3)')
+    assert page.evaluate('FjordTracks.subtitleDelay') == 0
+    page.evaluate("state.user.admin=true;window.api=savedApi;FjordTracks.element=null;document.getElementById('player-dialog').close();FjordTracks.sync()")
+
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
     for width in (1440,390):
@@ -64,6 +96,8 @@ with sync_playwright() as pw:
         page.route('**/*',handle)
         page.goto('http://upload.test')
         page.add_style_tag(path=str(static/'style.css'))
+        page.add_style_tag(path=str(static/'library.css'))
+        page.add_style_tag(path=str(static/'player.css'))
         page.add_style_tag(path=str(static/'selects.css'))
         page.add_style_tag(path=str(static/'subtitle-upload.css'))
         for script in ('tracks.js','subtitle-upload.js','selects.js'):
@@ -83,6 +117,7 @@ with sync_playwright() as pw:
             expect(page.locator('#detail-subtitle')).to_be_enabled()
             expect(page.locator('#detail-subtitle option').filter(has_text='Tilføjet SRT')).to_have_count(1)
             check_download(page)
+            check_timing(page,width)
             check_delete(page)
             assert not errors, errors
             print('PASS mobile hides subtitle upload and keeps existing subtitles selectable',width)
@@ -115,6 +150,7 @@ with sync_playwright() as pw:
         assert len(requests)==1 and 'language=da' in requests[0].url
         assert 'Hej!' in requests[0].post_data
         check_download(page)
+        check_timing(page,width)
         # Errors retain pending files; a mixed batch preserves successful uploads.
         page.evaluate('FjordSubtitleUpload.open(FjordTracks.movie)')
         page.locator('#subtitle-upload-input').set_input_files([

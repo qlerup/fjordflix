@@ -97,6 +97,10 @@ def test_existing_mp4_gains_selectable_subtitles_without_rescan(client, local_vi
     text = client.get(f'/api/movies/{mid}/subtitles/{track["index"]}.vtt')
     assert text.status_code == 200 and text.text.startswith('WEBVTT')
     assert 'Hej med dig! Æ, ø og å.' in text.text
+    saved = client.post(f'/api/movies/{mid}/subtitles/{track["index"]}/timing',json={'delay':0.5})
+    assert saved.status_code == 200, saved.text
+    assert subtitle.read_text(encoding='utf-8') == SRT
+    assert '00:00:01,500 --> 00:00:03,500' in client.get(f'/api/movies/{mid}/subtitles/{track["index"]}/download').text
     plan = client.post(f'/api/movies/{mid}/plan',json={'direct':True,'h264':True,'subtitle_track':track['index']})
     assert plan.status_code == 200 and plan.json()['mode'] == 'Direct Play'
     playback = client.post(f'/api/movies/{mid}/play',json={'direct':True,'h264':True,'subtitle_track':track['index']})

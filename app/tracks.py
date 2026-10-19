@@ -133,7 +133,11 @@ def displayed(meta):
     overrides = meta.get('audio_language_overrides', {})
     external = meta.get('external_subtitles', [])
     embedded = [t for t in available.get('subtitles', []) if not t.get('external')]
-    return {**available, 'subtitles':embedded + external + meta.get('sidecar_subtitles', []), 'audio': [
+    subtitles = embedded + external + meta.get('sidecar_subtitles', [])
+    revisions = meta.get('subtitle_overrides', {})
+    subtitles = [{**t, 'timing_revision':revisions[str(t['index'])], 'external':True,
+                  'delivery':'text', 'codec':'subrip'} if str(t['index']) in revisions else t for t in subtitles]
+    return {**available, 'subtitles':subtitles, 'audio': [
         {**track, 'source_language': track.get('language', 'und'),
          'language': overrides.get(str(track['index']), track.get('language', 'und'))}
         for track in available.get('audio', [])]}

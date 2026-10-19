@@ -680,6 +680,7 @@ def delete_movie(mid: str, data: LibraryDelete, u=Depends(admin)):
                 _, movie_meta = movie(key)
                 for subtitle in movie_meta.get('external_subtitles', []):
                     paths.add(opensubtitles.subtitle_path(DATA, key, subtitle['index']))
+                paths.update((DATA / 'subtitles' / 'adjusted').glob(f'{key}-*.srt'))
                 for suffix in ('', '-backdrop', '-episode', '-frame'):
                     artwork = DATA / 'posters' / f'{key}{suffix}.jpg'
                     if not artwork.resolve().is_relative_to((DATA / 'posters').resolve()):
@@ -1055,6 +1056,8 @@ def movie_tracks(mid: str, u=Depends(user)):
 
 
 def subtitle_source(row, mid, subtitle):
+    if subtitle.get('timing_revision'):
+        return subtitle_timing.saved_path(DATA, mid, subtitle['index'], subtitle['timing_revision'])
     if subtitle.get('sidecar'):
         return sidecars.subtitle_path(row['path'], subtitle['index'])
     return opensubtitles.subtitle_path(DATA, mid, subtitle['index']) if subtitle.get('external') else row['path']
@@ -1571,6 +1574,8 @@ from app import subtitle_upload
 subtitle_upload.register(sys.modules[__name__])
 from app import subtitle_download
 subtitle_download.register(sys.modules[__name__])
+from app import subtitle_timing
+subtitle_timing.register(sys.modules[__name__])
 onboarding.register(sys.modules[__name__])
 from app import desktop
 desktop.register(sys.modules[__name__])

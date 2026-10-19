@@ -40,6 +40,31 @@ test('subtitle timestamps follow source time after seeking or transcoding', () =
   assert.deepEqual(track.cues, [{startTime:0,endTime:2}, {startTime:3,endTime:5}]);
 });
 
+test('subtitle delay is reversible without drift and respects stream seek offsets', () => {
+  const controller = {...tracks, subtitleDelay:0, cueTimings:new WeakMap()};
+  const original = [{startTime:1,endTime:2}, {startTime:2,endTime:5}, {startTime:6,endTime:8}];
+  const track = {cues:[...original],removeCue(cue){this.cues.splice(this.cues.indexOf(cue),1)},addCue(cue){this.cues.push(cue)}};
+  controller.applyTiming(track,3);
+  assert.equal(track.cues.length,2);
+  controller.subtitleDelay=4; controller.applyTiming(track,3);
+  assert.equal(track.cues.length,3); // A cue hidden before time zero can reappear.
+  assert.deepEqual(original.map(c=>[c.startTime,c.endTime]),[[2,3],[3,6],[7,9]]);
+  controller.subtitleDelay=-1; controller.applyTiming(track,3);
+  assert.deepEqual(track.cues.map(c=>[c.startTime,c.endTime]),[[0,1],[2,4]]);
+  controller.subtitleDelay=0; controller.applyTiming(track,0);
+  assert.deepEqual(original.map(c=>[c.startTime,c.endTime]),[[1,2],[2,5],[6,8]]);
+  for(let i=0;i<50;i++) {controller.subtitleDelay=0.5;controller.applyTiming(track,0);controller.subtitleDelay=0;controller.applyTiming(track,0)}
+  assert.deepEqual(original.map(c=>[c.startTime,c.endTime]),[[1,2],[2,5],[6,8]]);
+  const refreshed = {cues:[{startTime:6,endTime:8}],removeCue(){},addCue(){}};
+  controller.subtitleDelay=0.5;controller.applyTiming(refreshed,3);
+  assert.deepEqual(refreshed.cues,[{startTime:3.5,endTime:5.5}]);
+  const loading = {cues:[],removeCue(){},addCue(){}};
+  controller.applyTiming(loading,0);
+  loading.cues.push({startTime:1,endTime:3});
+  controller.applyTiming(loading,0);
+  assert.equal(loading.cues[0].startTime,1.5);
+});
+
 test('embedded tracks have readable Danish labels and playback choices stay in sync', async () => {
   const dom = new JSDOM('<dialog id="detail"><label class="quality-label"></label><button id="play-button"></button><button id="restart-button"></button></dialog><dialog id="player-dialog"><div class="player-top"></div></dialog>', {runScripts:'outside-only'});
   const w = dom.window;
