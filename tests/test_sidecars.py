@@ -89,6 +89,8 @@ def test_existing_mp4_gains_selectable_subtitles_without_rescan(client, local_vi
     assert response.status_code == 200
     track = response.json()['subtitles'][0]
     assert track['language'] == 'da' and track['sidecar']
+    exported = client.get(f'/api/movies/{mid}/subtitles/{track["index"]}/download')
+    assert exported.status_code == 200 and exported.content == subtitle.read_bytes()
     assert str(folder) not in json.dumps(track)
     text = client.get(f'/api/movies/{mid}/subtitles/{track["index"]}.vtt')
     assert text.status_code == 200 and text.text.startswith('WEBVTT')

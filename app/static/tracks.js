@@ -19,6 +19,8 @@ const FjordTracks = {
     document.querySelector('.player-top').insertAdjacentHTML('beforeend', '<button id="player-tracks-toggle" class="secondary small" aria-expanded="false" aria-controls="player-tracks">Lyd og tekst</button>');
     $('player-dialog').insertAdjacentHTML('beforeend', '<section id="player-tracks" class="track-options player-track-panel" hidden aria-label="Lyd og undertekster"><label>Lydspor<select id="player-audio"></select></label><label>Undertekster<select id="player-subtitle"></select></label><button id="player-tracks-close" class="secondary small">Luk</button></section>');
     for (const place of ['detail', 'player']) {
+      $(`${place}-subtitle`).insertAdjacentHTML('afterend', `<button type="button" id="${place}-subtitle-download" class="secondary small" hidden>Download valgt undertekst</button>`);
+      $(`${place}-subtitle-download`).onclick = () => this.downloadSubtitle();
       $(`${place}-tracks`).insertAdjacentHTML('beforeend', `<label class="airplay-subtitle-fallback" hidden><input id="${place}-burn-subtitles" type="checkbox">Indbrænd undertekster, hvis TV’et ikke viser dem (kræver videokonvertering)</label>`);
       $(`${place}-burn-subtitles`).onchange = async () => {
         this.burnSubtitles = $(`${place}-burn-subtitles`).checked;
@@ -104,12 +106,39 @@ const FjordTracks = {
     }
     for (const place of ['detail','player']) {
       for (const kind of ['audio','subtitle']) $(`${place}-${kind}`).value = this[kind] ?? '';
+      const download = $(`${place}-subtitle-download`);
+      if (download) {
+        download.hidden = !(typeof state !== 'undefined' && state?.user?.admin && this.selectedSubtitle() && this.selectedSubtitle().delivery !== 'unsupported');
+        download.disabled = !!this.downloadingSubtitle;
+        download.textContent = this.downloadingSubtitle ? 'Klargør download…' : 'Download valgt undertekst';
+      }
       const fallback = $(`${place}-burn-subtitles`);
       fallback.checked = this.burnSubtitles;
       fallback.parentElement.hidden = !(typeof airplayRequested !== 'undefined' && airplayRequested && this.selectedSubtitle()?.delivery === 'text');
     }
   },
   selectedSubtitle() { return this.movie?.tracks?.subtitles?.find(t => t.index === this.subtitle); },
+  async downloadSubtitle() {
+    const movie = this.movie, track = this.selectedSubtitle();
+    if (!movie || !track || !state?.user?.admin || this.downloadingSubtitle) return;
+    this.downloadingSubtitle = true; this.sync();
+    try {
+      toast('Klargør undertekst til download…');
+      const response = await fetch(`/api/movies/${movie.id}/subtitles/${track.index}/download`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Underteksten kunne ikke downloades.');
+      }
+      const blob = await response.blob(), url = URL.createObjectURL(blob);
+      const header = response.headers.get('Content-Disposition') || '';
+      const encoded = header.match(/filename\*=utf-8''([^;]+)/i);
+      const filename = encoded ? decodeURIComponent(encoded[1]) : header.match(/filename="([^"]+)"/)?.[1] || 'undertekster.srt';
+      const link = document.createElement('a'); link.href = url; link.download = filename;
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) { toast(error.message); }
+    finally { this.downloadingSubtitle = false; this.sync(); }
+  },
   statusLabel() {
     const s = this.subtitleStatus;
     if (!s) return '';

@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 import pytest
 
@@ -79,3 +80,34 @@ def test_subtitle_limit_keeps_existing_downloads(client):
     assert upload(client).status_code == 400
     with main.db() as conn:
         assert json.loads(conn.execute('SELECT metadata FROM movies WHERE id=?',(MID,)).fetchone()[0])['external_subtitles'] == original
+
+
+def test_download_uploaded_subtitle_and_admin_permissions(client, monkeypatch):
+    index = upload(client).json()['index']
+    url = f'/api/movies/{MID}/subtitles/{index}/download'
+    result = client.get(url)
+    assert result.status_code == 200 and result.content == SRT.encode()
+    assert 'attachment;' in result.headers['content-disposition']
+    assert '.srt' in result.headers['content-disposition']
+    assert client.get(f'/api/movies/{MID}/subtitles/999/download').status_code == 400
+    monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'viewer','admin':False})
+    assert client.get(url).status_code == 403
+
+
+@pytest.mark.parametrize('codec,extension', [('srt','.srt'),('ass','.ass')])
+def test_download_embedded_subtitle_preserves_source(client, codec, extension):
+    from app import tracks
+    subtitle = main.MEDIA/'source.srt'
+    subtitle.write_text(SRT,encoding='utf-8')
+    video = main.MEDIA/'source.mkv'
+    subprocess.run(['ffmpeg','-v','error','-i',str(subtitle),'-c:s',codec,'-y',str(video)],check=True)
+    original = video.read_bytes()
+    with main.db() as conn:
+        conn.execute('UPDATE movies SET path=?,metadata=?',(str(video),json.dumps({'tracks':tracks.scan(video)})))
+    url = f'/api/movies/{MID}/subtitles/0/download'
+    result = client.get(url)
+    assert result.status_code == 200, result.text
+    assert extension in result.headers['content-disposition']
+    assert 'Hej!' in result.content.decode('utf-8')
+    assert client.get(url).content == result.content
+    assert video.read_bytes() == original

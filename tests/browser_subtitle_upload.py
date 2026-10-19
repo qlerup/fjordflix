@@ -18,6 +18,18 @@ window.available={version:1,audio:[{index:1,codec:'aac',language:'en'}],subtitle
 window.api=async()=>window.available;
 </script></body></html>'''
 output = root/'test-results'; output.mkdir(exist_ok=True)
+def check_download(page):
+    page.evaluate('FjordTracks.subtitle=available.subtitles[0].index;FjordTracks.sync()')
+    expect(page.locator('#detail-subtitle-download')).to_be_visible()
+    with page.expect_download() as event:
+        page.locator('#detail-subtitle-download').click()
+    assert event.value.suggested_filename == 'episode.da.srt'
+    assert event.value.path().read_text().endswith('Hej!\n')
+    page.wait_for_function('!FjordTracks.downloadingSubtitle')
+    page.evaluate('state.user.admin=false;FjordTracks.sync()')
+    expect(page.locator('#detail-subtitle-download')).not_to_be_visible()
+    page.evaluate('state.user.admin=true;FjordTracks.sync()')
+
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
     for width in (1440,390):
@@ -26,6 +38,10 @@ with sync_playwright() as pw:
         requests = []
         def handle(route):
             request = route.request
+            if request.url.endswith('/download'):
+                route.fulfill(body='1\n00:00:01,000 --> 00:00:03,000\nHej!\n',
+                    headers={'Content-Disposition':'attachment; filename="episode.da.srt"'},content_type='application/octet-stream')
+                return
             if '/subtitle-upload?' in request.url:
                 requests.append(request)
                 assert '/api/movies/'+'a'*32+'/subtitle-upload?' in request.url
@@ -54,6 +70,7 @@ with sync_playwright() as pw:
             }''')
             expect(page.locator('#detail-subtitle')).to_be_enabled()
             expect(page.locator('#detail-subtitle option').filter(has_text='Tilføjet SRT')).to_have_count(1)
+            check_download(page)
             assert not errors, errors
             print('PASS mobile hides subtitle upload and keeps existing subtitles selectable',width)
             page.close()
@@ -84,6 +101,7 @@ with sync_playwright() as pw:
         expect(page.locator('#detail-subtitle')).to_have_value(str(2**49+123))
         assert len(requests)==1 and 'language=da' in requests[0].url
         assert 'Hej!' in requests[0].post_data
+        check_download(page)
         # Errors retain pending files; a mixed batch preserves successful uploads.
         page.evaluate('FjordSubtitleUpload.open(FjordTracks.movie)')
         page.locator('#subtitle-upload-input').set_input_files([
