@@ -65,6 +65,20 @@ def test_write_guide_requires_admin_and_is_not_a_mutation(mounted, monkeypatch):
     assert len(calls) == 1
 
 
+def test_seed_library_requires_app_key_and_lists_existing_sources(mounted,monkeypatch):
+    client,root=mounted
+    monkeypatch.setenv('FJORDHUB_API_KEY','fixture-flix-key')
+    monkeypatch.setenv('FJORDHUB_APP_ID','fjordflix')
+    endpoint='/api/hub/seed-library'
+    assert client.get(endpoint).status_code==401
+    headers={'X-Hub-Key':'fixture-flix-key'}
+    assert client.get(endpoint,headers=headers).json()['sources']==[]
+    assert client.post('/api/admin/library',json={'path':str(root/'Film')}).status_code==201
+    rows=client.get(endpoint,headers=headers).json()['sources']
+    assert len(rows)==1 and rows[0]['path']==str(root/'Film') and rows[0]['available'] is True
+    assert client.post(endpoint,headers=headers,json={'path':str(root/'Serier')}).status_code==405
+
+
 def test_pool_connection_requires_confirmation_and_forwards_admin(mounted, monkeypatch):
     client, _ = mounted
     monkeypatch.setattr(main.hub, 'managed', lambda: True)

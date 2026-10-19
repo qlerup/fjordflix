@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 from . import catalog, library_cleanup
+from .integration_data import authorize as authorize_hub
 
 VIDEO_SUFFIXES = {'.mp4', '.mkv', '.mov', '.webm', '.m4v', '.avi', '.ts'}
 PUBLISHING_MARKER = '.fjordseed-publishing'
@@ -51,6 +52,13 @@ class Sources:
                                     'LEFT JOIN library_files f ON f.source_id=s.id GROUP BY s.id').fetchall()
             return {'sources': [{**dict(row), 'available': Path(row['path']).is_dir()} for row in rows],
                     'scan': self.status}
+
+        @app.get('/api/hub/seed-library',dependencies=[Depends(authorize_hub)])
+        def seed_library():
+            with host.db() as conn:
+                rows=conn.execute('SELECT id,path FROM library_sources ORDER BY path LIMIT 100').fetchall()
+            return {'ok':True,'sources':[{'id':row['id'],'path':row['path'],
+                    'available':Path(row['path']).is_dir()} for row in rows]}
 
         @app.get('/api/admin/library/browse')
         def browse(path: str = '', u=Depends(host.admin)):

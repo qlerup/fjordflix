@@ -4,6 +4,12 @@ A private media server with a cinema-style library, movies/series, per-user prog
 
 ## Features
 
+FjordSeed's **Streaming → Find FjordFlix** can use an existing indexed library
+folder as its download destination on the same Docker host. The authenticated
+`GET /api/hub/seed-library` endpoint lists those folders; Seed maps the existing
+Flix bind mount back to its host directory and checks write access before
+mounting it. This does not change Flix sources or mounts. Update both apps.
+
 - Upload/import MP4, MKV, MOV, WebM, M4V, AVI and TS; inspect codecs, resolution, bitrate, HDR and audio.
 - Search, Home/Movies/Series, My list and Continue watching per user; season/episode grouping and next-episode navigation.
 - TMDB posters, backgrounds, cast and localized metadata, manual matching/editing and custom images.
