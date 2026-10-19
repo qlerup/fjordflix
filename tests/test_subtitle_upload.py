@@ -94,6 +94,34 @@ def test_download_uploaded_subtitle_and_admin_permissions(client, monkeypatch):
     assert client.get(url).status_code == 403
 
 
+def test_delete_only_manual_uploads_preserves_other_tracks(client, monkeypatch):
+    index = upload(client).json()['index']
+    other = upload(client,language='en').json()['index']
+    url = f'/api/movies/{MID}/subtitle-upload/{index}'
+    monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'viewer','admin':False})
+    assert client.delete(url).status_code == 403
+    assert opensubtitles.subtitle_path(main.DATA,MID,index).exists()
+    monkeypatch.setitem(main.app.dependency_overrides,main.user,lambda:{'id':'owner','admin':True})
+    with main.db() as conn:
+        before = json.loads(conn.execute('SELECT metadata FROM movies WHERE id=?',(MID,)).fetchone()[0])
+        before['external_subtitles'].append({'index':1234567890,'external':True})
+        conn.execute('UPDATE movies SET metadata=?',(json.dumps(before),))
+    assert client.delete(f'/api/movies/{MID}/subtitle-upload/1234567890').status_code == 400
+    assert client.delete(url).status_code == 200
+    assert not opensubtitles.subtitle_path(main.DATA,MID,index).exists()
+    assert opensubtitles.subtitle_path(main.DATA,MID,other).exists()
+    assert client.get(f'/api/movies/{MID}/subtitles/{index}/download').status_code == 400
+    with main.db() as conn:
+        after = json.loads(conn.execute('SELECT metadata FROM movies WHERE id=?',(MID,)).fetchone()[0])
+    assert after['external_subtitles'] == [t for t in before['external_subtitles'] if t['index']!=index]
+    assert {k:v for k,v in after.items() if k!='external_subtitles'} == {k:v for k,v in before.items() if k!='external_subtitles'}
+    # A deleted/missing file can still be removed from the subtitle list.
+    opensubtitles.subtitle_path(main.DATA,MID,other).unlink()
+    assert client.delete(f'/api/movies/{MID}/subtitle-upload/{other}').status_code == 200
+    assert client.delete(url).status_code == 400
+    assert upload(client).json()['index'] == index
+
+
 @pytest.mark.parametrize('codec,extension', [('srt','.srt'),('ass','.ass')])
 def test_download_embedded_subtitle_preserves_source(client, codec, extension):
     from app import tracks

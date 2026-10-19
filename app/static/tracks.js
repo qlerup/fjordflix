@@ -21,6 +21,8 @@ const FjordTracks = {
     for (const place of ['detail', 'player']) {
       $(`${place}-subtitle`).insertAdjacentHTML('afterend', `<button type="button" id="${place}-subtitle-download" class="secondary small" hidden>Download valgt undertekst</button>`);
       $(`${place}-subtitle-download`).onclick = () => this.downloadSubtitle();
+      $(`${place}-subtitle-download`).insertAdjacentHTML('afterend', `<button type="button" id="${place}-subtitle-delete" class="secondary small" hidden>Slet uploadet undertekst</button>`);
+      $(`${place}-subtitle-delete`).onclick = () => this.deleteUploadedSubtitle(place);
       $(`${place}-tracks`).insertAdjacentHTML('beforeend', `<label class="airplay-subtitle-fallback" hidden><input id="${place}-burn-subtitles" type="checkbox">Indbrænd undertekster, hvis TV’et ikke viser dem (kræver videokonvertering)</label>`);
       $(`${place}-burn-subtitles`).onchange = async () => {
         this.burnSubtitles = $(`${place}-burn-subtitles`).checked;
@@ -112,12 +114,38 @@ const FjordTracks = {
         download.disabled = !!this.downloadingSubtitle;
         download.textContent = this.downloadingSubtitle ? 'Klargør download…' : 'Download valgt undertekst';
       }
+      const remove = $(`${place}-subtitle-delete`);
+      if (remove) {
+        remove.hidden = !(typeof state !== 'undefined' && state?.user?.admin && this.selectedSubtitle()?.uploaded);
+        remove.disabled = !!this.deletingSubtitle;
+        remove.textContent = this.deletingSubtitle ? 'Sletter…' : 'Slet uploadet undertekst';
+      }
       const fallback = $(`${place}-burn-subtitles`);
       fallback.checked = this.burnSubtitles;
       fallback.parentElement.hidden = !(typeof airplayRequested !== 'undefined' && airplayRequested && this.selectedSubtitle()?.delivery === 'text');
     }
   },
   selectedSubtitle() { return this.movie?.tracks?.subtitles?.find(t => t.index === this.subtitle); },
+  async deleteUploadedSubtitle(place) {
+    const movie = this.movie, track = this.selectedSubtitle();
+    if (!movie || !track?.uploaded || !state?.user?.admin || this.deletingSubtitle) return;
+    if (!confirm(`Slet den manuelt uploadede undertekst “${this.label(track, true)}” fra “${movie.title}” for alle brugere?`)) return;
+    this.deletingSubtitle = true; this.sync();
+    try {
+      await api(`/movies/${movie.id}/subtitle-upload/${track.index}`, 'DELETE');
+      // Preserve the other tracks and metadata without refreshing the page.
+      movie.tracks.subtitles = movie.tracks.subtitles.filter(t => t.index !== track.index);
+      if (this.movie?.id === movie.id) {
+        const wasSelected = this.subtitle === track.index;
+        if (wasSelected) this.subtitle = null;
+        this.fill(movie.tracks);
+        if (wasSelected) await $(`${place}-subtitle`).onchange();
+        $('track-status').textContent = `${movie.tracks.audio?.length || 0} lydspor · ${movie.tracks.subtitles.length} undertekstspor`;
+      }
+      toast('Den uploadede undertekst er slettet.');
+    } catch (error) { toast(error.message); }
+    finally { this.deletingSubtitle = false; this.sync(); }
+  },
   async downloadSubtitle() {
     const movie = this.movie, track = this.selectedSubtitle();
     if (!movie || !track || !state?.user?.admin || this.downloadingSubtitle) return;

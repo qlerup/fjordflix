@@ -68,6 +68,40 @@ def store(backend, mid, filename, language, raw):
 
 
 def register(backend):
+    @backend.app.delete('/api/movies/{mid}/subtitle-upload/{index}')
+    def delete_upload(mid: str, index: int, u=Depends(backend.admin)):
+        backend.movie(mid)
+        with LOCK, backend.db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            row = conn.execute('SELECT metadata FROM movies WHERE id=?', (mid,)).fetchone()
+            if row is None:
+                raise HTTPException(404)
+            meta = json.loads(row['metadata'])
+            existing = meta.get('external_subtitles', [])
+            track = next((t for t in existing if t.get('index') == index), None)
+            if not track or not track.get('uploaded') or not OFFSET <= index < 2**50:
+                raise HTTPException(400, 'Kun manuelt uploadede undertekster kan slettes her.')
+            path = subtitle_path(backend.DATA, mid, index)
+            meta['external_subtitles'] = [t for t in existing if t.get('index') != index]
+            try:
+                # Keep a recoverable file until the metadata transaction commits.
+                if path.exists():
+                    with tempfile.TemporaryDirectory(prefix='delete-', dir=path.parent) as folder:
+                        backup = Path(folder) / 'subtitle.srt'
+                        path.replace(backup)
+                        try:
+                            conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
+                            conn.commit()
+                        except Exception:
+                            backup.replace(path)
+                            raise
+                else:
+                    conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(meta), mid))
+                    conn.commit()
+            except OSError:
+                raise HTTPException(503, 'Undertekstfilen kunne ikke slettes. Prøv igen.') from None
+        return {'deleted': index}
+
     @backend.app.post('/api/movies/{mid}/subtitle-upload')
     async def upload(mid: str, request: Request, filename: str, language: str = 'und', u=Depends(backend.admin)):
         backend.movie(mid)

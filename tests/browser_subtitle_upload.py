@@ -30,6 +30,18 @@ def check_download(page):
     expect(page.locator('#detail-subtitle-download')).not_to_be_visible()
     page.evaluate('state.user.admin=true;FjordTracks.sync()')
 
+def check_delete(page):
+    page.evaluate('available.subtitles[0].uploaded=true;FjordTracks.subtitle=available.subtitles[0].index;FjordTracks.sync()')
+    expect(page.locator('#detail-subtitle-delete')).to_be_visible()
+    page.once('dialog',lambda dialog:dialog.dismiss())
+    page.locator('#detail-subtitle-delete').click()
+    assert page.evaluate('available.subtitles.length') == 1
+    page.once('dialog',lambda dialog:dialog.accept())
+    page.locator('#detail-subtitle-delete').click()
+    expect(page.locator('#detail-subtitle-delete')).not_to_be_visible()
+    assert page.evaluate('FjordTracks.subtitle') is None
+    assert page.evaluate('available.subtitles.length') == 0
+
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
     for width in (1440,390):
@@ -71,6 +83,7 @@ with sync_playwright() as pw:
             expect(page.locator('#detail-subtitle')).to_be_enabled()
             expect(page.locator('#detail-subtitle option').filter(has_text='Tilføjet SRT')).to_have_count(1)
             check_download(page)
+            check_delete(page)
             assert not errors, errors
             print('PASS mobile hides subtitle upload and keeps existing subtitles selectable',width)
             page.close()
@@ -117,6 +130,7 @@ with sync_playwright() as pw:
         expect(page.locator('#subtitle-upload-status')).to_contain_text('Vælg op til 20 SRT-filer')
         expect(page.locator('#subtitle-upload-save')).to_be_disabled()
         page.locator('#subtitle-upload-cancel').click()
+        check_delete(page)
         page.evaluate('state.user.admin=false;FjordTracks.fill(available)')
         assert page.locator('#detail-subtitle option[value="__upload__"]').count()==0
         assert not errors, errors
