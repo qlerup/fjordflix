@@ -137,16 +137,21 @@ async function boot() {
 }
 async function refresh() { library = await api('/movies'); render(); }
 let seriesMetadataPolling = false;
+let seriesMetadataNeedsRender = false;
 setInterval(async () => {
-  if (seriesMetadataPolling || !state?.user || playback || !library.some(m => m.catalog?.series_refresh_pending)) return;
+  const pending = library.some(m => m.catalog?.series_refresh_pending);
+  if (seriesMetadataPolling || !state?.user || playback || !(pending || seriesMetadataNeedsRender)) return;
   seriesMetadataPolling = true;
   try {
-    const mid = selected?.id;
-    await refresh();
-    if (mid && selected?.id === mid && !$('detail').hidden) {
-      const item = library.find(m => m.id === mid);
-      if (item) await openDetail(item);
+    if (pending) {
+      library = await api('/movies');
+      seriesMetadataNeedsRender = true;
     }
+    // Apply the final result after an interaction closes, even if the queue is empty.
+    if (document.querySelector('dialog[open], .fx-select-button[aria-expanded="true"], input:focus, textarea:focus, select:focus')) return;
+    if (!$('detail').hidden) updateSeriesMetadataView();
+    else render();
+    seriesMetadataNeedsRender = false;
   } catch (_) {
     // Retry on the next interval if the connection is temporarily unavailable.
   } finally { seriesMetadataPolling = false; }

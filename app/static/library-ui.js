@@ -334,7 +334,7 @@ function showEpisodePicker(movie) {
     duration.textContent = `${clock(m.duration)}${m.position >= m.duration - 2 ? ' · Set' : m.position > 1 ? ' · Påbegyndt' : ''}`;
     card.append(image, title, name, duration);
     card.onclick = () => {
-      openDetail(m);
+      openDetail(library.find(item => item.id === m.id) || m);
       // Re-rendering selection must keep keyboard focus on the chosen episode.
       [...carousel.children].find(el => el.dataset.episodeId === m.id)?.focus({preventScroll:true});
     };
@@ -354,6 +354,40 @@ function updateEpisodeArrows() {
   const carousel = $('series-episodes');
   $('episodes-prev').disabled = carousel.scrollLeft <= 1;
   $('episodes-next').disabled = carousel.scrollLeft + carousel.clientWidth >= carousel.scrollWidth - 1;
+}
+
+function updateSeriesMetadataView() {
+  const movie = library.find(m => m.id === selected?.id);
+  if (!movie || $('detail').hidden) return;
+  // Keep the selected object, controls, focus and carousel nodes intact.
+  selected.catalog = movie.catalog;
+  selected.title = movie.title;
+  const text = (id, value) => {
+    const element = $(id);
+    if (element && element.textContent !== value) element.textContent = value;
+  };
+  const image = (element, source) => {
+    if (element && element.getAttribute('src') !== source) {
+      element.src = source; element.hidden = false;
+    }
+  };
+  text('detail-title', movie.catalog?.series_title || movie.title);
+  text('detail-episode', `${FjordLibrary.code(movie)} · ${movie.catalog?.episode_title || 'Afsnit ' + movie.catalog?.episode}`);
+  if (movie.catalog?.overview) text('detail-description', movie.catalog.overview);
+  text('series-overview', movie.catalog?.series_overview || '');
+  image($('detail-poster'), FjordLibrary.artwork(movie, 'poster'));
+  const backdrop = `url('${FjordLibrary.artwork(movie, 'backdrop')}')`;
+  if ($('detail-art').style.backgroundImage !== backdrop) $('detail-art').style.backgroundImage = backdrop;
+  const items = new Map(library.map(m => [m.id, m]));
+  for (const card of $('series-episodes').children) {
+    const episode = items.get(card.dataset.episodeId);
+    if (!episode) continue;
+    const name = card.querySelector('.episode-name');
+    const title = episode.catalog?.episode_title || '';
+    if (name && name.textContent !== title) name.textContent = title;
+    image(card.querySelector('img'), FjordLibrary.artwork(episode, 'episode-still'));
+  }
+  showCatalogStatus(selected);
 }
 
 function showCatalogStatus(movie) {

@@ -1,7 +1,45 @@
 import json
+import httpx
 
 from app import catalog, main, series_metadata
 from test_series import client
+
+
+def test_batch_fetches_series_and_whole_season_once_with_shared_language_fallback(monkeypatch):
+    calls = []
+    monkeypatch.setattr(catalog, 'credential', lambda: ('token', 'settings'))
+    def handler(request):
+        path = request.url.path
+        language = request.url.params['language']
+        calls.append((path, language))
+        assert '/episode/' not in path and '/search/' not in path
+        if path.endswith('/season/1'):
+            return httpx.Response(200,json={'episodes':[
+                {'episode_number':n,'name':f'Episode {n}',
+                 'overview':f'Own plot {n}' if language=='en-US' else '',
+                 'still_path':f'/episode{n}.jpg'} for n in (1,2)]})
+        return httpx.Response(200,json={'id':42,'name':'Show','overview':'Series plot','first_air_date':'2014-01-01'})
+    original = httpx.Client
+    monkeypatch.setattr(catalog.httpx, 'Client', lambda **kwargs: original(transport=httpx.MockTransport(handler),**kwargs))
+    with catalog.lookup_batch():
+        first = catalog.lookup('Show S01E01',tmdb_id=42)
+        second = catalog.lookup('Show S01E02',tmdb_id=42)
+        missing = catalog.lookup('Show S01E03',tmdb_id=42)
+    assert first['overview']=='Own plot 1' and first['episode_path']=='/episode1.jpg'
+    assert second['overview']=='Own plot 2' and second['episode_path']=='/episode2.jpg'
+    assert missing['episode_status']=='missing' and missing['overview']==''
+    assert calls==[('/3/tv/42','da-DK'),('/3/tv/42/season/1','da-DK'),('/3/tv/42/season/1','en-US')]
+
+
+def test_batch_worker_drains_multiple_episodes(client,monkeypatch):
+    monkeypatch.setattr(catalog,'enrich',fake_enrich([]))
+    add_episode('b'*32,'Show S01E03')
+    add_episode('c'*32,'Show S01E04')
+    client.post('/api/movies/'+'a'*32+'/metadata/refresh',json={'tmdb_id':42})
+    series_metadata.process_batch(main)
+    assert not series_metadata.process_one(main)
+    assert main.movie('b'*32)[1]['catalog']['overview']=='Plot 1/3'
+    assert main.movie('c'*32)[1]['catalog']['overview']=='Plot 1/4'
 
 
 def add_episode(mid, title, info=None):

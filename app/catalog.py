@@ -4,6 +4,9 @@ import json
 import time
 import re
 import unicodedata
+import copy
+from contextlib import contextmanager
+from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import threading
@@ -16,6 +19,17 @@ _db = None
 _data = None
 _credits_lock = threading.Lock()
 _trailer_lock = threading.Lock()
+_lookup_batch = ContextVar('tmdb_lookup_batch', default=None)
+
+
+@contextmanager
+def lookup_batch():
+    """Reuse series/season responses only during this bounded refresh job."""
+    token = _lookup_batch.set({})
+    try:
+        yield
+    finally:
+        _lookup_batch.reset(token)
 
 
 def trailer(info):
@@ -317,6 +331,12 @@ def lookup(title, tmdb_id=None):
         return {**identified, 'status': 'unmatched'}
     with httpx.Client(timeout=8, follow_redirects=False) as client:
         def get(path, **params):
+            cache = _lookup_batch.get()
+            key = (token, path, tuple(sorted({'language':'da-DK', **params}.items())))
+            if cache is not None and key in cache:
+                value = cache[key]
+                if isinstance(value, httpx.HTTPError):raise value
+                return copy.deepcopy(value)
             headers = {}
             if re.fullmatch(r'[a-fA-F0-9]{32}', token):
                 params['api_key'] = token
@@ -325,8 +345,14 @@ def lookup(title, tmdb_id=None):
             response = client.get('https://api.themoviedb.org/3/' + path,
                                   headers=headers,
                                   params={'language': 'da-DK', **params})
-            response.raise_for_status()
-            return response.json()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                if cache is not None:cache[key] = exc
+                raise
+            value = response.json()
+            if cache is not None:cache[key] = copy.deepcopy(value)
+            return value
         params = {'query': query, 'include_adult': 'false'}
         if year:
             params['first_air_date_year' if kind == 'tv' else 'primary_release_year'] = year
@@ -361,16 +387,23 @@ def lookup(title, tmdb_id=None):
                           series_year=str(detail.get('first_air_date', ''))[:4],
                           series_overview=detail.get('overview', ''), episode_status='missing')
             path = f"tv/{match['id']}/season/{identified['season']}/episode/{identified['episode']}"
+            def episode(language='da-DK'):
+                if _lookup_batch.get() is None:return get(path, language=language)
+                season = get(f"tv/{match['id']}/season/{identified['season']}", language=language)
+                return next((ep for ep in season.get('episodes', [])
+                             if ep.get('episode_number') == identified['episode']), None)
             try:
-                ep = get(path)
-                if not ep.get('overview'):
+                ep = episode()
+                if ep is not None and not ep.get('overview'):
                     try:
-                        ep['overview'] = get(path, language='en-US').get('overview', '')
+                        ep['overview'] = (episode(language='en-US') or {}).get('overview', '')
                     except httpx.HTTPError:
                         pass
-                result.update(episode_title=ep.get('name', ''), overview=ep.get('overview', ''),
-                              release_date=ep.get('air_date', ''), episode_status='matched',
-                              episode_path=ep.get('still_path'))
+                if ep is not None:
+                    result.update(episode_title=ep.get('name', ''), overview=ep.get('overview', ''),
+                                  release_date=ep.get('air_date', ''), episode_status='matched',
+                                  episode_path=ep.get('still_path'))
+                else:result['overview'] = ''
             except httpx.HTTPError:
                 # Keep the series grouping/artwork even when an episode is absent from TMDB.
                 result['overview'] = ''

@@ -109,3 +109,10 @@ def process_one(host):
                         conn.execute('UPDATE movies SET metadata=? WHERE id=?',(json.dumps(saved),row['id']))
         return True
     return False
+
+
+def process_batch(host):
+    """Bound work per pass; episodes share cached TV and complete season data."""
+    with catalog.lookup_batch():
+        for _ in range(20):
+            if not process_one(host):break

@@ -761,7 +761,7 @@ class MetadataSearch(BaseModel):
 async def refresh_series_metadata():
     while True:
         try:
-            await asyncio.to_thread(series_metadata.process_one,sys.modules[__name__])
+            await asyncio.to_thread(series_metadata.process_batch,sys.modules[__name__])
         except Exception:
             series_metadata.logger.exception('Series metadata worker failed')
         await asyncio.sleep(1)
