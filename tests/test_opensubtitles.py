@@ -19,7 +19,7 @@ def provider(client,monkeypatch):
     monkeypatch.setattr(service,'session',None)
     monkeypatch.setattr(service,'choices',{})
     with main.db() as conn:
-        conn.execute('CREATE TABLE catalog_settings(name TEXT PRIMARY KEY,value TEXT)')
+        conn.execute('CREATE TABLE IF NOT EXISTS catalog_settings(name TEXT PRIMARY KEY,value TEXT)')
         path = main.MEDIA/'film.mp4'; path.write_bytes(b'\0'*131072)
         meta = {'format':'mp4','video':'h264','height':1080,'width':1920,'duration':100,'bitrate':1000000,'audio':'aac','pix_fmt':'yuv420p','hdr':False,
                 'catalog':{'tmdb_id':42},'tracks':{'version':1,'audio':[],'subtitles':[]}}

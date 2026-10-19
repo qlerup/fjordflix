@@ -55,7 +55,9 @@ test('embedded tracks have readable Danish labels and playback choices stay in s
   const t = w.tracks;
   t.setup();
   const audio = [{index:1,codec:'aac',language:'eng',default:true},{index:2,codec:'eac3',language:'dan',title:'Dansk lyd'}];
-  const subtitles = [{index:3,codec:'subrip',language:'dan',delivery:'text'}, {index:4,codec:'hdmv_pgs_subtitle',language:'eng',delivery:'burn'}, {index:5,codec:'unknown',delivery:'unsupported'}];
+  const localIndex = 2**50 + 123;
+  const subtitles = [{index:3,codec:'subrip',language:'dan',delivery:'text'}, {index:4,codec:'hdmv_pgs_subtitle',language:'eng',delivery:'burn'}, {index:5,codec:'unknown',delivery:'unsupported'},
+    {index:localIndex,codec:'subrip',language:'und',title:'Lokal SRT (uden sprogkode)',delivery:'text',external:true,sidecar:true}];
   w.api = async route => route.includes('/next/') ? {version:1,audio:[],subtitles:[]} : {version:1,audio,subtitles};
   await t.prepare({id:'movie',tracks:{version:1,audio,subtitles}});
   assert.equal(w.$('detail-audio').value,'1');
@@ -68,6 +70,10 @@ test('embedded tracks have readable Danish labels and playback choices stay in s
   t.attach = async result => {attached=result.subtitle_track};
   w.$('player-subtitle').value='3'; await w.$('player-subtitle').onchange();
   assert.equal(attached,3); assert.equal(restart,null);
+  assert.match(w.$('player-subtitle').options[4].textContent,/Ukendt sprog.*Lokal SRT/);
+  w.$('player-subtitle').value=String(localIndex); await w.$('player-subtitle').onchange();
+  assert.equal(attached,localIndex); assert.equal(restart,null);
+  assert.equal(w.$('detail-subtitle').value,String(localIndex));
   w.$('player-subtitle').value='4'; await w.$('player-subtitle').onchange();
   assert.equal(restart,24);
   assert.equal(t.request().subtitle_track,4);

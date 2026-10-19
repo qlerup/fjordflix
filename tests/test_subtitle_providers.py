@@ -17,7 +17,7 @@ def providers(client, monkeypatch):
         monkeypatch.setattr(service,'choices',{})
         monkeypatch.setattr(service,'session',None)
     with main.db() as conn:
-        conn.execute('CREATE TABLE catalog_settings(name TEXT PRIMARY KEY,value TEXT)')
+        conn.execute('CREATE TABLE IF NOT EXISTS catalog_settings(name TEXT PRIMARY KEY,value TEXT)')
         path = main.MEDIA/'Film.Release.mkv'; path.write_bytes(b'0'*131072)
         meta = {'catalog':{'tmdb_id':42},'tracks':{'audio':[],'subtitles':[]}}
         conn.execute('UPDATE movies SET path=?,metadata=?',(str(path),json.dumps(meta)))

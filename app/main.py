@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from app import hub, media, legacy_cleanup, onboarding, catalog, uploads, quality, tracks, sources, hls_subtitles, opensubtitles, library as library_metadata
 from app import transcoding, active_streams, trailers, stream_control, encoding_quality
 from app import series_metadata
+from app import sidecars
 from app.quality import hdr10_base as compatible_hdr10_base
 
 DATA = Path(os.getenv('DATA_DIR', './data'))
@@ -1034,6 +1035,7 @@ def person_portrait(filename: str, u=Depends(user)):
 @app.get('/api/movies/{mid}/tracks')
 def movie_tracks(mid: str, u=Depends(user)):
     row, meta = movie(mid)
+    meta = sidecars.metadata(meta, row['path'])
     if meta.get('tracks', {}).get('version') == 1:
         return {**tracks.displayed(meta), 'defaults': tracks.defaults(meta, u.get('language'))}
     try:
@@ -1048,17 +1050,25 @@ def movie_tracks(mid: str, u=Depends(user)):
         updated = json.loads(current['metadata'])
         updated['tracks'] = available
         conn.execute('UPDATE movies SET metadata=? WHERE id=?', (json.dumps(updated), mid))
+    updated = sidecars.metadata(updated, row['path'])
     return {**tracks.displayed(updated), 'defaults': tracks.defaults(updated, u.get('language'))}
+
+
+def subtitle_source(row, mid, subtitle):
+    if subtitle.get('sidecar'):
+        return sidecars.subtitle_path(row['path'], subtitle['index'])
+    return opensubtitles.subtitle_path(DATA, mid, subtitle['index']) if subtitle.get('external') else row['path']
 
 
 @app.get('/api/movies/{mid}/subtitles/{index}.vtt')
 def movie_subtitles(mid: str, index: int, u=Depends(user), progressive: bool = False):
     row, meta = movie(mid)
+    meta = sidecars.metadata(meta, row['path'])
     try:
         _, subtitle = tracks.select(meta, subtitle_index=index)
         if subtitle['delivery'] != 'text':
             raise ValueError('Dette spor vises ved at brænde underteksterne ind i videoen.')
-        source = opensubtitles.subtitle_path(DATA, mid, index) if subtitle.get('external') else row['path']
+        source = subtitle_source(row, mid, subtitle)
         if progressive:
             text, complete = tracks.progressive_webvtt(source, 0 if subtitle.get('external') else index, DATA / 'subtitles')
             return Response(text, media_type='text/vtt', headers={'Cache-Control':'private, no-store',
@@ -1199,7 +1209,8 @@ def video_plan(meta, data):
 
 @app.post('/api/movies/{mid}/plan')
 def plan(mid: str, data: Playback, u=Depends(user)):
-    _, meta = movie(mid)
+    row, meta = movie(mid)
+    meta = sidecars.metadata(meta, row['path'])
     data = tracks.apply_defaults(meta, data, u)
     return decide(meta, data)
 
@@ -1207,6 +1218,7 @@ def plan(mid: str, data: Playback, u=Depends(user)):
 @app.post('/api/movies/{mid}/play')
 def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     row, meta = movie(mid)
+    meta = sidecars.metadata(meta, row['path'])
     data = tracks.apply_defaults(meta, data, u)
     if meta.get('library_source') and not Path(row['path']).is_file():
         raise HTTPException(404, 'Videofilen er ikke tilgængelig. Kontrollér at bibliotekets lager er monteret.')
@@ -1224,7 +1236,7 @@ def play(mid: str, data: Playback, request: Request, u=Depends(user)):
     subtitle_file = None
     if data.airplay and subtitle and subtitle['delivery'] == 'text':
         try:
-            source = opensubtitles.subtitle_path(DATA, mid, subtitle['index']) if subtitle.get('external') else row['path']
+            source = subtitle_source(row, mid, subtitle)
             subtitle_file = tracks.webvtt(source, 0 if subtitle.get('external') else subtitle['index'], DATA / 'subtitles')
         except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired):
             raise HTTPException(503, 'Underteksterne kunne ikke klargøres til AirPlay. Prøv igen.')
